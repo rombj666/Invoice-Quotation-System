@@ -21,6 +21,14 @@ export function formatShortDate(value: string): string {
   });
 }
 
+export function formatCompactDate(value: string | Date): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(`${value}T12:00:00`);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = date.toLocaleDateString("en-GB", { month: "short" });
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
 export function formatTime(value: string): string {
   if (!value) return "-";
   const [hourText, minuteText] = value.split(":");

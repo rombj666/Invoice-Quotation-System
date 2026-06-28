@@ -2,7 +2,7 @@
 
 import type { QuotationData } from "../../types/quotation";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
-import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
+import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 
 export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; quotation: QuotationData }) {
   const pricing = calculatePricing(quotation);
@@ -16,7 +16,7 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
 
   function drinkLabel(dateId: string, drinkId: (typeof drinkNames)[number][0]) {
     const qty = quotation.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return `Ice ${qty.ice}${drinkId === "lemonade" ? "" : `, Hot ${qty.hot}`}`;
+    return drinkId === "lemonade" ? `${qty.ice} ice` : `${qty.ice} / ${qty.hot}`;
   }
 
   return (
@@ -32,7 +32,7 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
             </div>
             <div>
               <span>Invoice Date</span>
-              <strong>{new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</strong>
+              <strong>{formatCompactDate(new Date())}</strong>
             </div>
             <div>
               <span>Quote Ref</span>
@@ -62,19 +62,35 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
 
       <div className="invoice-section">
         <h3>Event Summary</h3>
-        <div className="summary-rows">
-          <div><strong>Dates</strong><span>{quotation.serviceDates.map((date) => formatDateLabel(date.serviceDate)).join(", ")}</span></div>
-          <div><strong>Time</strong><span>{firstDate ? `${formatTime(firstDate.startTime)} to ${formatTime(firstDate.endTime)}` : "-"}</span></div>
-          <div><strong>Total cups</strong><span>{pricing.totalCups}</span></div>
-          <div><strong>Cups per date</strong><span>{quotation.serviceDates.map((date) => `${date.cups} on ${formatDateLabel(date.serviceDate)}`).join(", ")}</span></div>
-          <div><strong>Barista(s)</strong><span>{firstDate ? getBaristasNeeded(firstDate) : "-"}</span></div>
+        <div className="invoice-summary-grid">
+          <div>
+            <span>Total cups</span>
+            <strong>{pricing.totalCups}</strong>
+          </div>
+          <div>
+            <span>First service time</span>
+            <strong>{firstDate ? `${formatTime(firstDate.startTime)} to ${formatTime(firstDate.endTime)}` : "-"}</strong>
+          </div>
+          <div>
+            <span>First date barista(s)</span>
+            <strong>{firstDate ? getBaristasNeeded(firstDate) : "-"}</strong>
+          </div>
         </div>
+        <ul className="invoice-date-list">
+          {quotation.serviceDates.map((date) => (
+            <li key={date.id}>
+              <strong>{formatCompactDate(date.serviceDate)}</strong>
+              <span>{formatTime(date.startTime)} to {formatTime(date.endTime)}</span>
+              <span>{date.cups} cups</span>
+              <span>{getBaristasNeeded(date)} barista(s)</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <table className="invoice-table">
+      <table className="invoice-table invoice-item-table">
         <thead>
           <tr>
-            <th>No.</th>
             <th>Item</th>
             <th>Description</th>
             <th>Qty</th>
@@ -84,55 +100,50 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
         </thead>
         <tbody>
           <tr>
-            <td>1</td>
             <td>Coffee Catering</td>
             <td>
               Americano, Cafe Latte, Dark Chocolate, Lemonade
             </td>
-            <td>1</td>
-            <td>{formatMoney(pricing.baseAmount)}</td>
-            <td>{formatMoney(pricing.baseAmount)}</td>
+            <td className="number-cell">1</td>
+            <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
+            <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
           </tr>
           {pricing.setupFee > 0 ? (
             <tr>
-              <td></td>
               <td>Setup Fee</td>
               <td>Small order setup fee</td>
-              <td>1</td>
-              <td>{formatMoney(pricing.setupFee)}</td>
-              <td>{formatMoney(pricing.setupFee)}</td>
+              <td className="number-cell">1</td>
+              <td className="amount-cell">{formatMoney(pricing.setupFee)}</td>
+              <td className="amount-cell">{formatMoney(pricing.setupFee)}</td>
             </tr>
           ) : null}
           {pricing.extraBaristaFee > 0 ? (
             <tr>
-              <td></td>
               <td>Additional Barista Fee</td>
               <td>Extra barista(s) required</td>
-              <td>1</td>
-              <td>{formatMoney(pricing.extraBaristaFee)}</td>
-              <td>{formatMoney(pricing.extraBaristaFee)}</td>
+              <td className="number-cell">1</td>
+              <td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td>
+              <td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td>
             </tr>
           ) : null}
           {pricing.machineRentalFee > 0 ? (
             <tr>
-              <td></td>
               <td>Machine Rental</td>
               <td>Additional coffee machine rental</td>
-              <td>1</td>
-              <td>{formatMoney(pricing.machineRentalFee)}</td>
-              <td>{formatMoney(pricing.machineRentalFee)}</td>
+              <td className="number-cell">1</td>
+              <td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td>
+              <td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td>
             </tr>
           ) : null}
           {pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee > 0 ? (
             <tr>
-              <td></td>
               <td>
                 Add-ons
               </td>
               <td>{[...quotation.selectedAddons.map((addon) => addon.name), quotation.hasCupSleeves ? "Custom Cup Sleeves" : "", quotation.hasCupStickers ? "Custom Cup Stickers" : ""].filter(Boolean).join(", ")}</td>
-              <td>1</td>
-              <td>{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
-              <td>{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
+              <td className="number-cell">1</td>
+              <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
+              <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
             </tr>
           ) : null}
         </tbody>
@@ -140,27 +151,20 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
 
       <div className="invoice-section">
         <h3>Drink Breakdown</h3>
-        <div className="table-scroll">
-          <table className="invoice-table compact">
-            <thead><tr><th>Date</th>{drinkNames.map(([, name]) => <th key={name}>{name}</th>)}</tr></thead>
-            <tbody>
-              {quotation.serviceDates.map((date) => (
-                <tr key={date.id}><td>{formatDateLabel(date.serviceDate)}</td>{drinkNames.map(([id]) => <td key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="invoice-section">
-        <h3>Acknowledgements</h3>
-        <div className="ack-summary">
-          <div>Access 75 to 120 minutes before service.</div>
-          <div>Service space 5 ft by 5 ft per cart.</div>
-          <div>One dedicated 13A 240V socket within 10 ft.</div>
-          <div>Wheelchair accessible service location.</div>
-          <div>No refund for unredeemed drinks.</div>
-        </div>
+        {quotation.sameDrinkDistribution ? (
+          <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
+        ) : (
+          <div className="table-scroll">
+            <table className="invoice-table compact drink-summary-table">
+              <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Ice only" : "Ice / Hot"}</small></th>)}</tr></thead>
+              <tbody>
+                {quotation.serviceDates.map((date) => (
+                  <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkNames.map(([id]) => <td className="number-cell" key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="invoice-totals">

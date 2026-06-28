@@ -23,10 +23,18 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+async function getNextQuotationNo(): Promise<string> {
+  const latest = await prisma.quotation.findFirst({
+    orderBy: { quotationNo: "desc" },
+    select: { quotationNo: true }
+  });
+  const latestNumber = Number(latest?.quotationNo.replace(/^Q/, "") ?? "0");
+  return `Q${String(latestNumber + 1).padStart(5, "0")}`;
+}
+
 quotationRoutes.get("/next-number", async (_req, res, next) => {
   try {
-    const count = await prisma.quotation.count();
-    res.json({ quotationNo: `Q${String(count + 1).padStart(5, "0")}` });
+    res.json({ quotationNo: await getNextQuotationNo() });
   } catch (error) {
     next(error);
   }
@@ -36,7 +44,6 @@ quotationRoutes.post("/", async (req, res, next) => {
   try {
     const data = req.body;
     const pricing = calculatePricing(data);
-    const quotationNo = data.quotationNo || `Q${String((await prisma.quotation.count()) + 1).padStart(5, "0")}`;
 
     const customer = await prisma.customer.create({
       data: {
@@ -49,8 +56,12 @@ quotationRoutes.post("/", async (req, res, next) => {
       }
     });
 
-    const quotation = await prisma.quotation.create({
-      data: {
+    let quotation = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const quotationNo = await getNextQuotationNo();
+      try {
+        quotation = await prisma.quotation.create({
+          data: {
         quotationNo,
         customerId: customer.id,
         status: (data.status ?? "PENDING_APPROVAL") as QuotationStatus,
@@ -94,9 +105,19 @@ quotationRoutes.post("/", async (req, res, next) => {
             ...(data.hasCupSleeves ? [{ name: "Custom Cup Sleeves", price: pricing.cupSleeveFee, isIncluded: false, metadata: toJsonValue(data.customizationOptions?.sleeve ?? {}) }] : [])
           ]
         }
-      },
-      include: { customer: true }
-    });
+          },
+          include: { customer: true }
+        });
+        break;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+        throw error;
+      }
+    }
+
+    if (!quotation) {
+      return res.status(409).json({ error: "Unable to generate a unique quotation number. Please try again." });
+    }
 
     res.status(201).json(toQuotationPayload(quotation));
   } catch (error) {

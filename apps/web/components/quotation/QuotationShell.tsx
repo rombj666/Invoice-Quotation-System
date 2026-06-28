@@ -119,6 +119,10 @@ export function QuotationShell() {
   }
 
   function validateDrinks() {
+    if (data.sameDrinkDistribution) {
+      next();
+      return;
+    }
     for (const date of data.serviceDates) {
       const total = drinkTotalForDate(data, date.id);
       if (total !== date.cups) return setError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);

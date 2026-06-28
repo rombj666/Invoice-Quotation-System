@@ -756,23 +756,68 @@ p {
 
 .summary-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e7e2da;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  font-size: 13px;
 }
 
 .summary-table th,
 .summary-table td {
   border-bottom: 1px solid #eee;
-  padding: 9px 8px;
+  padding: 11px 12px;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .summary-table th {
+  background: #faf7f1;
   color: #555;
   font-size: 10px;
   letter-spacing: 0.7px;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.summary-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.drink-summary-table {
+  min-width: 720px;
+}
+
+.drink-summary-table th,
+.drink-summary-table td {
+  white-space: nowrap;
+}
+
+.drink-summary-table th small {
+  display: block;
+  color: #999;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-top: 3px;
+  text-transform: none;
+}
+
+.date-cell {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.number-cell {
+  text-align: center !important;
+  white-space: nowrap;
+}
+
+.amount-cell {
+  text-align: right !important;
+  white-space: nowrap;
 }
 
 .total-box {
@@ -794,7 +839,7 @@ p {
 }
 
 .invoice-page .wide-card {
-  width: min(100%, 460px);
+  width: min(100%, 1120px);
 }
 
 .invoice-preview-wrap,
@@ -804,7 +849,7 @@ p {
 }
 
 .invoice-table.compact {
-  min-width: 520px;
+  min-width: 720px;
 }
 
 .ack-summary {
@@ -823,7 +868,9 @@ p {
 .invoice-card {
   border: 1px solid #e5e0d8;
   border-radius: 12px;
-  padding: 24px;
+  width: min(100%, 920px);
+  margin: 0 auto;
+  padding: 36px;
   background: #fff;
 }
 
@@ -879,7 +926,11 @@ p {
 
 .invoice-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e7e2da;
+  border-radius: 10px;
+  overflow: hidden;
   margin-top: 22px;
   font-size: 13px;
 }
@@ -887,9 +938,86 @@ p {
 .invoice-table th,
 .invoice-table td {
   border-bottom: 1px solid #eee;
-  padding: 10px;
+  padding: 12px;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.invoice-table th {
+  background: #faf7f1;
+  color: #555;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.invoice-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.invoice-item-table th:nth-child(1),
+.invoice-item-table td:nth-child(1) {
+  width: 22%;
+  font-weight: 700;
+}
+
+.invoice-item-table th:nth-child(2),
+.invoice-item-table td:nth-child(2) {
+  width: 40%;
+}
+
+.invoice-item-table th:nth-child(3),
+.invoice-item-table td:nth-child(3) {
+  width: 8%;
+}
+
+.invoice-item-table th:nth-child(4),
+.invoice-item-table td:nth-child(4),
+.invoice-item-table th:nth-child(5),
+.invoice-item-table td:nth-child(5) {
+  width: 15%;
+}
+
+.invoice-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.invoice-summary-grid div {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fafaf8;
+  padding: 12px;
+}
+
+.invoice-summary-grid span {
+  display: block;
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.invoice-date-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.invoice-date-list li {
+  display: grid;
+  grid-template-columns: 110px 1fr 90px 100px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
 }
 
 .invoice-totals {
@@ -1096,6 +1224,31 @@ p {
   font-size: 13px;
 }
 
+.decision-option {
+  border: 1px solid #b8dfc8;
+  border-radius: 10px;
+  background: #f0faf3;
+  padding: 12px 14px;
+}
+
+.result-card {
+  text-align: center;
+}
+
+.approval-note {
+  border: 1px solid #ffe082;
+  border-radius: 10px;
+  background: #fff8e1;
+  color: #7a5c00;
+  padding: 12px 14px;
+}
+
+.result-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 .final-action-section {
   border: 1px solid #eee;
   border-radius: 12px;
@@ -1218,6 +1371,8 @@ p {
   .drink-row,
   .invoice-header,
   .invoice-two-col,
+  .invoice-summary-grid,
+  .invoice-date-list li,
   .cup-preview-row,
   .detail-grid {
     grid-template-columns: 1fr;

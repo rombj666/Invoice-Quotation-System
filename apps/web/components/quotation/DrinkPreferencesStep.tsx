@@ -44,6 +44,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   const activeDate = useMemo(() => data.serviceDates.find((date) => date.id === activeDateId) ?? data.serviceDates[0], [activeDateId, data.serviceDates]);
 
   function updateDrink(drinkId: DrinkId, type: "ice" | "hot", value: number) {
+    if (data.sameDrinkDistribution) return;
     if (!activeDate) return;
     const dateOrder = data.drinkOrders[activeDate.id] ?? {};
     const current = dateOrder[drinkId] ?? { ice: 0, hot: 0 };
@@ -62,7 +63,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   function openModal(drinkId: DrinkId) {
     if (!activeDate) return;
     if (data.sameDrinkDistribution) {
-      setCopyMessage("Drink distribution is locked because same distribution is applied to all dates.");
+      setCopyMessage("Drink distribution is locked because Hour Coffee will decide it for this event.");
       return;
     }
     const quantity = data.drinkOrders[activeDate.id]?.[drinkId] ?? { ice: 0, hot: 0 };
@@ -128,29 +129,13 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   }
 
   function toggleSameDistribution(checked: boolean) {
-    if (!activeDate) return;
     if (checked) {
-      const sourceOrder = data.drinkOrders[activeDate.id] ?? {};
-      const nextOrders = { ...data.drinkOrders };
-      data.serviceDates.forEach((target: ServiceDate) => {
-        const scale = target.cups / activeDate.cups;
-        const copied = {} as DrinkOrderByDate[string];
-        drinks.forEach((drink) => {
-          const source = sourceOrder[drink.id] ?? { ice: 0, hot: 0 };
-          copied[drink.id] = {
-            ice: Math.round(source.ice * scale),
-            hot: drink.hasHot ? Math.round(source.hot * scale) : 0
-          };
-        });
-        const copiedTotal = Object.values(copied).reduce((sum, item) => sum + item.ice + item.hot, 0);
-        const diff = target.cups - copiedTotal;
-        if (diff !== 0) copied.americano.ice = Math.max(0, copied.americano.ice + diff);
-        nextOrders[target.id] = copied;
-      });
-      setData({ ...data, drinkOrders: nextOrders, sameDrinkDistribution: true, masterDrinkDate: activeDate.id });
-      setCopyMessage("Drink distribution copied to all selected dates.");
+      closeModal();
+      setData({ ...data, sameDrinkDistribution: true, masterDrinkDate: undefined });
+      setCopyMessage("Hour Coffee will decide the drink distribution for this event.");
     } else {
       setData({ ...data, sameDrinkDistribution: false });
+      setCopyMessage("");
     }
   }
 
@@ -188,20 +173,25 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
         })}
       </div>
 
-      <div className={assigned === activeDate.cups ? "ok-summary" : "warn-summary"}>
-        Assigned {assigned} of {activeDate.cups} cups for {formatShortDate(activeDate.serviceDate)}
-      </div>
+      <label className="same-distribution-option decision-option">
+        <input type="checkbox" checked={data.sameDrinkDistribution} onChange={(event) => toggleSameDistribution(event.target.checked)} />
+        <span>Let Hour Coffee decide the drink distribution for this event.</span>
+      </label>
+      {data.sameDrinkDistribution ? <div className="ok-summary">Drink editing is disabled. Hour Coffee will handle the final drink ratio and distribution.</div> : null}
+
+      {data.sameDrinkDistribution ? (
+        <div className="ok-summary">Distribution for {formatShortDate(activeDate.serviceDate)} will be handled by Hour Coffee.</div>
+      ) : (
+        <div className={assigned === activeDate.cups ? "ok-summary" : "warn-summary"}>
+          Assigned {assigned} of {activeDate.cups} cups for {formatShortDate(activeDate.serviceDate)}
+        </div>
+      )}
 
       {data.serviceDates.length > 1 ? (
         <>
-          <Button type="button" variant="secondary" onClick={copyToAll}>
+          <Button type="button" variant="secondary" onClick={copyToAll} disabled={data.sameDrinkDistribution}>
             Copy same drinks to all dates
           </Button>
-          <label className="same-distribution-option">
-            <input type="checkbox" checked={data.sameDrinkDistribution} onChange={(event) => toggleSameDistribution(event.target.checked)} />
-            <span>Use the same drink distribution for all selected dates</span>
-          </label>
-          {data.sameDrinkDistribution ? <div className="ok-summary">Same drink distribution is applied to all selected dates.</div> : null}
         </>
       ) : null}
       {copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}

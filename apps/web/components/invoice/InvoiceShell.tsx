@@ -132,6 +132,10 @@ export function InvoiceShell() {
 
   function validateEditedDrinks(): boolean {
     if (!quotation) return false;
+    if (quotation.sameDrinkDistribution) {
+      setReviewError("");
+      return true;
+    }
     for (const date of quotation.serviceDates) {
       if (drinkTotalForDate(quotation, date.id) !== date.cups) {
         setReviewError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);

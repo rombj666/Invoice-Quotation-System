@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
-import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
+import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { useState } from "react";
 import { Button } from "../common/Button";
 
@@ -16,7 +17,7 @@ type Props = {
 };
 
 export function QuotationReviewStep({ data, onBack, onReset }: Props) {
-  const [submitMessage, setSubmitMessage] = useState("");
+  const router = useRouter();
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const pricing = calculatePricing(data);
@@ -29,7 +30,6 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
       total: pricing.total
     }
   };
-  const invoicePath = "/invoice";
   const drinkNames = [
     ["americano", "Americano"],
     ["latte", "Cafe Latte"],
@@ -39,15 +39,15 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
 
   function drinkLabel(dateId: string, drinkId: (typeof drinkNames)[number][0]) {
     const qty = data.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return `Ice ${qty.ice}${drinkId === "lemonade" ? "" : `, Hot ${qty.hot}`}`;
+    return drinkId === "lemonade" ? `${qty.ice} ice` : `${qty.ice} / ${qty.hot}`;
   }
 
   async function submitQuotation() {
     setSubmitError("");
     setIsSubmitting(true);
     try {
-      await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
-      setSubmitMessage("Your quotation has been submitted. Our PIC or partner will review it and contact you before the invoice and payment step.");
+      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
+      router.push(`/quotation/submitted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Unable to submit quotation. Please try again.");
     } finally {
@@ -55,14 +55,15 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
     }
   }
 
-  function contactPartner() {
-    const dateLines = data.serviceDates.map((date) => `${formatDateLabel(date.serviceDate)}: ${formatTime(date.startTime)} to ${formatTime(date.endTime)}, ${date.cups} cups`).join("\n");
+  async function contactPartner() {
+    const dateLines = data.serviceDates.map((date) => `${formatCompactDate(date.serviceDate)}: ${formatTime(date.startTime)} to ${formatTime(date.endTime)}, ${date.cups} cups`).join("\n");
     const drinkLines = data.serviceDates
       .map((date) => {
+        if (data.sameDrinkDistribution) return `${formatCompactDate(date.serviceDate)}: Hour Coffee to decide`;
         const drinks = Object.entries(data.drinkOrders[date.id] ?? {})
           .map(([name, qty]) => `${name} ice ${qty.ice}, hot ${qty.hot}`)
           .join("; ");
-        return `${formatDateLabel(date.serviceDate)}: ${drinks}`;
+        return `${formatCompactDate(date.serviceDate)}: ${drinks}`;
       })
       .join("\n");
     const addonLines = [...data.selectedAddons.map((addon) => `${addon.name} ${formatMoney(addon.price)}`), data.hasCupStickers ? "Custom Cup Stickers" : "", data.hasCupSleeves ? "Custom Cup Sleeves" : ""]
@@ -82,7 +83,7 @@ Service dates:
 ${dateLines}
 Drink distribution:
 ${drinkLines}
-Same drink distribution: ${data.sameDrinkDistribution ? "Yes" : "No"}
+Drink distribution: ${data.sameDrinkDistribution ? "Hour Coffee to decide" : "Customer selected"}
 Add-ons: ${addonLines || "None"}
 Customization options:
 Cart ${data.customizationOptions.cart.mode}, ${data.customizationOptions.cart.designCount} design(s)
@@ -91,7 +92,24 @@ Sleeve ${data.customizationOptions.sleeve.mode}, ${data.customizationOptions.sle
 Subtotal: ${formatMoney(pricing.subtotal)}
 Voucher/Discount: ${data.discountCode || "None"} / ${formatMoney(pricing.discountAmount)}
 Total: ${formatMoney(pricing.total)}`;
-    window.location.href = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+    setSubmitError("");
+    setIsSubmitting(true);
+    const whatsAppWindow = window.open("", "_blank", "noopener,noreferrer");
+    try {
+      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
+      const whatsAppUrl = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+      if (whatsAppWindow) {
+        whatsAppWindow.location.href = whatsAppUrl;
+      } else {
+        window.location.href = whatsAppUrl;
+      }
+      router.push(`/quotation/contacted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
+    } catch (error) {
+      whatsAppWindow?.close();
+      setSubmitError(error instanceof Error ? error.message : "Unable to save quotation before opening WhatsApp. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -117,7 +135,7 @@ Total: ${formatMoney(pricing.total)}`;
               <thead><tr><th>Date</th><th>Time</th><th>Cups</th><th>Barista(s)</th></tr></thead>
               <tbody>
                 {data.serviceDates.map((date) => (
-                  <tr key={date.id}><td>{formatDateLabel(date.serviceDate)}</td><td>{formatTime(date.startTime)} to {formatTime(date.endTime)}</td><td>{date.cups}</td><td>{getBaristasNeeded(date)}</td></tr>
+                  <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td><td>{formatTime(date.startTime)} to {formatTime(date.endTime)}</td><td className="number-cell">{date.cups}</td><td className="number-cell">{getBaristasNeeded(date)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -125,16 +143,20 @@ Total: ${formatMoney(pricing.total)}`;
         </div>
         <div className="review-section">
           <span>Drink distribution</span>
-          <div className="table-scroll">
-            <table className="summary-table">
-              <thead><tr><th>Date</th>{drinkNames.map(([, name]) => <th key={name}>{name}</th>)}</tr></thead>
-              <tbody>
-                {data.serviceDates.map((date) => (
-                  <tr key={date.id}><td>{formatDateLabel(date.serviceDate)}</td>{drinkNames.map(([id]) => <td key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {data.sameDrinkDistribution ? (
+            <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
+          ) : (
+            <div className="table-scroll">
+              <table className="summary-table drink-summary-table">
+                <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Ice only" : "Ice / Hot"}</small></th>)}</tr></thead>
+                <tbody>
+                  {data.serviceDates.map((date) => (
+                    <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkNames.map(([id]) => <td className="number-cell" key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
         <div className="review-section">
           <span>Add-ons</span>
@@ -142,10 +164,10 @@ Total: ${formatMoney(pricing.total)}`;
             <table className="summary-table">
               <thead><tr><th>Add-on</th><th>Details</th><th>Amount</th></tr></thead>
               <tbody>
-                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td>{addon.isIncluded ? "Included" : "Selected"}</td><td>{formatMoney(addon.price)}</td></tr>)}
-                {data.hasCupStickers ? <tr><td>Custom Cup Stickers</td><td>{data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s)</td><td>{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
-                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves</td><td>{data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s)</td><td>{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
-                {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td>-</td><td>{formatMoney(0)}</td></tr> : null}
+                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td>{addon.isIncluded ? "Included" : "Selected"}</td><td className="amount-cell">{formatMoney(addon.price)}</td></tr>)}
+                {data.hasCupStickers ? <tr><td>Custom Cup Stickers</td><td>{data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s)</td><td className="amount-cell">{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
+                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves</td><td>{data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s)</td><td className="amount-cell">{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
+                {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td>-</td><td className="amount-cell">{formatMoney(0)}</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -178,24 +200,14 @@ Total: ${formatMoney(pricing.total)}`;
           {isSubmitting ? "Submitting..." : "Submit Quotation"}
         </Button>
         {submitError ? <p className="error">{submitError}</p> : null}
-        {submitMessage ? <div className="ok-summary">{submitMessage}</div> : null}
       </div>
       <div className="final-action-section">
         <h3>Need to discuss first?</h3>
         <p>Contact our partner/PIC on WhatsApp with your quotation details. The message will be prepared automatically so they can review your event requirements.</p>
-        <Button type="button" variant="secondary" onClick={contactPartner}>
-          Contact Partner on WhatsApp
+        <Button type="button" variant="secondary" onClick={contactPartner} disabled={isSubmitting}>
+          {isSubmitting ? "Saving..." : "Contact Partner on WhatsApp"}
         </Button>
       </div>
-      {submitMessage ? (
-        <div className="final-action-section">
-          <h3>Invoice</h3>
-          <p>You can open the invoice page after submission. If this quotation is not approved yet, the invoice page will show the pending approval message.</p>
-          <a className="hc-button hc-button-primary" href={invoicePath}>
-            Continue to Invoice
-          </a>
-        </div>
-      ) : null}
       <div className="hc-nav-row">
         <Button type="button" variant="secondary" onClick={onBack}>
           BACK
