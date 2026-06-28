@@ -1,0 +1,73 @@
+"use client";
+
+import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
+import type { ServiceDate } from "../../types/quotation";
+import { formatShortDate } from "../../lib/formatters";
+
+type Props = {
+  serviceDates: ServiceDate[];
+  designs: CustomizationByDate;
+  activeDateId: string;
+  onActiveDate: (id: string) => void;
+  onDesigns: (designs: CustomizationByDate) => void;
+};
+
+function readFile(file: File, callback: (design: CustomizationDesign) => void) {
+  const reader = new FileReader();
+  reader.onload = () => callback({ fileName: file.name, dataUrl: String(reader.result), size: 30, rotation: 0, x: 50, y: 62 });
+  reader.readAsDataURL(file);
+}
+
+export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
+  const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
+  const active = designs[activeKey];
+
+  function update(patch: Partial<CustomizationDesign>) {
+    if (!active) return;
+    onDesigns({ ...designs, [activeKey]: { ...active, ...patch } });
+  }
+
+  return (
+    <div>
+      <h2>Cart Logo</h2>
+      <p className="step-copy">Upload your logo to preview it centered on the coffee cart. Use the size slider to resize.</p>
+      {serviceDates.length > 1 ? (
+        <select className="design-select" value={activeKey} onChange={(event) => onActiveDate(event.target.value)}>
+          {serviceDates.map((date, index) => (
+            <option value={date.id} key={date.id}>
+              Design {index + 1} - {formatShortDate(date.serviceDate)}
+            </option>
+          ))}
+        </select>
+      ) : null}
+      <div className="cart-preview">
+        <div className="cart-top">Hour Coffee</div>
+        <div className="cart-panel">
+          {active ? <img src={active.dataUrl} alt="Cart logo preview" style={{ width: `${active.size}%` }} /> : <span>Cart logo preview</span>}
+        </div>
+        <div className="cart-base" />
+      </div>
+      <label className="upload-box">
+        <strong>Tap to upload logo</strong>
+        <span>PNG or JPG only</span>
+        <input
+          type="file"
+          accept="image/png,image/jpeg"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
+          }}
+        />
+      </label>
+      {active ? (
+        <>
+          <p className="upload-ok">Uploaded: {active.fileName}</p>
+          <label className="range-field">
+            Logo size
+            <input type="range" min={5} max={60} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
+          </label>
+        </>
+      ) : null}
+    </div>
+  );
+}

@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuotationStatus {
+  DRAFT
+  REVIEWED
+  SENT
+  CONVERTED_TO_INVOICE
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_PAYMENT_REVIEW
+  PAID
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  RECEIPT_UPLOADED
+  VERIFIED
+  REJECTED
+}
+
+enum CustomizationType {
+  CART_DESIGN
+  CUP_STICKER
+  CUP_SLEEVE
+}
+
+enum InvoiceItemType {
+  COFFEE_SERVICE
+  SETUP_FEE
+  EXTRA_BARISTA
+  MACHINE_RENTAL
+  ADDON
+  DISCOUNT
+  OTHER
+}
+
+enum AdminRole {
+  ADMIN
+  STAFF
+}
+
+model Customer {
+  id             String      @id @default(cuid())
+  name           String
+  phone          String
+  email          String
+  companyName    String?
+  companyRegNo   String?
+  billingAddress String
+  quotations     Quotation[]
+  invoices       Invoice[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([email])
+  @@index([phone])
+}
+
+model Quotation {
+  id              String            @id @default(cuid())
+  quotationNo     String            @unique
+  customerId      String
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  status          QuotationStatus   @default(DRAFT)
+  location        String
+  eventType       String
+  subtotalAmount  Decimal           @db.Decimal(10, 2)
+  discountPercent Decimal           @default(0) @db.Decimal(5, 2)
+  discountAmount  Decimal           @default(0) @db.Decimal(10, 2)
+  totalAmount     Decimal           @db.Decimal(10, 2)
+  expiresAt       DateTime?
+  dates           QuotationDate[]
+  addons          QuotationAddon[]
+  invoices        Invoice[]
+  internalNotes   InternalNote[]
+  statusHistory   StatusHistory[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model QuotationDate {
+  id               String             @id @default(cuid())
+  quotationId      String
+  quotation        Quotation          @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  serviceDate      DateTime
+  cups             Int
+  serviceStartTime String
+  serviceEndTime   String
+  serviceHours     Decimal            @db.Decimal(5, 2)
+  baristaCount     Int
+  extraBaristaFee  Decimal            @default(0) @db.Decimal(10, 2)
+  drinks           QuotationDrink[]
+  customizationFiles CustomizationFile[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([quotationId])
+  @@index([serviceDate])
+}
+
+model QuotationDrink {
+  id              String        @id @default(cuid())
+  quotationDateId String
+  quotationDate   QuotationDate @relation(fields: [quotationDateId], references: [id], onDelete: Cascade)
+  drinkId         String
+  drinkName       String
+  iceCups         Int           @default(0)
+  hotCups         Int           @default(0)
+  totalCups       Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([quotationDateId])
+  @@index([drinkId])
+}
+
+model QuotationAddon {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  name        String
+  price       Decimal   @default(0) @db.Decimal(10, 2)
+  isIncluded  Boolean   @default(false)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([quotationId])
+}
+
+model Invoice {
+  id                   String            @id @default(cuid())
+  invoiceNo            String            @unique
+  quotationId          String
+  quotation            Quotation         @relation(fields: [quotationId], references: [id])
+  customerId           String
+  customer             Customer          @relation(fields: [customerId], references: [id])
+  status               InvoiceStatus     @default(DRAFT)
+  paymentStatus        PaymentStatus     @default(UNPAID)
+  eventAddress         String?
+  dressCode            String?
+  environmentNotes     String?
+  finalSubtotalAmount  Decimal           @db.Decimal(10, 2)
+  finalDiscountAmount  Decimal           @default(0) @db.Decimal(10, 2)
+  finalTotalAmount     Decimal           @db.Decimal(10, 2)
+  invoicePdfUrl        String?
+  items                InvoiceItem[]
+  paymentReceipts      PaymentReceipt[]
+  customizationFiles   CustomizationFile[]
+  invoiceFiles         InvoiceFile[]
+  internalNotes        InternalNote[]
+  statusHistory        StatusHistory[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([quotationId])
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  itemType    InvoiceItemType
+  name        String
+  description String?
+  quantity    Int
+  unitPrice   Decimal         @db.Decimal(10, 2)
+  amount      Decimal         @db.Decimal(10, 2)
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([invoiceId])
+  @@index([itemType])
+}
+
+model PaymentReceipt {
+  id                 String        @id @default(cuid())
+  invoiceId          String
+  invoice            Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fileUrl            String
+  cloudinaryPublicId String
+  fileName           String
+  mimeType           String
+  status             PaymentStatus @default(RECEIPT_UPLOADED)
+  uploadedAt         DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model CustomizationFile {
+  id                 String             @id @default(cuid())
+  invoiceId          String
+  invoice            Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  quotationDateId    String?
+  quotationDate      QuotationDate?     @relation(fields: [quotationDateId], references: [id])
+  type               CustomizationType
+  designKey          String
+  fileUrl            String
+  cloudinaryPublicId String
+  fileName           String
+  mimeType           String
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+
+  @@index([invoiceId])
+  @@index([quotationDateId])
+  @@index([type])
+  @@index([designKey])
+}
+
+model InvoiceFile {
+  id                 String   @id @default(cuid())
+  invoiceId          String
+  invoice            Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fileUrl            String
+  cloudinaryPublicId String
+  fileName           String
+  mimeType           String
+  createdAt          DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+model InternalNote {
+  id          String     @id @default(cuid())
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  invoiceId   String?
+  invoice     Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  note        String
+  createdBy   String
+  createdAt   DateTime   @default(now())
+
+  @@index([quotationId])
+  @@index([invoiceId])
+}
+
+model StatusHistory {
+  id          String     @id @default(cuid())
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  invoiceId   String?
+  invoice     Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  changedBy   String
+  createdAt   DateTime   @default(now())
+
+  @@index([quotationId])
+  @@index([invoiceId])
+  @@index([createdAt])
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(STAFF)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
