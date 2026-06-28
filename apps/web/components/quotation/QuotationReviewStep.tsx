@@ -2,7 +2,6 @@
 
 import type { QuotationData } from "../../types/quotation";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
-import { encodeQuotationForQuery } from "../../lib/query-data";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
 import { useState } from "react";
@@ -18,6 +17,8 @@ type Props = {
 
 export function QuotationReviewStep({ data, onBack, onReset }: Props) {
   const [submitMessage, setSubmitMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const pricing = calculatePricing(data);
   const quotationForInvoice = {
     ...data,
@@ -28,7 +29,7 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
       total: pricing.total
     }
   };
-  const invoicePath = `/invoice?qdata=${encodeQuotationForQuery(quotationForInvoice)}`;
+  const invoicePath = "/invoice";
   const drinkNames = [
     ["americano", "Americano"],
     ["latte", "Cafe Latte"],
@@ -41,9 +42,17 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
     return `Ice ${qty.ice}${drinkId === "lemonade" ? "" : `, Hot ${qty.hot}`}`;
   }
 
-  function submitQuotation() {
-    saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
-    setSubmitMessage("Your quotation has been submitted. Our PIC or partner will review it and contact you before the invoice and payment step.");
+  async function submitQuotation() {
+    setSubmitError("");
+    setIsSubmitting(true);
+    try {
+      await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
+      setSubmitMessage("Your quotation has been submitted. Our PIC or partner will review it and contact you before the invoice and payment step.");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit quotation. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function contactPartner() {
@@ -165,9 +174,10 @@ Total: ${formatMoney(pricing.total)}`;
       <div className="final-action-section">
         <h3>Submit quotation for review</h3>
         <p>Submit this quotation to our team. Our PIC or partner will review the details and contact you if anything needs confirmation. Once approved, you can continue to the invoice and payment step.</p>
-        <Button type="button" onClick={submitQuotation}>
-          Submit Quotation
+        <Button type="button" onClick={submitQuotation} disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Submit Quotation"}
         </Button>
+        {submitError ? <p className="error">{submitError}</p> : null}
         {submitMessage ? <div className="ok-summary">{submitMessage}</div> : null}
       </div>
       <div className="final-action-section">

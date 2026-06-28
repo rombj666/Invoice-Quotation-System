@@ -10,23 +10,29 @@ import type { QuotationData } from "../../../types/quotation";
 
 export default function AdminQuotationListPage() {
   const [quotations, setQuotations] = useState<QuotationData[]>([]);
+  const [error, setError] = useState("");
 
-  function refresh() {
-    setQuotations(loadAllQuotations());
+  async function refresh() {
+    setError("");
+    try {
+      setQuotations(await loadAllQuotations());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unable to load quotations.");
+    }
   }
 
   useEffect(() => {
     refresh();
   }, []);
 
-  function approve(quotationNo: string) {
-    approveQuotation(quotationNo);
-    refresh();
+  async function approve(quotationNo: string) {
+    await approveQuotation(quotationNo);
+    await refresh();
   }
 
-  function remove(quotationNo: string) {
-    deleteQuotation(quotationNo);
-    refresh();
+  async function remove(quotationNo: string) {
+    await deleteQuotation(quotationNo);
+    await refresh();
   }
 
   return (
@@ -39,6 +45,7 @@ export default function AdminQuotationListPage() {
           <Link href="/admin/invoices">Invoice List</Link>
         </div>
         <h1>Quotation List</h1>
+        {error ? <p className="error">{error}</p> : null}
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>

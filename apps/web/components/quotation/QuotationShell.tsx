@@ -77,7 +77,9 @@ export function QuotationShell() {
   const [data, setData] = useState<QuotationData>(emptyQuotation);
 
   useEffect(() => {
-    setData((current) => ({ ...current, quotationNo: getNextQuotationNo() }));
+    getNextQuotationNo()
+      .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
+      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
   }, []);
 
   function next() {
@@ -144,7 +146,9 @@ export function QuotationShell() {
   function resetQuotation() {
     setStep(0);
     setError("");
-    setData({ ...emptyQuotation, quotationNo: getNextQuotationNo() });
+    getNextQuotationNo()
+      .then((quotationNo) => setData({ ...emptyQuotation, quotationNo }))
+      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 

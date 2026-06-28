@@ -13,8 +13,16 @@ export type InvoiceDetails = {
   environmentNotes: string;
   receiptName: string;
   receiptDataUrl?: string;
+  receiptUrl?: string;
   cartDesigns?: CustomizationByDate;
   stickerDesigns?: CustomizationByDate;
   sleeveDesigns?: CustomizationByDate;
+  customizationUrls?: Array<{
+    type: "CART_DESIGN" | "CUP_STICKER" | "CUP_SLEEVE";
+    designKey: string;
+    fileUrl: string;
+    fileName: string;
+    metadata?: unknown;
+  }>;
   submittedAt?: string;
 };

@@ -11,6 +11,7 @@
     "dev:api": "npm run dev --workspace apps/api",
     "build:web": "npm run build --workspace apps/web",
     "build:api": "npm run build --workspace apps/api",
+    "start:api": "npm run start --workspace apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -20,4 +21,5 @@
     "prisma": "^6.1.0",
     "typescript": "^5.7.2"
   }
+  
 }

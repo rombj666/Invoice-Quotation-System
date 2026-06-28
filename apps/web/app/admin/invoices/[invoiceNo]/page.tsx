@@ -10,8 +10,8 @@ import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/format
 import type { CustomizationByDate } from "../../../../types/customization";
 import type { InvoiceDetails } from "../../../../types/invoice";
 
-function FilePreview({ title, dataUrl, fileName }: { title: string; dataUrl?: string; fileName?: string }) {
-  if (!dataUrl) {
+function FilePreview({ title, fileUrl, fileName }: { title: string; fileUrl?: string; fileName?: string }) {
+  if (!fileUrl) {
     return (
       <section>
         <h3>{title}</h3>
@@ -20,28 +20,36 @@ function FilePreview({ title, dataUrl, fileName }: { title: string; dataUrl?: st
     );
   }
 
-  const isPdf = dataUrl.startsWith("data:application/pdf");
+  const isPdf = fileUrl.startsWith("data:application/pdf") || fileUrl.toLowerCase().includes(".pdf");
   return (
     <section>
       <h3>{title}</h3>
       <p>{fileName || "Uploaded file"}</p>
       {isPdf ? (
-        <a className="admin-file-link" href={dataUrl} target="_blank" rel="noreferrer">
+        <a className="admin-file-link" href={fileUrl} target="_blank" rel="noreferrer">
           Open PDF
         </a>
       ) : (
-        <img className="admin-image-preview" src={dataUrl} alt={title} />
+        <img className="admin-image-preview" src={fileUrl} alt={title} />
       )}
     </section>
   );
 }
 
-function CustomizationPreview({ title, designs }: { title: string; designs?: CustomizationByDate }) {
+function CustomizationPreview({ title, designs, urls, type }: { title: string; designs?: CustomizationByDate; urls?: InvoiceDetails["customizationUrls"]; type: string }) {
+  const storedUrls = (urls ?? []).filter((file) => file.type === type);
   const entries = Object.entries(designs ?? {}).filter(([, design]) => design?.dataUrl);
   return (
     <section>
       <h3>{title}</h3>
-      {entries.length ? (
+      {storedUrls.length ? (
+        storedUrls.map((file) => (
+          <div className="admin-design-preview" key={`${file.type}-${file.designKey}`}>
+            <p>{file.fileName}</p>
+            <img className="admin-image-preview" src={file.fileUrl} alt={`${title} ${file.designKey}`} />
+          </div>
+        ))
+      ) : entries.length ? (
         entries.map(([key, design]) =>
           design ? (
             <div className="admin-design-preview" key={key}>
@@ -62,7 +70,7 @@ export default function AdminInvoiceDetailPage() {
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
 
   useEffect(() => {
-    setInvoice(loadInvoiceByNo(params.invoiceNo));
+    loadInvoiceByNo(params.invoiceNo).then(setInvoice);
   }, [params.invoiceNo]);
 
   if (!invoice) {
@@ -155,10 +163,10 @@ export default function AdminInvoiceDetailPage() {
             <p>{formatMoney(pricing.total)}</p>
             <p>Invoice PDF link: Not generated locally.</p>
           </section>
-          <FilePreview title="Payment Receipt" dataUrl={invoice.receiptDataUrl} fileName={invoice.receiptName} />
-          <CustomizationPreview title="Cart Design Image Preview" designs={invoice.cartDesigns} />
-          <CustomizationPreview title="Cup Sticker Image Preview" designs={invoice.stickerDesigns} />
-          <CustomizationPreview title="Cup Sleeve Image Preview" designs={invoice.sleeveDesigns} />
+          <FilePreview title="Payment Receipt" fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} />
+          <CustomizationPreview title="Cart Design Image Preview" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" />
+          <CustomizationPreview title="Cup Sticker Image Preview" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" />
+          <CustomizationPreview title="Cup Sleeve Image Preview" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" />
         </div>
       </Card>
     </main>

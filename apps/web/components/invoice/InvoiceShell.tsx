@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails } from "../../types/invoice";
 import type { DrinkId, QuotationData, ServiceDate } from "../../types/quotation";
-import { decodeQuotationFromQuery } from "../../lib/query-data";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
-import { loadQuotationByNo } from "../../lib/quotation-storage";
+import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
 import { StepNavigation } from "../common/StepNavigation";
 import { AddOnsStep } from "../quotation/AddOnsStep";
@@ -26,18 +24,6 @@ type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
-
-function normalizePhone(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
-function matchesQuotation(quotation: QuotationData, name: string, phone: string, quotationNo: string): boolean {
-  return (
-    quotation.customer.name.trim().toLowerCase() === name.trim().toLowerCase() &&
-    normalizePhone(quotation.customer.phone) === normalizePhone(phone) &&
-    quotation.quotationNo.trim().toUpperCase() === quotationNo.trim().toUpperCase()
-  );
-}
 
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
@@ -59,8 +45,6 @@ function drinkTotalForDate(data: QuotationData, dateId: string): number {
 }
 
 export function InvoiceShell() {
-  const searchParams = useSearchParams();
-  const [pendingQuotation, setPendingQuotation] = useState<QuotationData | null>(null);
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [invoiceNo, setInvoiceNo] = useState("A00001");
   const [stepIndex, setStepIndex] = useState(0);
@@ -82,12 +66,14 @@ export function InvoiceShell() {
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
   const [sleeveDesigns, setSleeveDesigns] = useState<CustomizationByDate>({});
   const [stickerDesigns, setStickerDesigns] = useState<CustomizationByDate>({});
+  const [isFindingQuotation, setIsFindingQuotation] = useState(false);
+  const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
 
   useEffect(() => {
-    const fromQuery = decodeQuotationFromQuery(searchParams.get("qdata"));
-    setPendingQuotation(fromQuery ? withCustomizationDefaults(fromQuery) : null);
-    setInvoiceNo(getNextInvoiceNo());
-  }, [searchParams]);
+    getNextInvoiceNo()
+      .then(setInvoiceNo)
+      .catch(() => setError("Unable to load the next invoice number. Please check the API connection."));
+  }, []);
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
@@ -101,22 +87,27 @@ export function InvoiceShell() {
 
   const currentStep = steps[stepIndex];
 
-  function findQuotation() {
+  async function findQuotation() {
     setError("");
+    setIsFindingQuotation(true);
     const quotationNo = findQuotationNo.trim().toUpperCase();
-    const stored = loadQuotationByNo(quotationNo);
-    const found = stored ? withCustomizationDefaults(stored) : pendingQuotation && matchesQuotation(pendingQuotation, findName, findPhone, quotationNo) ? pendingQuotation : null;
-    if (!found || !matchesQuotation(found, findName, findPhone, quotationNo)) {
-      setError("We could not find this quotation. Please check your details or contact Hour Coffee.");
-      return;
+    try {
+      const found = await findStoredQuotation({ quotationNo, name: findName, phone: findPhone });
+      if (!found) {
+        setError("We could not find this quotation. Please check your details or contact Hour Coffee.");
+        return;
+      }
+      const approvedQuotation = withCustomizationDefaults(found);
+      if (approvedQuotation.status !== "APPROVED") {
+        setError("Your quotation is still pending approval. Please contact Hour Coffee or try again after approval.");
+        return;
+      }
+      setQuotation(approvedQuotation);
+      if (approvedQuotation.serviceDates[0]) setActiveDesignDateId(approvedQuotation.serviceDates[0].id);
+      setStepIndex(0);
+    } finally {
+      setIsFindingQuotation(false);
     }
-    if (found.status !== "APPROVED") {
-      setError("Your quotation is still pending approval. Please contact Hour Coffee or try again after approval.");
-      return;
-    }
-    setQuotation(found);
-    if (found.serviceDates[0]) setActiveDesignDateId(found.serviceDates[0].id);
-    setStepIndex(0);
   }
 
   function validateEditedDates(): boolean {
@@ -175,8 +166,10 @@ export function InvoiceShell() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function submit() {
+  async function submit() {
     if (!quotation) return;
+    setError("");
+    setIsSubmittingInvoice(true);
     const invoice: InvoiceDetails = {
       invoiceNo,
       quotation,
@@ -192,8 +185,14 @@ export function InvoiceShell() {
       sleeveDesigns,
       submittedAt: new Date().toISOString()
     };
-    saveInvoiceLocally(invoice);
-    setStepIndex(steps.length - 1);
+    try {
+      await saveInvoiceLocally(invoice);
+      setStepIndex(steps.length - 1);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to submit invoice. Please try again.");
+    } finally {
+      setIsSubmittingInvoice(false);
+    }
   }
 
   if (!quotation) {
@@ -215,8 +214,8 @@ export function InvoiceShell() {
             <input value={findQuotationNo} onChange={(event) => setFindQuotationNo(event.target.value.toUpperCase())} placeholder="Q00001" />
           </label>
           {error ? <p className="error">{error}</p> : null}
-          <button className="hc-button hc-button-primary find-button" type="button" onClick={findQuotation}>
-            FIND QUOTATION
+          <button className="hc-button hc-button-primary find-button" type="button" onClick={findQuotation} disabled={isFindingQuotation}>
+            {isFindingQuotation ? "FINDING..." : "FIND QUOTATION"}
           </button>
         </Card>
       </main>
@@ -322,7 +321,7 @@ export function InvoiceShell() {
             onBack={stepIndex > 0 ? back : undefined}
             canGoBack={stepIndex > 0}
             onNext={stepIndex === steps.length - 2 ? submit : next}
-            nextLabel={stepIndex === steps.length - 2 ? "DONE - NEXT STEP" : "CONTINUE"}
+            nextLabel={stepIndex === steps.length - 2 ? (isSubmittingInvoice ? "SAVING..." : "DONE - NEXT STEP") : "CONTINUE"}
           />
         ) : null}
       </Card>

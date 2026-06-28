@@ -9,6 +9,8 @@ datasource db {
 
 enum QuotationStatus {
   DRAFT
+  PENDING_APPROVAL
+  APPROVED
   REVIEWED
   SENT
   CONVERTED_TO_INVOICE
@@ -17,6 +19,7 @@ enum QuotationStatus {
 
 enum InvoiceStatus {
   DRAFT
+  SUBMITTED
   PENDING_PAYMENT_REVIEW
   PAID
   CONFIRMED
@@ -81,6 +84,7 @@ model Quotation {
   discountAmount  Decimal           @default(0) @db.Decimal(10, 2)
   totalAmount     Decimal           @db.Decimal(10, 2)
   expiresAt       DateTime?
+  metadata        Json?
   dates           QuotationDate[]
   addons          QuotationAddon[]
   invoices        Invoice[]
@@ -160,6 +164,7 @@ model Invoice {
   finalDiscountAmount  Decimal           @default(0) @db.Decimal(10, 2)
   finalTotalAmount     Decimal           @db.Decimal(10, 2)
   invoicePdfUrl        String?
+  metadata             Json?
   items                InvoiceItem[]
   paymentReceipts      PaymentReceipt[]
   customizationFiles   CustomizationFile[]

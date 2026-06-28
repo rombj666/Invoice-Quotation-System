@@ -13,9 +13,10 @@ export default function AdminQuotationDetailPage() {
   const params = useParams<{ quotationNo: string }>();
   const router = useRouter();
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setQuotation(loadQuotationByNo(params.quotationNo));
+    loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
   }, [params.quotationNo]);
 
   if (!quotation) {
@@ -34,14 +35,23 @@ export default function AdminQuotationDetailPage() {
   const pricing = calculatePricing(quotation);
   const currentQuotation = quotation;
 
-  function approve() {
-    approveQuotation(currentQuotation.quotationNo);
-    setQuotation(loadQuotationByNo(currentQuotation.quotationNo));
+  async function approve() {
+    setError("");
+    try {
+      setQuotation(await approveQuotation(currentQuotation.quotationNo));
+    } catch (approveError) {
+      setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
+    }
   }
 
-  function remove() {
-    deleteQuotation(currentQuotation.quotationNo);
-    router.push("/admin/quotations");
+  async function remove() {
+    setError("");
+    try {
+      await deleteQuotation(currentQuotation.quotationNo);
+      router.push("/admin/quotations");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete quotation.");
+    }
   }
 
   return (
@@ -53,6 +63,7 @@ export default function AdminQuotationDetailPage() {
           <Link href="/admin/invoices">Invoice List</Link>
         </div>
         <h1>{quotation.quotationNo}</h1>
+        {error ? <p className="error">{error}</p> : null}
         <div className="detail-grid">
           <section>
             <h3>Customer Info</h3>

@@ -10,9 +10,12 @@ import type { InvoiceDetails } from "../../../types/invoice";
 
 export default function AdminInvoiceListPage() {
   const [invoices, setInvoices] = useState<InvoiceDetails[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setInvoices(loadAllInvoices());
+    loadAllInvoices()
+      .then(setInvoices)
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load invoices."));
   }, []);
 
   return (
@@ -25,6 +28,7 @@ export default function AdminInvoiceListPage() {
           <Link href="/admin/quotations">Quotation List</Link>
         </div>
         <h1>Invoice List</h1>
+        {error ? <p className="error">{error}</p> : null}
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>

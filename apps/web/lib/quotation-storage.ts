@@ -1,63 +1,65 @@
 import type { QuotationData } from "../types/quotation";
+import { apiBaseUrl } from "./api-client";
 
-const latestKey = "hour-coffee-latest-quotation";
-const quotationListKey = "hourCoffeeQuotations";
+type FindQuotationInput = {
+  name: string;
+  phone: string;
+  quotationNo: string;
+};
 
-export function loadAllQuotations(): QuotationData[] {
-  const raw = localStorage.getItem(quotationListKey);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as QuotationData[];
-  } catch {
-    return [];
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers
+    }
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error ?? "Request failed");
   }
+
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
-export function saveQuotationLocally(data: QuotationData): void {
-  const quotation = { ...data, status: data.status ?? "PENDING_APPROVAL" } satisfies QuotationData;
-  const quotations = loadAllQuotations();
-  const next = [quotation, ...quotations.filter((item) => item.quotationNo !== quotation.quotationNo)];
-  localStorage.setItem(quotationListKey, JSON.stringify(next));
-  localStorage.setItem(latestKey, JSON.stringify(quotation));
-  localStorage.setItem(`hour-coffee-quotation-${quotation.quotationNo}`, JSON.stringify(quotation));
+export function loadAllQuotations(): Promise<QuotationData[]> {
+  return request<QuotationData[]>("/api/quotations");
 }
 
-export function loadLatestQuotation(): QuotationData | null {
-  const raw = localStorage.getItem(latestKey);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as QuotationData;
-  } catch {
-    return null;
-  }
+export function saveQuotationLocally(data: QuotationData): Promise<QuotationData> {
+  return request<QuotationData>("/api/quotations", {
+    method: "POST",
+    body: JSON.stringify({ ...data, status: data.status ?? "PENDING_APPROVAL" })
+  });
 }
 
-export function loadQuotationByNo(quotationNo: string): QuotationData | null {
-  const fromList = loadAllQuotations().find((quotation) => quotation.quotationNo === quotationNo);
-  if (fromList) return fromList;
-  const raw = localStorage.getItem(`hour-coffee-quotation-${quotationNo}`);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as QuotationData;
-  } catch {
-    return null;
-  }
+export function loadQuotationByNo(quotationNo: string): Promise<QuotationData | null> {
+  return request<QuotationData>(`/api/quotations/${encodeURIComponent(quotationNo)}`).catch(() => null);
 }
 
-export function approveQuotation(quotationNo: string): void {
-  const quotation = loadQuotationByNo(quotationNo);
-  if (!quotation) return;
-  saveQuotationLocally({ ...quotation, status: "APPROVED" });
+export function findQuotation(input: FindQuotationInput): Promise<QuotationData | null> {
+  return request<QuotationData>("/api/quotations/find", {
+    method: "POST",
+    body: JSON.stringify(input)
+  }).catch(() => null);
 }
 
-export function deleteQuotation(quotationNo: string): void {
-  const quotations = loadAllQuotations().filter((quotation) => quotation.quotationNo !== quotationNo);
-  localStorage.setItem(quotationListKey, JSON.stringify(quotations));
-  localStorage.removeItem(`hour-coffee-quotation-${quotationNo}`);
+export function approveQuotation(quotationNo: string): Promise<QuotationData> {
+  return request<QuotationData>(`/api/quotations/${encodeURIComponent(quotationNo)}/approve`, {
+    method: "PATCH"
+  });
 }
 
-export function getNextQuotationNo(): string {
-  const current = Number(localStorage.getItem("hour-coffee-quotation-sequence") ?? "0") + 1;
-  localStorage.setItem("hour-coffee-quotation-sequence", String(current));
-  return `Q${String(current).padStart(5, "0")}`;
+export function deleteQuotation(quotationNo: string): Promise<void> {
+  return request<void>(`/api/quotations/${encodeURIComponent(quotationNo)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function getNextQuotationNo(): Promise<string> {
+  const payload = await request<{ quotationNo: string }>("/api/quotations/next-number");
+  return payload.quotationNo;
 }

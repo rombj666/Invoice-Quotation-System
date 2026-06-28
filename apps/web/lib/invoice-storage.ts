@@ -1,40 +1,40 @@
 import type { InvoiceDetails } from "../types/invoice";
+import { apiBaseUrl } from "./api-client";
 
-const invoiceListKey = "hourCoffeeInvoices";
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers
+    }
+  });
 
-export function loadAllInvoices(): InvoiceDetails[] {
-  const raw = localStorage.getItem(invoiceListKey);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as InvoiceDetails[];
-  } catch {
-    return [];
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error ?? "Request failed");
   }
+
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
-export function getNextInvoiceNo(): string {
-  const current = Number(localStorage.getItem("hour-coffee-invoice-sequence") ?? "0") + 1;
-  localStorage.setItem("hour-coffee-invoice-sequence", String(current));
-  return `A${String(current).padStart(5, "0")}`;
+export function loadAllInvoices(): Promise<InvoiceDetails[]> {
+  return request<InvoiceDetails[]>("/api/invoices");
 }
 
-export function saveInvoiceLocally(data: InvoiceDetails): void {
-  const invoice = { ...data, invoiceStatus: data.invoiceStatus ?? "SUBMITTED", paymentStatus: data.paymentStatus ?? "RECEIPT_UPLOADED" } satisfies InvoiceDetails;
-  const invoices = loadAllInvoices();
-  const next = [invoice, ...invoices.filter((item) => item.invoiceNo !== invoice.invoiceNo)];
-  localStorage.setItem(invoiceListKey, JSON.stringify(next));
-  localStorage.setItem(`hour-coffee-invoice-${invoice.invoiceNo}`, JSON.stringify(invoice));
-  localStorage.setItem("hour-coffee-latest-invoice", JSON.stringify(invoice));
+export async function getNextInvoiceNo(): Promise<string> {
+  const payload = await request<{ invoiceNo: string }>("/api/invoices/next-number");
+  return payload.invoiceNo;
 }
 
-export function loadInvoiceByNo(invoiceNo: string): InvoiceDetails | null {
-  const fromList = loadAllInvoices().find((invoice) => invoice.invoiceNo === invoiceNo);
-  if (fromList) return fromList;
-  const raw = localStorage.getItem(`hour-coffee-invoice-${invoiceNo}`);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as InvoiceDetails;
-  } catch {
-    return null;
-  }
+export function saveInvoiceLocally(data: InvoiceDetails): Promise<InvoiceDetails> {
+  return request<InvoiceDetails>("/api/invoices", {
+    method: "POST",
+    body: JSON.stringify({ ...data, invoiceStatus: data.invoiceStatus ?? "SUBMITTED", paymentStatus: data.paymentStatus ?? "RECEIPT_UPLOADED" })
+  });
+}
+
+export function loadInvoiceByNo(invoiceNo: string): Promise<InvoiceDetails | null> {
+  return request<InvoiceDetails>(`/api/invoices/${encodeURIComponent(invoiceNo)}`).catch(() => null);
 }
