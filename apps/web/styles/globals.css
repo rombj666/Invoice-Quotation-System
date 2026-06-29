@@ -494,6 +494,7 @@ p {
 .drink-card-button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+  background: #f4f4f2;
 }
 
 .drink-icon {
@@ -786,13 +787,11 @@ p {
   border-bottom: 0;
 }
 
-.drink-summary-table {
-  min-width: 720px;
-}
-
 .drink-summary-table th,
 .drink-summary-table td {
   white-space: nowrap;
+  padding: 9px 8px;
+  font-size: 12px;
 }
 
 .drink-summary-table th small {
@@ -839,17 +838,13 @@ p {
 }
 
 .invoice-page .wide-card {
-  width: min(100%, 1120px);
+  width: min(100%, 1180px);
 }
 
 .invoice-preview-wrap,
 .invoice-card {
   max-width: 100%;
   overflow: hidden;
-}
-
-.invoice-table.compact {
-  min-width: 720px;
 }
 
 .ack-summary {
@@ -867,10 +862,10 @@ p {
 
 .invoice-card {
   border: 1px solid #e5e0d8;
-  border-radius: 12px;
-  width: min(100%, 920px);
+  border-radius: 8px;
+  width: min(100%, 1040px);
   margin: 0 auto;
-  padding: 36px;
+  padding: 28px;
   background: #fff;
 }
 
@@ -921,7 +916,9 @@ p {
 }
 
 .invoice-section {
-  margin-top: 22px;
+  margin-top: 16px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .invoice-table {
@@ -931,14 +928,15 @@ p {
   border: 1px solid #e7e2da;
   border-radius: 10px;
   overflow: hidden;
-  margin-top: 22px;
-  font-size: 13px;
+  margin-top: 16px;
+  font-size: 12px;
+  table-layout: fixed;
 }
 
 .invoice-table th,
 .invoice-table td {
   border-bottom: 1px solid #eee;
-  padding: 12px;
+  padding: 10px;
   text-align: left;
   vertical-align: middle;
 }
@@ -958,13 +956,18 @@ p {
 
 .invoice-item-table th:nth-child(1),
 .invoice-item-table td:nth-child(1) {
-  width: 22%;
+  width: 20%;
   font-weight: 700;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
 .invoice-item-table th:nth-child(2),
 .invoice-item-table td:nth-child(2) {
-  width: 40%;
+  width: 38%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .invoice-item-table th:nth-child(3),
@@ -976,7 +979,9 @@ p {
 .invoice-item-table td:nth-child(4),
 .invoice-item-table th:nth-child(5),
 .invoice-item-table td:nth-child(5) {
-  width: 15%;
+  width: 17%;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .invoice-summary-grid {
@@ -1002,26 +1007,33 @@ p {
 
 .invoice-date-list {
   display: grid;
-  gap: 8px;
-  list-style: none;
-  margin: 14px 0 0;
+  gap: 4px;
+  list-style: disc;
+  margin: 10px 0 0 18px;
   padding: 0;
 }
 
 .invoice-date-list li {
-  display: grid;
-  grid-template-columns: 110px 1fr 90px 100px;
-  gap: 10px;
-  align-items: center;
-  border: 1px solid #eee;
-  border-radius: 10px;
-  background: #fff;
-  padding: 10px 12px;
+  padding: 1px 0;
+  font-size: 12px;
+}
+
+.invoice-subhead {
+  margin: 12px 0 0;
   font-size: 13px;
 }
 
+.invoice-cup-list {
+  display: grid;
+  gap: 4px;
+  list-style: disc;
+  margin: 8px 0 0 18px;
+  padding: 0;
+  font-size: 12px;
+}
+
 .invoice-totals {
-  margin-top: 20px;
+  margin-top: 16px;
   margin-left: auto;
   max-width: 420px;
   grid-template-columns: 1fr;
@@ -1040,11 +1052,13 @@ p {
 }
 
 .invoice-bank {
-  margin-top: 22px;
+  margin-top: 16px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .invoice-card footer {
-  margin-top: 24px;
+  margin-top: 14px;
   color: #777;
   font-size: 12px;
   text-align: center;
@@ -1122,39 +1136,92 @@ p {
 }
 
 .cart-preview {
+  position: relative;
   max-width: 420px;
   margin: 0 auto 16px;
-  border-radius: 16px;
-  background: #efe8df;
-  padding: 24px 34px;
+  border-radius: 12px;
+  background: #f5f1ea;
+  padding: 0;
   text-align: center;
+  overflow: hidden;
 }
 
-.cart-top {
-  border-radius: 16px 16px 4px 4px;
-  background: #1a1a1a;
-  color: #fff;
-  padding: 12px;
-  font-family: "Playfair Display", Georgia, serif;
+.custom-template-img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
-.cart-panel {
+.cart-template-overlay {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  min-height: 180px;
-  background: #d8cbbd;
-  border: 8px solid #1a1a1a;
+  pointer-events: none;
 }
 
-.cart-panel img {
-  max-height: 90px;
+.cart-template-overlay img {
+  max-height: 34%;
   object-fit: contain;
 }
 
-.cart-base {
-  height: 34px;
-  background: #1a1a1a;
-  border-radius: 0 0 8px 8px;
+.template-missing {
+  border: 1px solid #f0cf8a;
+  border-radius: 10px;
+  background: #fff8e6;
+  color: #7a5c00;
+  font-size: 13px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.cup-template-preview,
+.sleeve-template-preview {
+  position: relative;
+  max-width: 420px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  background: #f5f1ea;
+  overflow: hidden;
+}
+
+.cup-template-grid,
+.custom-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.custom-preview-label {
+  display: block;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.cup-template-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.cup-template-overlay img {
+  object-fit: contain;
+}
+
+.sleeve-template-overlay {
+  position: absolute;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.sleeve-template-preview > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #777;
 }
 
 .cup-preview-row {
@@ -1373,6 +1440,8 @@ p {
   .invoice-two-col,
   .invoice-summary-grid,
   .invoice-date-list li,
+  .cup-template-grid,
+  .custom-upload-grid,
   .cup-preview-row,
   .detail-grid {
     grid-template-columns: 1fr;
@@ -1388,6 +1457,11 @@ p {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
   body {
     background: #fff;
   }
@@ -1410,5 +1484,33 @@ p {
   .invoice-card {
     border: 0;
     border-radius: 0;
+    width: 100%;
+    padding: 0;
+    font-size: 11px;
+    overflow: visible;
+  }
+
+  .invoice-title {
+    font-size: 32px;
+  }
+
+  .invoice-section,
+  .invoice-table,
+  .invoice-totals,
+  .invoice-bank {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .invoice-table th,
+  .invoice-table td {
+    padding: 7px 8px;
+  }
+
+  .invoice-meta div,
+  .invoice-bank,
+  .bank-card,
+  .invoice-summary-grid div {
+    padding: 8px;
   }
 }

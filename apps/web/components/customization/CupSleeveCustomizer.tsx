@@ -2,7 +2,9 @@
 
 import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
 import type { ServiceDate } from "../../types/quotation";
+import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { formatShortDate } from "../../lib/formatters";
+import { useState } from "react";
 
 type Props = {
   serviceDates: ServiceDate[];
@@ -14,11 +16,15 @@ type Props = {
 
 function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
-  reader.onload = () => callback({ fileName: file.name, dataUrl: String(reader.result), size: 26, rotation: 0, x: 50, y: 45 });
+  reader.onload = () => {
+    const dataUrl = String(reader.result);
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 26, rotation: 0, x: 50, y: 45 });
+  };
   reader.readAsDataURL(file);
 }
 
 export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
+  const [templateMissing, setTemplateMissing] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
 
@@ -41,10 +47,12 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
         </select>
       ) : null}
       <div className="sleeve-preview">
-        <div className="sleeve-shape">
+        <div className="sleeve-template-preview">
+          <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.sleeveTemplateUrl} alt="Sleeve template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
           {active ? (
             <img
-              src={active.dataUrl}
+              className="sleeve-template-overlay"
+              src={active.originalDataUrl ?? active.dataUrl}
               alt="Cup sleeve design"
               style={{
                 width: `${active.size}%`,
@@ -58,6 +66,7 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
           )}
         </div>
       </div>
+      {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
       <label className="upload-box">
         <strong>Tap to upload sleeve design</strong>
         <span>PNG or JPG only</span>

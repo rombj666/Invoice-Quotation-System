@@ -18,6 +18,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
   const [dragStartIso, setDragStartIso] = useState<string | null>(null);
   const [dragEndIso, setDragEndIso] = useState<string | null>(null);
   const [dragMode, setDragMode] = useState<"select" | "remove">("select");
+  const [hasDragged, setHasDragged] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const date = new Date();
@@ -120,6 +121,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     setDragStartIso(iso);
     setDragEndIso(iso);
     setDragMode(selectedDateValues.includes(iso) ? "remove" : "select");
+    setHasDragged(false);
   }
 
   function endDrag(iso: string) {
@@ -127,9 +129,11 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
       toggleDate(iso);
       return;
     }
-    applyDateRange(dragStartIso, dragEndIso ?? iso, dragMode);
+    if (hasDragged) applyDateRange(dragStartIso, dragEndIso ?? iso, dragMode);
+    else toggleDate(dragStartIso);
     setDragStartIso(null);
     setDragEndIso(null);
+    setHasDragged(false);
   }
 
   function toggleDate(value: string) {
@@ -182,15 +186,20 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
                 type="button"
                 key={iso}
                 disabled={isPast}
-                onClick={() => toggleDate(iso)}
                 onPointerDown={(event) => {
                   event.preventDefault();
                   startDrag(iso);
                 }}
                 onPointerEnter={() => {
-                  if (dragStartIso) setDragEndIso(iso);
+                  if (dragStartIso) {
+                    setDragEndIso(iso);
+                    if (iso !== dragStartIso) setHasDragged(true);
+                  }
                 }}
-                onPointerUp={() => endDrag(iso)}
+                onPointerUp={(event) => {
+                  event.preventDefault();
+                  endDrag(iso);
+                }}
               >
                 {Number(iso.slice(-2))}
               </button>

@@ -53,6 +53,7 @@ export type QuotationData = {
   customEventType: string;
   drinkOrders: DrinkOrderByDate;
   sameDrinkDistribution: boolean;
+  letHourCoffeeDecideDrinks?: boolean;
   masterDrinkDate?: string;
   selectedAddons: QuotationAddon[];
   hasCupSleeves: boolean;

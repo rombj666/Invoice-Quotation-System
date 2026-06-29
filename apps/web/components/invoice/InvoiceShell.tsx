@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails } from "../../types/invoice";
 import type { DrinkId, QuotationData, ServiceDate } from "../../types/quotation";
+import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
 import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
@@ -24,6 +25,7 @@ type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
+type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
 
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
@@ -42,6 +44,78 @@ function drinkTotalForDate(data: QuotationData, dateId: string): number {
     const quantity = order[drinkId] ?? { ice: 0, hot: 0 };
     return sum + quantity.ice + quantity.hot;
   }, 0);
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Template image not found. Please add the image file in public/assets/customization."));
+    image.src = src;
+  });
+}
+
+async function mergeCustomizationPreview(type: CustomizationType, design: NonNullable<CustomizationByDate[string]>): Promise<NonNullable<CustomizationByDate[string]>> {
+  const templateUrl =
+    type === "cart"
+      ? CUSTOMIZATION_ASSETS.cartTemplateUrl
+      : type === "hot-cup"
+        ? CUSTOMIZATION_ASSETS.hotCupTemplateUrl
+        : type === "cold-cup"
+          ? CUSTOMIZATION_ASSETS.coldCupTemplateUrl
+        : CUSTOMIZATION_ASSETS.sleeveTemplateUrl;
+  const [templateImage, designImage] = await Promise.all([loadImage(templateUrl), loadImage(design.originalDataUrl ?? design.dataUrl)]);
+  const canvas = document.createElement("canvas");
+  const width = templateImage.naturalWidth || 1000;
+  const height = templateImage.naturalHeight || 700;
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create final customization preview.");
+
+  context.drawImage(templateImage, 0, 0, width, height);
+  const placement = {
+    cart: { x: 50, y: 62, sizeScale: 0.01 },
+    "hot-cup": { x: 50, y: 50, sizeScale: 0.01 },
+    "cold-cup": { x: 50, y: 50, sizeScale: 0.01 },
+    sleeve: { x: design.x, y: design.y, sizeScale: 0.01 }
+  }[type];
+  const targetWidth = width * design.size * placement.sizeScale;
+  const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
+  const targetHeight = targetWidth * ratio;
+  context.save();
+  context.translate((placement.x / 100) * width, (placement.y / 100) * height);
+  context.rotate((design.rotation * Math.PI) / 180);
+  context.drawImage(designImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+  context.restore();
+
+  return {
+    ...design,
+    originalDataUrl: design.originalDataUrl ?? design.dataUrl,
+    dataUrl: canvas.toDataURL("image/png"),
+    fileName: `final-${type}-${design.fileName.replace(/\.[^.]+$/, "")}.png`
+  };
+}
+
+async function mergeCustomizationGroup(type: CustomizationType, designs: CustomizationByDate): Promise<CustomizationByDate> {
+  const entries = await Promise.all(
+    Object.entries(designs).map(async ([dateId, design]) => [dateId, design ? await mergeCustomizationPreview(type, design) : design] as const)
+  );
+  return Object.fromEntries(entries);
+}
+
+async function mergeCupStickerDesigns(designs: CustomizationByDate): Promise<CustomizationByDate> {
+  const pendingEntries = Object.entries(designs).flatMap(([designKey, design]) => {
+    if (!design) return [];
+    if (designKey.endsWith(":hot")) return [{ designKey, cupType: "hot-cup" as const, design }];
+    if (designKey.endsWith(":cold")) return [{ designKey, cupType: "cold-cup" as const, design }];
+    return [
+      { designKey: `${designKey}:hot`, cupType: "hot-cup" as const, design },
+      { designKey: `${designKey}:cold`, cupType: "cold-cup" as const, design }
+    ];
+  });
+  const entries = await Promise.all(pendingEntries.map(async ({ designKey, cupType, design }) => [designKey, await mergeCustomizationPreview(cupType, design)] as const));
+  return Object.fromEntries(entries);
 }
 
 export function InvoiceShell() {
@@ -132,7 +206,7 @@ export function InvoiceShell() {
 
   function validateEditedDrinks(): boolean {
     if (!quotation) return false;
-    if (quotation.sameDrinkDistribution) {
+    if (quotation.sameDrinkDistribution || quotation.letHourCoffeeDecideDrinks) {
       setReviewError("");
       return true;
     }
@@ -174,22 +248,27 @@ export function InvoiceShell() {
     if (!quotation) return;
     setError("");
     setIsSubmittingInvoice(true);
-    const invoice: InvoiceDetails = {
-      invoiceNo,
-      quotation,
-      eventAddress,
-      dressCode,
-      customDressCode,
-      environment,
-      environmentNotes,
-      receiptName,
-      receiptDataUrl,
-      cartDesigns,
-      stickerDesigns,
-      sleeveDesigns,
-      submittedAt: new Date().toISOString()
-    };
     try {
+      const [finalCartDesigns, finalStickerDesigns, finalSleeveDesigns] = await Promise.all([
+        mergeCustomizationGroup("cart", cartDesigns),
+        mergeCupStickerDesigns(stickerDesigns),
+        mergeCustomizationGroup("sleeve", sleeveDesigns)
+      ]);
+      const invoice: InvoiceDetails = {
+        invoiceNo,
+        quotation,
+        eventAddress,
+        dressCode,
+        customDressCode,
+        environment,
+        environmentNotes,
+        receiptName,
+        receiptDataUrl,
+        cartDesigns: finalCartDesigns,
+        stickerDesigns: finalStickerDesigns,
+        sleeveDesigns: finalSleeveDesigns,
+        submittedAt: new Date().toISOString()
+      };
       await saveInvoiceLocally(invoice);
       setStepIndex(steps.length - 1);
     } catch (error) {
@@ -259,7 +338,11 @@ export function InvoiceShell() {
             {reviewEditStep === "dates" ? (
               <PlanEventStep
                 serviceDates={quotation.serviceDates}
-                setServiceDates={(serviceDates) => setQuotation({ ...quotation, serviceDates })}
+                setServiceDates={(serviceDates) => {
+                  const selectedIds = new Set(serviceDates.map((date) => date.id));
+                  const drinkOrders = Object.fromEntries(Object.entries(quotation.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as typeof quotation.drinkOrders;
+                  setQuotation({ ...quotation, serviceDates, drinkOrders });
+                }}
                 onNext={() => {
                   if (validateEditedDates()) setReviewEditStep("drinks");
                 }}

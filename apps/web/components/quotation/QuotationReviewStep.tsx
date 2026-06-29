@@ -3,12 +3,11 @@
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
+import { openPartnerWhatsApp } from "../../lib/contact";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { useState } from "react";
 import { Button } from "../common/Button";
-
-const PARTNER_WHATSAPP_NUMBER = "601XXXXXXXX";
 
 type Props = {
   data: QuotationData;
@@ -39,7 +38,7 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
 
   function drinkLabel(dateId: string, drinkId: (typeof drinkNames)[number][0]) {
     const qty = data.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return drinkId === "lemonade" ? `${qty.ice} ice` : `${qty.ice} / ${qty.hot}`;
+    return drinkId === "lemonade" ? `${qty.ice}` : `${qty.ice} / ${qty.hot}`;
   }
 
   async function submitQuotation() {
@@ -56,56 +55,13 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
   }
 
   async function contactPartner() {
-    const dateLines = data.serviceDates.map((date) => `${formatCompactDate(date.serviceDate)}: ${formatTime(date.startTime)} to ${formatTime(date.endTime)}, ${date.cups} cups`).join("\n");
-    const drinkLines = data.serviceDates
-      .map((date) => {
-        if (data.sameDrinkDistribution) return `${formatCompactDate(date.serviceDate)}: Hour Coffee to decide`;
-        const drinks = Object.entries(data.drinkOrders[date.id] ?? {})
-          .map(([name, qty]) => `${name} ice ${qty.ice}, hot ${qty.hot}`)
-          .join("; ");
-        return `${formatCompactDate(date.serviceDate)}: ${drinks}`;
-      })
-      .join("\n");
-    const addonLines = [...data.selectedAddons.map((addon) => `${addon.name} ${formatMoney(addon.price)}`), data.hasCupStickers ? "Custom Cup Stickers" : "", data.hasCupSleeves ? "Custom Cup Sleeves" : ""]
-      .filter(Boolean)
-      .join(", ");
-    const message = `Hour Coffee Quotation Review
-Quotation No.: ${data.quotationNo}
-Status: PENDING_APPROVAL
-Customer: ${data.customer.name}
-Phone: ${data.customer.phone}
-Email: ${data.customer.email}
-Company: ${data.customer.companyName || "-"}
-Billing address: ${data.customer.billingAddress}
-Location: ${data.location}
-Event type: ${data.eventType === "Others" ? data.customEventType : data.eventType}
-Service dates:
-${dateLines}
-Drink distribution:
-${drinkLines}
-Drink distribution: ${data.sameDrinkDistribution ? "Hour Coffee to decide" : "Customer selected"}
-Add-ons: ${addonLines || "None"}
-Customization options:
-Cart ${data.customizationOptions.cart.mode}, ${data.customizationOptions.cart.designCount} design(s)
-Sticker ${data.customizationOptions.sticker.mode}, ${data.customizationOptions.sticker.designCount} design(s)
-Sleeve ${data.customizationOptions.sleeve.mode}, ${data.customizationOptions.sleeve.designCount} design(s)
-Subtotal: ${formatMoney(pricing.subtotal)}
-Voucher/Discount: ${data.discountCode || "None"} / ${formatMoney(pricing.discountAmount)}
-Total: ${formatMoney(pricing.total)}`;
     setSubmitError("");
     setIsSubmitting(true);
-    const whatsAppWindow = window.open("", "_blank", "noopener,noreferrer");
     try {
       const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
-      const whatsAppUrl = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-      if (whatsAppWindow) {
-        whatsAppWindow.location.href = whatsAppUrl;
-      } else {
-        window.location.href = whatsAppUrl;
-      }
+      openPartnerWhatsApp(saved);
       router.push(`/quotation/contacted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
     } catch (error) {
-      whatsAppWindow?.close();
       setSubmitError(error instanceof Error ? error.message : "Unable to save quotation before opening WhatsApp. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -143,12 +99,12 @@ Total: ${formatMoney(pricing.total)}`;
         </div>
         <div className="review-section">
           <span>Drink distribution</span>
-          {data.sameDrinkDistribution ? (
+          {data.sameDrinkDistribution || data.letHourCoffeeDecideDrinks ? (
             <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
           ) : (
             <div className="table-scroll">
               <table className="summary-table drink-summary-table">
-                <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Ice only" : "Ice / Hot"}</small></th>)}</tr></thead>
+                <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Qty" : "Ice / Hot"}</small></th>)}</tr></thead>
                 <tbody>
                   {data.serviceDates.map((date) => (
                     <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkNames.map(([id]) => <td className="number-cell" key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
@@ -162,12 +118,12 @@ Total: ${formatMoney(pricing.total)}`;
           <span>Add-ons</span>
           <div className="table-scroll">
             <table className="summary-table">
-              <thead><tr><th>Add-on</th><th>Details</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Add-on</th><th>Amount</th></tr></thead>
               <tbody>
-                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td>{addon.isIncluded ? "Included" : "Selected"}</td><td className="amount-cell">{formatMoney(addon.price)}</td></tr>)}
-                {data.hasCupStickers ? <tr><td>Custom Cup Stickers</td><td>{data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s)</td><td className="amount-cell">{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
-                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves</td><td>{data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s)</td><td className="amount-cell">{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
-                {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td>-</td><td className="amount-cell">{formatMoney(0)}</td></tr> : null}
+                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{formatMoney(addon.price)}</td></tr>)}
+                {data.hasCupStickers ? <tr><td>Custom Cup Stickers ({data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
+                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves ({data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
+                {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td className="amount-cell">{formatMoney(0)}</td></tr> : null}
               </tbody>
             </table>
           </div>

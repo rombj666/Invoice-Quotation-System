@@ -16,7 +16,7 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
 
   function drinkLabel(dateId: string, drinkId: (typeof drinkNames)[number][0]) {
     const qty = quotation.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return drinkId === "lemonade" ? `${qty.ice} ice` : `${qty.ice} / ${qty.hot}`;
+    return drinkId === "lemonade" ? `${qty.ice}` : `${qty.ice} / ${qty.hot}`;
   }
 
   return (
@@ -79,10 +79,15 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
         <ul className="invoice-date-list">
           {quotation.serviceDates.map((date) => (
             <li key={date.id}>
-              <strong>{formatCompactDate(date.serviceDate)}</strong>
-              <span>{formatTime(date.startTime)} to {formatTime(date.endTime)}</span>
-              <span>{date.cups} cups</span>
-              <span>{getBaristasNeeded(date)} barista(s)</span>
+              {formatCompactDate(date.serviceDate)} - {formatTime(date.startTime)} to {formatTime(date.endTime)} - {date.cups} cups - {getBaristasNeeded(date)} barista{getBaristasNeeded(date) === 1 ? "" : "s"}
+            </li>
+          ))}
+        </ul>
+        <h3 className="invoice-subhead">Cups Per Date</h3>
+        <ul className="invoice-cup-list">
+          {quotation.serviceDates.map((date) => (
+            <li key={date.id}>
+              {formatCompactDate(date.serviceDate)}: {date.cups} cups
             </li>
           ))}
         </ul>
@@ -151,12 +156,12 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
 
       <div className="invoice-section">
         <h3>Drink Breakdown</h3>
-        {quotation.sameDrinkDistribution ? (
+        {quotation.sameDrinkDistribution || quotation.letHourCoffeeDecideDrinks ? (
           <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
         ) : (
           <div className="table-scroll">
             <table className="invoice-table compact drink-summary-table">
-              <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Ice only" : "Ice / Hot"}</small></th>)}</tr></thead>
+              <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Qty" : "Ice / Hot"}</small></th>)}</tr></thead>
               <tbody>
                 {quotation.serviceDates.map((date) => (
                   <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkNames.map(([id]) => <td className="number-cell" key={id}>{drinkLabel(date.id, id)}</td>)}</tr>

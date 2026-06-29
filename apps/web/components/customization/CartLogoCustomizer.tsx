@@ -2,7 +2,9 @@
 
 import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
 import type { ServiceDate } from "../../types/quotation";
+import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { formatShortDate } from "../../lib/formatters";
+import { useState } from "react";
 
 type Props = {
   serviceDates: ServiceDate[];
@@ -14,11 +16,15 @@ type Props = {
 
 function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
-  reader.onload = () => callback({ fileName: file.name, dataUrl: String(reader.result), size: 30, rotation: 0, x: 50, y: 62 });
+  reader.onload = () => {
+    const dataUrl = String(reader.result);
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 30, rotation: 0, x: 50, y: 62 });
+  };
   reader.readAsDataURL(file);
 }
 
 export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
+  const [templateMissing, setTemplateMissing] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
 
@@ -41,12 +47,12 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
         </select>
       ) : null}
       <div className="cart-preview">
-        <div className="cart-top">Hour Coffee</div>
-        <div className="cart-panel">
-          {active ? <img src={active.dataUrl} alt="Cart logo preview" style={{ width: `${active.size}%` }} /> : <span>Cart logo preview</span>}
+        <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.cartTemplateUrl} alt="Cart template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
+        <div className="cart-template-overlay">
+          {active ? <img src={active.originalDataUrl ?? active.dataUrl} alt="Cart logo preview" style={{ width: `${active.size}%` }} /> : <span>Cart logo preview</span>}
         </div>
-        <div className="cart-base" />
       </div>
+      {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
       <label className="upload-box">
         <strong>Tap to upload logo</strong>
         <span>PNG or JPG only</span>

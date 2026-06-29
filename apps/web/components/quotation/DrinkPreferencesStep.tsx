@@ -42,9 +42,10 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   const [modalValues, setModalValues] = useState({ ice: 0, hot: 0 });
   const [copyMessage, setCopyMessage] = useState("");
   const activeDate = useMemo(() => data.serviceDates.find((date) => date.id === activeDateId) ?? data.serviceDates[0], [activeDateId, data.serviceDates]);
+  const letsHourCoffeeDecide = Boolean(data.letHourCoffeeDecideDrinks || data.sameDrinkDistribution);
 
   function updateDrink(drinkId: DrinkId, type: "ice" | "hot", value: number) {
-    if (data.sameDrinkDistribution) return;
+    if (letsHourCoffeeDecide) return;
     if (!activeDate) return;
     const dateOrder = data.drinkOrders[activeDate.id] ?? {};
     const current = dateOrder[drinkId] ?? { ice: 0, hot: 0 };
@@ -62,8 +63,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
 
   function openModal(drinkId: DrinkId) {
     if (!activeDate) return;
-    if (data.sameDrinkDistribution) {
-      setCopyMessage("Drink distribution is locked because Hour Coffee will decide it for this event.");
+    if (letsHourCoffeeDecide) {
       return;
     }
     const quantity = data.drinkOrders[activeDate.id]?.[drinkId] ?? { ice: 0, hot: 0 };
@@ -131,10 +131,10 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   function toggleSameDistribution(checked: boolean) {
     if (checked) {
       closeModal();
-      setData({ ...data, sameDrinkDistribution: true, masterDrinkDate: undefined });
+      setData({ ...data, sameDrinkDistribution: true, letHourCoffeeDecideDrinks: true, masterDrinkDate: undefined });
       setCopyMessage("Hour Coffee will decide the drink distribution for this event.");
     } else {
-      setData({ ...data, sameDrinkDistribution: false });
+      setData({ ...data, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: false });
       setCopyMessage("");
     }
   }
@@ -161,7 +161,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
         {drinks.map((drink) => {
           const quantity = data.drinkOrders[activeDate.id]?.[drink.id] ?? { ice: 0, hot: 0 };
           return (
-            <button className="drink-row drink-card-button" type="button" key={drink.id} disabled={data.sameDrinkDistribution} onClick={() => openModal(drink.id)}>
+            <button className="drink-row drink-card-button" type="button" key={drink.id} disabled={letsHourCoffeeDecide} onClick={() => openModal(drink.id)}>
               <strong>
                 <span className="drink-icon">{drinkIcons[drink.id]}</span>
                 {drink.name}
@@ -174,27 +174,24 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
       </div>
 
       <label className="same-distribution-option decision-option">
-        <input type="checkbox" checked={data.sameDrinkDistribution} onChange={(event) => toggleSameDistribution(event.target.checked)} />
+        <input type="checkbox" checked={letsHourCoffeeDecide} onChange={(event) => toggleSameDistribution(event.target.checked)} />
         <span>Let Hour Coffee decide the drink distribution for this event.</span>
       </label>
-      {data.sameDrinkDistribution ? <div className="ok-summary">Drink editing is disabled. Hour Coffee will handle the final drink ratio and distribution.</div> : null}
 
-      {data.sameDrinkDistribution ? (
-        <div className="ok-summary">Distribution for {formatShortDate(activeDate.serviceDate)} will be handled by Hour Coffee.</div>
-      ) : (
+      {!letsHourCoffeeDecide ? (
         <div className={assigned === activeDate.cups ? "ok-summary" : "warn-summary"}>
           Assigned {assigned} of {activeDate.cups} cups for {formatShortDate(activeDate.serviceDate)}
         </div>
-      )}
+      ) : null}
 
       {data.serviceDates.length > 1 ? (
         <>
-          <Button type="button" variant="secondary" onClick={copyToAll} disabled={data.sameDrinkDistribution}>
+          <Button type="button" variant="secondary" onClick={copyToAll} disabled={letsHourCoffeeDecide}>
             Copy same drinks to all dates
           </Button>
         </>
       ) : null}
-      {copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
+      {letsHourCoffeeDecide ? <div className="ok-summary">Hour Coffee will decide the drink distribution for this event.</div> : copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
       {error ? <p className="error">{error}</p> : null}
       <StepNavigation onBack={onBack} onNext={onNext} />
 

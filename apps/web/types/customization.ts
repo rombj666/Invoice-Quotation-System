@@ -1,6 +1,7 @@
 export type CustomizationDesign = {
   fileName: string;
   dataUrl: string;
+  originalDataUrl?: string;
   size: number;
   rotation: number;
   x: number;

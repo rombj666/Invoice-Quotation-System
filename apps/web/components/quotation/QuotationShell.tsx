@@ -26,6 +26,7 @@ const emptyQuotation: QuotationData = {
   customEventType: "",
   drinkOrders: {},
   sameDrinkDistribution: false,
+  letHourCoffeeDecideDrinks: false,
   masterDrinkDate: undefined,
   selectedAddons: [],
   hasCupSleeves: false,
@@ -119,7 +120,7 @@ export function QuotationShell() {
   }
 
   function validateDrinks() {
-    if (data.sameDrinkDistribution) {
+    if (data.sameDrinkDistribution || data.letHourCoffeeDecideDrinks) {
       next();
       return;
     }
