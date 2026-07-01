@@ -42,7 +42,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   const [modalValues, setModalValues] = useState({ ice: 0, hot: 0 });
   const [copyMessage, setCopyMessage] = useState("");
   const activeDate = useMemo(() => data.serviceDates.find((date) => date.id === activeDateId) ?? data.serviceDates[0], [activeDateId, data.serviceDates]);
-  const letsHourCoffeeDecide = Boolean(data.letHourCoffeeDecideDrinks || data.sameDrinkDistribution);
+  const letsHourCoffeeDecide = Boolean(data.letHourCoffeeDecideDrinks);
 
   function updateDrink(drinkId: DrinkId, type: "ice" | "hot", value: number) {
     if (letsHourCoffeeDecide) return;
@@ -125,14 +125,14 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
       nextOrders[target.id] = copied;
     });
     setData({ ...data, drinkOrders: nextOrders, masterDrinkDate: activeDate.id });
-    setCopyMessage("Drink distribution copied to all selected dates.");
+    setCopyMessage("Drinks copied to all selected dates.");
   }
 
   function toggleSameDistribution(checked: boolean) {
     if (checked) {
       closeModal();
-      setData({ ...data, sameDrinkDistribution: true, letHourCoffeeDecideDrinks: true, masterDrinkDate: undefined });
-      setCopyMessage("Hour Coffee will decide the drink distribution for this event.");
+      setData({ ...data, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: true, masterDrinkDate: undefined });
+      setCopyMessage("");
     } else {
       setData({ ...data, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: false });
       setCopyMessage("");

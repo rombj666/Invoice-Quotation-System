@@ -81,5 +81,5 @@ export function openPartnerWhatsApp(quotationOrInvoiceData: PartnerContactData) 
   const message = buildPartnerWhatsAppMessage(quotationOrInvoiceData);
   const encodedMessage = encodeURIComponent(message);
   const url = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodedMessage}`;
-  window.open(url, "_blank");
+  window.open(url, "_blank", "noopener,noreferrer");
 }

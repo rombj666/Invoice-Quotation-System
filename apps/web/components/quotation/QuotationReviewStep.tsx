@@ -29,16 +29,19 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
       total: pricing.total
     }
   };
-  const drinkNames = [
-    ["americano", "Americano"],
-    ["latte", "Cafe Latte"],
-    ["chocolate", "Dark Chocolate"],
-    ["lemonade", "Lemonade"]
+  const drinkColumns = [
+    ["americano", "ice", "Americano Ice"],
+    ["americano", "hot", "Americano Hot"],
+    ["latte", "ice", "Cafe Latte Ice"],
+    ["latte", "hot", "Cafe Latte Hot"],
+    ["chocolate", "ice", "Dark Chocolate Ice"],
+    ["chocolate", "hot", "Dark Chocolate Hot"],
+    ["lemonade", "ice", "Lemonade"]
   ] as const;
 
-  function drinkLabel(dateId: string, drinkId: (typeof drinkNames)[number][0]) {
+  function drinkQuantity(dateId: string, drinkId: (typeof drinkColumns)[number][0], type: (typeof drinkColumns)[number][1]) {
     const qty = data.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return drinkId === "lemonade" ? `${qty.ice}` : `${qty.ice} / ${qty.hot}`;
+    return qty[type];
   }
 
   async function submitQuotation() {
@@ -99,15 +102,15 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
         </div>
         <div className="review-section">
           <span>Drink distribution</span>
-          {data.sameDrinkDistribution || data.letHourCoffeeDecideDrinks ? (
+          {data.letHourCoffeeDecideDrinks ? (
             <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
           ) : (
             <div className="table-scroll">
               <table className="summary-table drink-summary-table">
-                <thead><tr><th>Date</th>{drinkNames.map(([id, name]) => <th key={id}>{name}<small>{id === "lemonade" ? "Qty" : "Ice / Hot"}</small></th>)}</tr></thead>
+                <thead><tr><th>Date</th>{drinkColumns.map(([id, type, label]) => <th key={`${id}-${type}`}>{label}</th>)}</tr></thead>
                 <tbody>
                   {data.serviceDates.map((date) => (
-                    <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkNames.map(([id]) => <td className="number-cell" key={id}>{drinkLabel(date.id, id)}</td>)}</tr>
+                    <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkColumns.map(([id, type]) => <td className="number-cell" key={`${id}-${type}`}>{drinkQuantity(date.id, id, type)}</td>)}</tr>
                   ))}
                 </tbody>
               </table>

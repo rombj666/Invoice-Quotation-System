@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import type { PointerEvent } from "react";
+import { useRef, useState } from "react";
 import type { ServiceDate } from "../../types/quotation";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
 import { getBaristasNeeded, getExtraBaristaFee, getSetupFee } from "../../lib/pricing";
@@ -19,6 +20,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
   const [dragEndIso, setDragEndIso] = useState<string | null>(null);
   const [dragMode, setDragMode] = useState<"select" | "remove">("select");
   const [hasDragged, setHasDragged] = useState(false);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const date = new Date();
@@ -117,10 +119,24 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     setServiceDates(next.sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)));
   }
 
-  function startDrag(iso: string) {
+  function startDrag(iso: string, event: PointerEvent<HTMLButtonElement>) {
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
     setDragStartIso(iso);
     setDragEndIso(iso);
     setDragMode(selectedDateValues.includes(iso) ? "remove" : "select");
+    setHasDragged(false);
+  }
+
+  function trackPointerMove(event: PointerEvent<HTMLButtonElement>) {
+    if (!pointerStartRef.current || hasDragged) return;
+    const distance = Math.hypot(event.clientX - pointerStartRef.current.x, event.clientY - pointerStartRef.current.y);
+    if (distance > 6) setHasDragged(true);
+  }
+
+  function clearDrag() {
+    pointerStartRef.current = null;
+    setDragStartIso(null);
+    setDragEndIso(null);
     setHasDragged(false);
   }
 
@@ -131,9 +147,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     }
     if (hasDragged) applyDateRange(dragStartIso, dragEndIso ?? iso, dragMode);
     else toggleDate(dragStartIso);
-    setDragStartIso(null);
-    setDragEndIso(null);
-    setHasDragged(false);
+    clearDrag();
   }
 
   function toggleDate(value: string) {
@@ -187,19 +201,17 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
                 key={iso}
                 disabled={isPast}
                 onPointerDown={(event) => {
-                  event.preventDefault();
-                  startDrag(iso);
+                  startDrag(iso, event);
                 }}
+                onPointerMove={trackPointerMove}
                 onPointerEnter={() => {
                   if (dragStartIso) {
                     setDragEndIso(iso);
                     if (iso !== dragStartIso) setHasDragged(true);
                   }
                 }}
-                onPointerUp={(event) => {
-                  event.preventDefault();
-                  endDrag(iso);
-                }}
+                onPointerUp={() => endDrag(iso)}
+                onPointerCancel={clearDrag}
               >
                 {Number(iso.slice(-2))}
               </button>

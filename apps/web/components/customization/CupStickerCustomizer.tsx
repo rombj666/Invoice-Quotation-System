@@ -14,11 +14,11 @@ type Props = {
   onDesigns: (designs: CustomizationByDate) => void;
 };
 
-function readFile(file: File, callback: (design: CustomizationDesign) => void) {
+function readFile(file: File, callback: (design: CustomizationDesign) => void, y = 50) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y: 50 });
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y });
   };
   reader.readAsDataURL(file);
 }
@@ -40,7 +40,11 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
   }
 
   function setBoth(design: CustomizationDesign) {
-    onDesigns({ ...designs, [hotKey]: design, [coldKey]: design });
+    onDesigns({
+      ...designs,
+      [hotKey]: { ...design, y: 56 },
+      [coldKey]: { ...design, y: 50 }
+    });
   }
 
   function setOne(target: "hot" | "cold", design: CustomizationDesign) {
@@ -48,7 +52,18 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
   }
 
   function logo(design: CustomizationDesign | undefined, label: string) {
-    return design ? <img src={design.originalDataUrl ?? design.dataUrl} alt={label} style={{ width: `${design.size}%`, transform: `rotate(${design.rotation}deg)` }} /> : <span>Logo</span>;
+    return design ? (
+      <img
+        src={design.originalDataUrl ?? design.dataUrl}
+        alt={label}
+        style={{
+          width: `${design.size}%`,
+          left: `${design.x}%`,
+          top: `${design.y}%`,
+          transform: `translate(-50%, -50%) rotate(${design.rotation}deg)`
+        }}
+      />
+    ) : <span>Logo</span>;
   }
 
   return (
@@ -102,7 +117,7 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
             accept="image/png,image/jpeg"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readFile(file, (design) => setOne("hot", design));
+              if (file) readFile(file, (design) => setOne("hot", design), 56);
             }}
           />
         </label>
@@ -114,7 +129,7 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
             accept="image/png,image/jpeg"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readFile(file, (design) => setOne("cold", design));
+              if (file) readFile(file, (design) => setOne("cold", design), 50);
             }}
           />
         </label>

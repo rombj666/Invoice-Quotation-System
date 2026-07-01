@@ -4,7 +4,8 @@ import type { CustomizationByDate, CustomizationDesign } from "../../types/custo
 import type { ServiceDate } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { formatShortDate } from "../../lib/formatters";
-import { useState } from "react";
+import type { PointerEvent } from "react";
+import { useRef, useState } from "react";
 
 type Props = {
   serviceDates: ServiceDate[];
@@ -18,19 +19,29 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 26, rotation: 0, x: 50, y: 45 });
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 36, rotation: 0, x: 50, y: 50 });
   };
   reader.readAsDataURL(file);
 }
 
 export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
   const [templateMissing, setTemplateMissing] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
 
   function update(patch: Partial<CustomizationDesign>) {
     if (!active) return;
     onDesigns({ ...designs, [activeKey]: { ...active, ...patch } });
+  }
+
+  function moveDesign(event: PointerEvent<HTMLElement>) {
+    if (!active || !previewRef.current) return;
+    const rect = previewRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    update({ x: Math.min(90, Math.max(10, x)), y: Math.min(85, Math.max(15, y)) });
   }
 
   return (
@@ -47,13 +58,26 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
         </select>
       ) : null}
       <div className="sleeve-preview">
-        <div className="sleeve-template-preview">
+        <div className="sleeve-template-preview" ref={previewRef}>
           <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.sleeveTemplateUrl} alt="Sleeve template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
           {active ? (
             <img
-              className="sleeve-template-overlay"
+              className={`sleeve-template-overlay ${isDragging ? "dragging" : ""}`}
               src={active.originalDataUrl ?? active.dataUrl}
               alt="Cup sleeve design"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setIsDragging(true);
+                moveDesign(event);
+              }}
+              onPointerMove={(event) => {
+                if (isDragging) moveDesign(event);
+              }}
+              onPointerUp={(event) => {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+                setIsDragging(false);
+              }}
+              onPointerCancel={() => setIsDragging(false)}
               style={{
                 width: `${active.size}%`,
                 left: `${active.x}%`,
@@ -84,19 +108,11 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
           <p className="upload-ok">Uploaded: {active.fileName}</p>
           <label className="range-field">
             Size
-            <input type="range" min={10} max={80} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
-          </label>
-          <label className="range-field">
-            Horizontal placement
-            <input type="range" min={10} max={90} value={active.x} onChange={(event) => update({ x: Number(event.target.value) })} />
-          </label>
-          <label className="range-field">
-            Vertical placement
-            <input type="range" min={20} max={80} value={active.y} onChange={(event) => update({ y: Number(event.target.value) })} />
+            <input type="range" min={16} max={90} step={0.5} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
           <label className="range-field">
             Rotation
-            <input type="range" min={-30} max={30} value={active.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
+            <input type="range" min={-30} max={30} step={0.5} value={active.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
           </label>
         </>
       ) : null}

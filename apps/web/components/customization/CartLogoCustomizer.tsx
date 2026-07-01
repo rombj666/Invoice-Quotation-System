@@ -18,7 +18,7 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 30, rotation: 0, x: 50, y: 62 });
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 28, rotation: 0, x: 50, y: 60 });
   };
   reader.readAsDataURL(file);
 }
@@ -49,7 +49,18 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
       <div className="cart-preview">
         <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.cartTemplateUrl} alt="Cart template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
         <div className="cart-template-overlay">
-          {active ? <img src={active.originalDataUrl ?? active.dataUrl} alt="Cart logo preview" style={{ width: `${active.size}%` }} /> : <span>Cart logo preview</span>}
+          {active ? (
+            <img
+              src={active.originalDataUrl ?? active.dataUrl}
+              alt="Cart logo preview"
+              style={{
+                width: `${active.size}%`,
+                left: `${active.x}%`,
+                top: `${active.y}%`,
+                transform: `translate(-50%, -50%) rotate(${active.rotation}deg)`
+              }}
+            />
+          ) : <span>Cart logo preview</span>}
         </div>
       </div>
       {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
@@ -70,7 +81,7 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
           <p className="upload-ok">Uploaded: {active.fileName}</p>
           <label className="range-field">
             Logo size
-            <input type="range" min={5} max={60} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
+            <input type="range" min={12} max={48} step={0.5} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
         </>
       ) : null}

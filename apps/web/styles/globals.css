@@ -229,6 +229,9 @@ p {
   border-radius: 12px;
   background: #fffdf9;
   padding: 12px;
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .hc-calendar-head {
@@ -791,7 +794,7 @@ p {
 .drink-summary-table td {
   white-space: nowrap;
   padding: 9px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .drink-summary-table th small {
@@ -838,13 +841,13 @@ p {
 }
 
 .invoice-page .wide-card {
-  width: min(100%, 1180px);
+  width: min(100%, 980px);
 }
 
-.invoice-preview-wrap,
-.invoice-card {
+.invoice-preview-wrap {
   max-width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  padding-bottom: 8px;
 }
 
 .ack-summary {
@@ -863,10 +866,11 @@ p {
 .invoice-card {
   border: 1px solid #e5e0d8;
   border-radius: 8px;
-  width: min(100%, 1040px);
+  width: min(100%, 794px);
   margin: 0 auto;
-  padding: 28px;
+  padding: 24px;
   background: #fff;
+  overflow: hidden;
 }
 
 .invoice-header,
@@ -1155,14 +1159,20 @@ p {
 .cart-template-overlay {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
   pointer-events: none;
 }
 
 .cart-template-overlay img {
+  position: absolute;
   max-height: 34%;
   object-fit: contain;
+}
+
+.cart-template-overlay span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }
 
 .template-missing {
@@ -1201,19 +1211,25 @@ p {
 .cup-template-overlay {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
   pointer-events: none;
 }
 
 .cup-template-overlay img {
+  position: absolute;
   object-fit: contain;
 }
 
 .sleeve-template-overlay {
   position: absolute;
   object-fit: contain;
-  pointer-events: none;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.sleeve-template-overlay.dragging {
+  cursor: grabbing;
 }
 
 .sleeve-template-preview > span {
@@ -1254,6 +1270,10 @@ p {
 
 .sleeve-preview {
   margin-bottom: 16px;
+}
+
+.sleeve-template-preview {
+  max-width: 520px;
 }
 
 .sleeve-shape {

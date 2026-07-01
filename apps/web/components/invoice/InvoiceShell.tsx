@@ -55,6 +55,15 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function canvasToBlob(canvas: HTMLCanvasElement, type = "image/webp", quality = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Unable to compress final customization preview."));
+    }, type, quality);
+  });
+}
+
 async function mergeCustomizationPreview(type: CustomizationType, design: NonNullable<CustomizationByDate[string]>): Promise<NonNullable<CustomizationByDate[string]>> {
   const templateUrl =
     type === "cart"
@@ -66,34 +75,37 @@ async function mergeCustomizationPreview(type: CustomizationType, design: NonNul
         : CUSTOMIZATION_ASSETS.sleeveTemplateUrl;
   const [templateImage, designImage] = await Promise.all([loadImage(templateUrl), loadImage(design.originalDataUrl ?? design.dataUrl)]);
   const canvas = document.createElement("canvas");
-  const width = templateImage.naturalWidth || 1000;
-  const height = templateImage.naturalHeight || 700;
+  const sourceWidth = templateImage.naturalWidth || 1000;
+  const sourceHeight = templateImage.naturalHeight || 700;
+  const scale = Math.min(1, 1600 / Math.max(sourceWidth, sourceHeight));
+  const width = Math.round(sourceWidth * scale);
+  const height = Math.round(sourceHeight * scale);
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Unable to create final customization preview.");
 
   context.drawImage(templateImage, 0, 0, width, height);
-  const placement = {
-    cart: { x: 50, y: 62, sizeScale: 0.01 },
-    "hot-cup": { x: 50, y: 50, sizeScale: 0.01 },
-    "cold-cup": { x: 50, y: 50, sizeScale: 0.01 },
-    sleeve: { x: design.x, y: design.y, sizeScale: 0.01 }
-  }[type];
-  const targetWidth = width * design.size * placement.sizeScale;
+  const targetWidth = width * design.size * 0.01;
   const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
   const targetHeight = targetWidth * ratio;
   context.save();
-  context.translate((placement.x / 100) * width, (placement.y / 100) * height);
+  context.translate((design.x / 100) * width, (design.y / 100) * height);
   context.rotate((design.rotation * Math.PI) / 180);
   context.drawImage(designImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
   context.restore();
+  const blob = await canvasToBlob(canvas);
+  const dataUrl = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(blob);
+  });
 
   return {
     ...design,
     originalDataUrl: design.originalDataUrl ?? design.dataUrl,
-    dataUrl: canvas.toDataURL("image/png"),
-    fileName: `final-${type}-${design.fileName.replace(/\.[^.]+$/, "")}.png`
+    dataUrl,
+    fileName: `final-${type}-${design.fileName.replace(/\.[^.]+$/, "")}.webp`
   };
 }
 
@@ -206,7 +218,7 @@ export function InvoiceShell() {
 
   function validateEditedDrinks(): boolean {
     if (!quotation) return false;
-    if (quotation.sameDrinkDistribution || quotation.letHourCoffeeDecideDrinks) {
+    if (quotation.letHourCoffeeDecideDrinks) {
       setReviewError("");
       return true;
     }

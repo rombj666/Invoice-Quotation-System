@@ -120,7 +120,7 @@ export function QuotationShell() {
   }
 
   function validateDrinks() {
-    if (data.sameDrinkDistribution || data.letHourCoffeeDecideDrinks) {
+    if (data.letHourCoffeeDecideDrinks) {
       next();
       return;
     }
