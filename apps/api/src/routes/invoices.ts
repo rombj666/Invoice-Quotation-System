@@ -8,15 +8,16 @@ export const invoiceRoutes = Router();
 
 async function uploadDataUrl(dataUrl: string | undefined, folder: string, fileName: string) {
   if (!dataUrl) return null;
+  const mimeType = dataUrl.slice(5, dataUrl.indexOf(";")) || "application/octet-stream";
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder,
-    resource_type: "auto",
+    resource_type: mimeType === "application/pdf" ? "raw" : "auto",
     public_id: fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9-_]/g, "-")
   });
   return {
     fileUrl: result.secure_url,
     cloudinaryPublicId: result.public_id,
-    mimeType: dataUrl.slice(5, dataUrl.indexOf(";")) || "application/octet-stream"
+    mimeType
   };
 }
 
@@ -25,12 +26,20 @@ function toInvoicePayload(record: any) {
     ...record.metadata,
     invoiceStatus: record.status,
     paymentStatus: record.paymentStatus,
+    invoicePdfUrl: record.invoicePdfUrl,
     receiptUrl: record.paymentReceipts?.[0]?.fileUrl,
+    receiptMimeType: record.paymentReceipts?.[0]?.mimeType,
+    invoiceFiles: record.invoiceFiles?.map((file: any) => ({
+      fileUrl: file.fileUrl,
+      fileName: file.fileName,
+      mimeType: file.mimeType
+    })) ?? [],
     customizationUrls: record.customizationFiles?.map((file: any) => ({
       type: file.type,
       designKey: file.designKey,
       fileUrl: file.fileUrl,
       fileName: file.fileName,
+      mimeType: file.mimeType,
       metadata: file.metadata
     })) ?? []
   };
@@ -141,7 +150,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
             }
           : undefined
       },
-      include: { paymentReceipts: true, customizationFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
 
     const designGroups: Array<{ type: CustomizationType; folder: string; designs: Record<string, any> | undefined }> = [
@@ -172,7 +181,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
 
     const saved = await prisma.invoice.findUnique({
       where: { invoiceNo },
-      include: { paymentReceipts: true, customizationFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     res.status(201).json(toInvoicePayload(saved));
   } catch (error) {
@@ -184,7 +193,7 @@ invoiceRoutes.get("/", async (_req, res, next) => {
   try {
     const invoices = await prisma.invoice.findMany({
       orderBy: { createdAt: "desc" },
-      include: { paymentReceipts: true, customizationFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     res.json(invoices.map(toInvoicePayload));
   } catch (error) {

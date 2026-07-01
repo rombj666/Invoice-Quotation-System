@@ -1359,14 +1359,82 @@ p {
 }
 
 .admin-actions,
-.admin-bottom-actions {
+.admin-bottom-actions,
+.admin-file-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
+.admin-file-actions {
+  margin-top: 10px;
+}
+
 .admin-bottom-actions {
   margin-top: 22px;
+}
+
+.admin-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  padding: 7px 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-status-badge.large {
+  font-size: 13px;
+  padding: 9px 13px;
+}
+
+.admin-status-badge.pending {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  color: #7a5c00;
+}
+
+.admin-status-badge.approved {
+  background: #f0faf3;
+  border: 1px solid #b8dfc8;
+  color: #1e6b42;
+}
+
+.admin-status-badge.deleted {
+  background: #f8e7e4;
+  border: 1px solid #edb7af;
+  color: #7a1e1e;
+}
+
+.admin-approve-button {
+  background: #2d7a4f !important;
+  border-color: #2d7a4f !important;
+  color: #fff !important;
+  font-weight: 800;
+}
+
+.admin-approve-button.large {
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  padding: 13px 18px;
+}
+
+.admin-file-type {
+  color: #555;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .admin-table-wrap {
@@ -1442,9 +1510,14 @@ p {
   .invoice-date-list li,
   .cup-template-grid,
   .custom-upload-grid,
+  .admin-detail-header,
   .cup-preview-row,
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-detail-header {
+    display: grid;
   }
 
   .invoice-brand {

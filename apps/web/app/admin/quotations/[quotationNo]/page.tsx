@@ -14,6 +14,7 @@ export default function AdminQuotationDetailPage() {
   const router = useRouter();
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
@@ -34,11 +35,16 @@ export default function AdminQuotationDetailPage() {
 
   const pricing = calculatePricing(quotation);
   const currentQuotation = quotation;
+  const status = currentQuotation.status ?? "PENDING_APPROVAL";
+  const isApproved = status === "APPROVED";
 
   async function approve() {
+    if (!window.confirm("Are you sure you want to approve this quotation?")) return;
     setError("");
+    setSuccess("");
     try {
       setQuotation(await approveQuotation(currentQuotation.quotationNo));
+      setSuccess("Quotation approved successfully.");
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
     }
@@ -62,8 +68,20 @@ export default function AdminQuotationDetailPage() {
           <Link href="/admin/quotations">Quotation List</Link>
           <Link href="/admin/invoices">Invoice List</Link>
         </div>
-        <h1>{quotation.quotationNo}</h1>
+        <div className="admin-detail-header">
+          <div>
+            <h1>{quotation.quotationNo}</h1>
+            <span className={`admin-status-badge large ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span>
+          </div>
+          {!isApproved ? (
+            <button className="admin-approve-button large" type="button" onClick={approve}>
+              Approve Quotation
+            </button>
+          ) : null}
+        </div>
         {error ? <p className="error">{error}</p> : null}
+        {success ? <div className="ok-summary">{success}</div> : null}
+        {isApproved ? <div className="ok-summary">This quotation has been approved. Customer can now continue to invoice.</div> : null}
         <div className="detail-grid">
           <section>
             <h3>Customer Info</h3>
@@ -77,7 +95,7 @@ export default function AdminQuotationDetailPage() {
             <h3>Event</h3>
             <p>Location: {quotation.location}</p>
             <p>Event type: {quotation.eventType === "Others" ? quotation.customEventType : quotation.eventType}</p>
-            <p>Status: {quotation.status ?? "PENDING_APPROVAL"}</p>
+            <p>Status: {isApproved ? "APPROVED" : "PENDING APPROVAL"}</p>
           </section>
           <section>
             <h3>Service Dates</h3>
@@ -124,7 +142,7 @@ export default function AdminQuotationDetailPage() {
           </section>
         </div>
         <div className="admin-bottom-actions">
-          <button type="button" onClick={approve}>Approve Quotation</button>
+          {!isApproved ? <button className="admin-approve-button" type="button" onClick={approve}>Approve Quotation</button> : null}
           <button type="button" onClick={remove}>Delete Quotation</button>
           <Link href="/admin/quotations">Back to Quotation List</Link>
         </div>

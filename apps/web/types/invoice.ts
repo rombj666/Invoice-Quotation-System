@@ -13,7 +13,14 @@ export type InvoiceDetails = {
   environmentNotes: string;
   receiptName: string;
   receiptDataUrl?: string;
+  invoicePdfUrl?: string;
   receiptUrl?: string;
+  receiptMimeType?: string;
+  invoiceFiles?: Array<{
+    fileUrl: string;
+    fileName: string;
+    mimeType?: string;
+  }>;
   cartDesigns?: CustomizationByDate;
   stickerDesigns?: CustomizationByDate;
   sleeveDesigns?: CustomizationByDate;
@@ -22,6 +29,7 @@ export type InvoiceDetails = {
     designKey: string;
     fileUrl: string;
     fileName: string;
+    mimeType?: string;
     metadata?: unknown;
   }>;
   submittedAt?: string;

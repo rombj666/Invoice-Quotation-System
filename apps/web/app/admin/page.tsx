@@ -8,13 +8,7 @@ export default function AdminHomePage() {
         <h1>Hour Coffee Admin</h1>
         <p className="step-copy">Local testing dashboard</p>
         <div className="landing-actions">
-          <Link className="hc-button hc-button-primary" href="/quotation">
-            Go to Quotation Page
-          </Link>
-          <Link className="hc-button hc-button-secondary" href="/invoice">
-            Go to Invoice Page
-          </Link>
-          <Link className="hc-button hc-button-secondary" href="/admin/quotations">
+          <Link className="hc-button hc-button-primary" href="/admin/quotations">
             View Quotation List
           </Link>
           <Link className="hc-button hc-button-secondary" href="/admin/invoices">

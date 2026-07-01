@@ -11,9 +11,11 @@ import type { QuotationData } from "../../../types/quotation";
 export default function AdminQuotationListPage() {
   const [quotations, setQuotations] = useState<QuotationData[]>([]);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   async function refresh() {
     setError("");
+    setSuccess("");
     try {
       setQuotations(await loadAllQuotations());
     } catch (loadError) {
@@ -26,8 +28,16 @@ export default function AdminQuotationListPage() {
   }, []);
 
   async function approve(quotationNo: string) {
-    await approveQuotation(quotationNo);
-    await refresh();
+    if (!window.confirm("Are you sure you want to approve this quotation?")) return;
+    setError("");
+    setSuccess("");
+    try {
+      const approved = await approveQuotation(quotationNo);
+      setQuotations((current) => current.map((quotation) => (quotation.quotationNo === quotationNo ? approved : quotation)));
+      setSuccess("Quotation approved successfully.");
+    } catch (approveError) {
+      setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
+    }
   }
 
   async function remove(quotationNo: string) {
@@ -46,6 +56,7 @@ export default function AdminQuotationListPage() {
         </div>
         <h1>Quotation List</h1>
         {error ? <p className="error">{error}</p> : null}
+        {success ? <div className="ok-summary">{success}</div> : null}
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -63,6 +74,8 @@ export default function AdminQuotationListPage() {
             <tbody>
               {quotations.map((quotation) => {
                 const pricing = calculatePricing(quotation);
+                const status = quotation.status ?? "PENDING_APPROVAL";
+                const isApproved = status === "APPROVED";
                 return (
                   <tr key={quotation.quotationNo}>
                     <td>{quotation.quotationNo}</td>
@@ -71,13 +84,15 @@ export default function AdminQuotationListPage() {
                     <td>{quotation.serviceDates[0] ? formatDateLabel(quotation.serviceDates[0].serviceDate) : "-"}</td>
                     <td>{pricing.totalCups}</td>
                     <td>{formatMoney(pricing.total)}</td>
-                    <td>{quotation.status ?? "PENDING_APPROVAL"}</td>
+                    <td><span className={`admin-status-badge ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span></td>
                     <td>
                       <div className="admin-actions">
                         <Link href={`/admin/quotations/${quotation.quotationNo}`}>View Details</Link>
-                        <button type="button" onClick={() => approve(quotation.quotationNo)}>
-                          Approve
-                        </button>
+                        {!isApproved ? (
+                          <button className="admin-approve-button" type="button" onClick={() => approve(quotation.quotationNo)}>
+                            Approve Quotation
+                          </button>
+                        ) : null}
                         <button type="button" onClick={() => remove(quotation.quotationNo)}>
                           Delete
                         </button>
