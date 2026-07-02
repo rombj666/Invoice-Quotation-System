@@ -294,6 +294,8 @@ p {
   color: #bbb;
   cursor: not-allowed;
   background: #f5f5f3;
+  border-color: #e3e3df;
+  opacity: 0.7;
 }
 
 .hc-cal-selected {
@@ -844,7 +846,17 @@ p {
   width: min(100%, 980px);
 }
 
+.invoice-page .invoice-flow-card {
+  width: min(100%, 560px);
+}
+
+.invoice-page .invoice-preview-card {
+  width: min(100%, 900px);
+}
+
 .invoice-preview-wrap {
+  display: grid;
+  justify-items: center;
   max-width: 100%;
   overflow-x: auto;
   padding-bottom: 8px;
@@ -866,7 +878,8 @@ p {
 .invoice-card {
   border: 1px solid #e5e0d8;
   border-radius: 8px;
-  width: min(100%, 794px);
+  width: 794px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 24px;
   background: #fff;
@@ -1022,18 +1035,9 @@ p {
   font-size: 12px;
 }
 
-.invoice-subhead {
-  margin: 12px 0 0;
-  font-size: 13px;
-}
-
-.invoice-cup-list {
-  display: grid;
-  gap: 4px;
-  list-style: disc;
-  margin: 8px 0 0 18px;
-  padding: 0;
-  font-size: 12px;
+.invoice-service-table {
+  margin-top: 10px;
+  table-layout: auto;
 }
 
 .invoice-totals {
@@ -1223,12 +1227,18 @@ p {
   position: absolute;
   object-fit: contain;
   cursor: grab;
-  pointer-events: auto;
+  pointer-events: none;
   touch-action: none;
   user-select: none;
 }
 
-.sleeve-template-overlay.dragging {
+.sleeve-draggable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.sleeve-draggable.dragging {
   cursor: grabbing;
 }
 
@@ -1388,6 +1398,12 @@ p {
 
 .admin-file-actions {
   margin-top: 10px;
+}
+
+.admin-actions button:disabled,
+.admin-bottom-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .admin-bottom-actions {

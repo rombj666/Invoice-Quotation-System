@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
+import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculatePricing } from "../../../../lib/pricing";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
@@ -73,11 +74,16 @@ export default function AdminQuotationDetailPage() {
             <h1>{quotation.quotationNo}</h1>
             <span className={`admin-status-badge large ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span>
           </div>
-          {!isApproved ? (
-            <button className="admin-approve-button large" type="button" onClick={approve}>
-              Approve Quotation
+          <div className="admin-actions">
+            {!isApproved ? (
+              <button className="admin-approve-button large" type="button" onClick={approve}>
+                Approve Quotation
+              </button>
+            ) : null}
+            <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
+              {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
             </button>
-          ) : null}
+          </div>
         </div>
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
@@ -144,6 +150,9 @@ export default function AdminQuotationDetailPage() {
         <div className="admin-bottom-actions">
           {!isApproved ? <button className="admin-approve-button" type="button" onClick={approve}>Approve Quotation</button> : null}
           <button type="button" onClick={remove}>Delete Quotation</button>
+          <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
+            {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
+          </button>
           <Link href="/admin/quotations">Back to Quotation List</Link>
         </div>
       </Card>

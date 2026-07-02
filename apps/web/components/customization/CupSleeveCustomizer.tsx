@@ -38,10 +38,25 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
 
   function moveDesign(event: PointerEvent<HTMLElement>) {
     if (!active || !previewRef.current) return;
+    event.preventDefault();
     const rect = previewRef.current.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
     update({ x: Math.min(90, Math.max(10, x)), y: Math.min(85, Math.max(15, y)) });
+  }
+
+  function startDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!active) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDragging(true);
+    moveDesign(event);
+  }
+
+  function endDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsDragging(false);
   }
 
   return (
@@ -58,26 +73,22 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
         </select>
       ) : null}
       <div className="sleeve-preview">
-        <div className="sleeve-template-preview" ref={previewRef}>
+        <div
+          className={`sleeve-template-preview ${active ? "sleeve-draggable" : ""} ${isDragging ? "dragging" : ""}`}
+          ref={previewRef}
+          onPointerDown={startDrag}
+          onPointerMove={(event) => {
+            if (isDragging) moveDesign(event);
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
           <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.sleeveTemplateUrl} alt="Sleeve template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
           {active ? (
             <img
-              className={`sleeve-template-overlay ${isDragging ? "dragging" : ""}`}
+              className="sleeve-template-overlay"
               src={active.originalDataUrl ?? active.dataUrl}
               alt="Cup sleeve design"
-              onPointerDown={(event) => {
-                event.currentTarget.setPointerCapture(event.pointerId);
-                setIsDragging(true);
-                moveDesign(event);
-              }}
-              onPointerMove={(event) => {
-                if (isDragging) moveDesign(event);
-              }}
-              onPointerUp={(event) => {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-                setIsDragging(false);
-              }}
-              onPointerCancel={() => setIsDragging(false)}
               style={{
                 width: `${active.size}%`,
                 left: `${active.x}%`,

@@ -1,6 +1,7 @@
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
+import { fileRoutes } from "./routes/files";
 import { invoiceRoutes } from "./routes/invoices";
 import { quotationRoutes } from "./routes/quotations";
 
@@ -17,6 +18,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/quotations", quotationRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/files", fileRoutes);
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);

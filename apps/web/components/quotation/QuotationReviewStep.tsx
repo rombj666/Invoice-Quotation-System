@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
-import { openPartnerWhatsApp } from "../../lib/contact";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { useState } from "react";
@@ -15,7 +14,7 @@ type Props = {
   onReset: () => void;
 };
 
-export function QuotationReviewStep({ data, onBack, onReset }: Props) {
+export function QuotationReviewStep({ data, onBack }: Props) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,20 +51,6 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
       router.push(`/quotation/submitted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Unable to submit quotation. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function contactPartner() {
-    setSubmitError("");
-    setIsSubmitting(true);
-    try {
-      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
-      openPartnerWhatsApp(saved);
-      router.push(`/quotation/contacted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to save quotation before opening WhatsApp. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -160,19 +145,9 @@ export function QuotationReviewStep({ data, onBack, onReset }: Props) {
         </Button>
         {submitError ? <p className="error">{submitError}</p> : null}
       </div>
-      <div className="final-action-section">
-        <h3>Need to discuss first?</h3>
-        <p>Contact our partner/PIC on WhatsApp with your quotation details. The message will be prepared automatically so they can review your event requirements.</p>
-        <Button type="button" variant="secondary" onClick={contactPartner} disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : "Contact Partner on WhatsApp"}
-        </Button>
-      </div>
       <div className="hc-nav-row">
         <Button type="button" variant="secondary" onClick={onBack}>
           BACK
-        </Button>
-        <Button type="button" variant="success" onClick={onReset}>
-          New Quotation
         </Button>
       </div>
     </div>

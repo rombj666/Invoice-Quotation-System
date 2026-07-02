@@ -77,7 +77,9 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     setCalendarMonth(next);
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayIso = dateToIso(todayStart);
   const selectedDateValues = serviceDates.map((date) => date.serviceDate);
   const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
   const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
@@ -123,7 +125,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     pointerStartRef.current = { x: event.clientX, y: event.clientY };
     setDragStartIso(iso);
     setDragEndIso(iso);
-    setDragMode(selectedDateValues.includes(iso) ? "remove" : "select");
+    setDragMode(iso >= todayIso && selectedDateValues.includes(iso) ? "remove" : "select");
     setHasDragged(false);
   }
 
@@ -151,6 +153,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
   }
 
   function toggleDate(value: string) {
+    if (value < todayIso) return;
     const existing = serviceDates.find((date) => date.serviceDate === value);
     if (existing) removeDate(existing.id);
     else addDate(value);
@@ -193,13 +196,14 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
             if (!iso) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
             const isPast = iso < todayIso;
             const isSelected = selectedDateValues.includes(iso);
-            const isPreview = previewDates.has(iso);
+            const isPreview = !isPast && previewDates.has(iso);
             return (
               <button
                 className={`hc-cal-cell ${isPast ? "hc-cal-past" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragMode}` : ""}`}
                 type="button"
                 key={iso}
-                disabled={isPast}
+                aria-disabled={isPast}
+                tabIndex={isPast ? -1 : 0}
                 onPointerDown={(event) => {
                   startDrag(iso, event);
                 }}

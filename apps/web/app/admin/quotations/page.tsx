@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
+import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../lib/contact";
 import { calculatePricing } from "../../../lib/pricing";
 import { approveQuotation, deleteQuotation, loadAllQuotations } from "../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney } from "../../../lib/formatters";
@@ -95,6 +96,9 @@ export default function AdminQuotationListPage() {
                         ) : null}
                         <button type="button" onClick={() => remove(quotation.quotationNo)}>
                           Delete
+                        </button>
+                        <button type="button" onClick={() => openAdminCustomerWhatsApp(quotation)} disabled={!normalizeMalaysiaWhatsAppNumber(quotation.customer.phone)}>
+                          {normalizeMalaysiaWhatsAppNumber(quotation.customer.phone) ? "Contact Customer" : "No phone number"}
                         </button>
                       </div>
                     </td>

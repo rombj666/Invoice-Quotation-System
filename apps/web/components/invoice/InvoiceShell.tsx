@@ -320,7 +320,7 @@ export function InvoiceShell() {
   return (
     <main className="hc-page invoice-page">
       <div className="team-topbar">Hour Coffee - Invoice</div>
-      <Card className="wide-card">
+      <Card className={`wide-card ${currentStep === "preview" ? "invoice-preview-card" : "invoice-flow-card"}`}>
         <div className="progress-header">
           <div className="progress-text">
             Step {stepIndex + 1} of {steps.length}

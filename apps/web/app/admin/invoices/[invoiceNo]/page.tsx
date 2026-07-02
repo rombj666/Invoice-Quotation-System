@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
+import { apiBaseUrl } from "../../../../lib/api-client";
 import { calculatePricing } from "../../../../lib/pricing";
 import { loadInvoiceByNo } from "../../../../lib/invoice-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
@@ -19,12 +20,16 @@ function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Imag
 }
 
 function FileActions({ fileUrl, openLabel, downloadLabel, fileName }: { fileUrl: string; openLabel: string; downloadLabel: string; fileName?: string }) {
+  const downloadUrl = fileUrl.startsWith("http")
+    ? `${apiBaseUrl}/api/files/download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(fileName || "hour-coffee-file")}`
+    : fileUrl;
+
   return (
     <div className="admin-file-actions">
       <a className="admin-file-link" href={fileUrl} target="_blank" rel="noopener noreferrer">
         {openLabel}
       </a>
-      <a className="admin-file-link" href={fileUrl} download={fileName} target="_blank" rel="noopener noreferrer">
+      <a className="admin-file-link" href={downloadUrl} download={fileName}>
         {downloadLabel}
       </a>
     </div>

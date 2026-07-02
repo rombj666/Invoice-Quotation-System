@@ -83,3 +83,33 @@ export function openPartnerWhatsApp(quotationOrInvoiceData: PartnerContactData) 
   const url = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodedMessage}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
+
+export function normalizeMalaysiaWhatsAppNumber(phone: string | undefined | null): string {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("60")) return digits;
+  if (digits.startsWith("0")) return `6${digits}`;
+  return digits;
+}
+
+export function buildAdminCustomerWhatsAppMessage(quotation: QuotationData): string {
+  const name = quotation.customer.name?.trim() || "there";
+  const quotationNo = quotation.quotationNo?.trim() || "your quotation";
+
+  return `Hi ${name}, this is Hour Coffee.
+
+We are contacting you regarding your quotation:
+${quotationNo}
+
+Your quotation is currently under review. We will confirm the details with you shortly.
+
+Thank you.`;
+}
+
+export function openAdminCustomerWhatsApp(quotation: QuotationData) {
+  const phone = normalizeMalaysiaWhatsAppNumber(quotation.customer.phone);
+  if (!phone) return;
+  const encodedMessage = encodeURIComponent(buildAdminCustomerWhatsAppMessage(quotation));
+  const url = `https://wa.me/${phone}?text=${encodedMessage}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
