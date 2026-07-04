@@ -1,6 +1,13 @@
 import type { QuotationData } from "./quotation";
 import type { CustomizationByDate } from "./customization";
 
+export type InvoiceUploadFile = {
+  fileName: string;
+  dataUrl?: string;
+  fileUrl?: string;
+  mimeType?: string;
+};
+
 export type InvoiceDetails = {
   invoiceNo: string;
   invoiceStatus?: "SUBMITTED";
@@ -13,6 +20,7 @@ export type InvoiceDetails = {
   environmentNotes: string;
   receiptName: string;
   receiptDataUrl?: string;
+  customMenuFile?: InvoiceUploadFile;
   invoicePdfUrl?: string;
   receiptUrl?: string;
   receiptMimeType?: string;

@@ -23,8 +23,6 @@ export default function AdminInvoiceListPage() {
       <Card className="admin-card">
         <div className="admin-nav">
           <Link href="/admin">Admin Home</Link>
-          <Link href="/quotation">Quotation Page</Link>
-          <Link href="/invoice">Invoice Page</Link>
           <Link href="/admin/quotations">Quotation List</Link>
         </div>
         <h1>Invoice List</h1>

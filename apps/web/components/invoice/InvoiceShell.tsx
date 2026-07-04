@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CustomizationByDate } from "../../types/customization";
-import type { InvoiceDetails } from "../../types/invoice";
+import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
 import type { DrinkId, QuotationData, ServiceDate } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
@@ -17,11 +17,12 @@ import { CupSleeveCustomizer } from "../customization/CupSleeveCustomizer";
 import { CupStickerCustomizer } from "../customization/CupStickerCustomizer";
 import { EventDetailsStep } from "./EventDetailsStep";
 import { AcknowledgementsStep } from "./AcknowledgementsStep";
+import { CustomMenuUpload } from "./CustomMenuUpload";
 import { InvoicePreview } from "./InvoicePreview";
 import { InvoiceSuccess } from "./InvoiceSuccess";
 import { ReceiptUpload } from "./ReceiptUpload";
 
-type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "sleeve" | "sticker" | "preview" | "success";
+type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "preview" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
@@ -122,8 +123,8 @@ async function mergeCupStickerDesigns(designs: CustomizationByDate): Promise<Cus
     if (designKey.endsWith(":hot")) return [{ designKey, cupType: "hot-cup" as const, design }];
     if (designKey.endsWith(":cold")) return [{ designKey, cupType: "cold-cup" as const, design }];
     return [
-      { designKey: `${designKey}:hot`, cupType: "hot-cup" as const, design },
-      { designKey: `${designKey}:cold`, cupType: "cold-cup" as const, design }
+      { designKey: `${designKey}:hot`, cupType: "hot-cup" as const, design: { ...design, y: 56 } },
+      { designKey: `${designKey}:cold`, cupType: "cold-cup" as const, design: { ...design, y: 50 } }
     ];
   });
   const entries = await Promise.all(pendingEntries.map(async ({ designKey, cupType, design }) => [designKey, await mergeCustomizationPreview(cupType, design)] as const));
@@ -150,6 +151,7 @@ export function InvoiceShell() {
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false, false]);
   const [activeDesignDateId, setActiveDesignDateId] = useState("");
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
+  const [customMenuFile, setCustomMenuFile] = useState<InvoiceUploadFile | undefined>();
   const [sleeveDesigns, setSleeveDesigns] = useState<CustomizationByDate>({});
   const [stickerDesigns, setStickerDesigns] = useState<CustomizationByDate>({});
   const [isFindingQuotation, setIsFindingQuotation] = useState(false);
@@ -163,8 +165,12 @@ export function InvoiceShell() {
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
-    const list: InvoiceStep[] = ["review", "acknowledgements", "preview", "receipt", "details"];
-    if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart")) list.push("cart");
+    const list: InvoiceStep[] = ["review", "acknowledgements", "preview", "receipt"];
+    const hasCart = quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart");
+    const hasCustomMenu = quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu");
+    if (hasCart) list.push("cart");
+    if (hasCustomMenu) list.push("menu");
+    list.push("details");
     if (quotation.hasCupSleeves) list.push("sleeve");
     if (quotation.hasCupStickers) list.push("sticker");
     list.push("success");
@@ -246,6 +252,7 @@ export function InvoiceShell() {
     if (currentStep === "details" && (!dressCode || !environment)) return setError("Please select dress code and event environment.");
     if (currentStep === "details" && dressCode === "Custom" && !customDressCode.trim()) return setError("Please describe the custom dress code.");
     if (currentStep === "receipt" && !receiptName) return setError("Please upload your payment receipt before continuing.");
+    if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     setStepIndex((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -276,6 +283,7 @@ export function InvoiceShell() {
         environmentNotes,
         receiptName,
         receiptDataUrl,
+        customMenuFile,
         cartDesigns: finalCartDesigns,
         stickerDesigns: finalStickerDesigns,
         sleeveDesigns: finalSleeveDesigns,
@@ -406,6 +414,7 @@ export function InvoiceShell() {
         {currentStep === "cart" ? (
           <CartLogoCustomizer serviceDates={designDates("cart")} designs={cartDesigns} activeDateId={activeDesignDateId || designDates("cart")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setCartDesigns} />
         ) : null}
+        {currentStep === "menu" ? <CustomMenuUpload file={customMenuFile} onFile={setCustomMenuFile} /> : null}
         {currentStep === "sleeve" ? (
           <CupSleeveCustomizer serviceDates={designDates("sleeve")} designs={sleeveDesigns} activeDateId={activeDesignDateId || designDates("sleeve")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setSleeveDesigns} />
         ) : null}

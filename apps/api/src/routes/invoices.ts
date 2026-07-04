@@ -149,6 +149,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
     const receiptUpload = filesByField.has("receipt")
       ? await uploadBuffer(filesByField.get("receipt"), cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || filesByField.get("receipt")?.fileName || "receipt"}`)
       : await uploadDataUrl(data.receiptDataUrl, cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || "receipt"}`);
+    const customMenuUpload = await uploadBuffer(filesByField.get("customMenuFile"), cloudinaryFolders.invoices, `${invoiceNo}-custom-menu-${data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu"}`);
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -163,7 +164,18 @@ invoiceRoutes.post("/", async (req, res, next) => {
         finalSubtotalAmount: pricing.subtotal,
         finalDiscountAmount: pricing.discountAmount,
         finalTotalAmount: pricing.total,
-        metadata: toJsonValue({ ...data, invoiceNo, receiptDataUrl: undefined }),
+        metadata: toJsonValue({
+          ...data,
+          invoiceNo,
+          receiptDataUrl: undefined,
+          customMenuFile: customMenuUpload
+            ? {
+                fileName: data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu",
+                fileUrl: customMenuUpload.fileUrl,
+                mimeType: customMenuUpload.mimeType
+              }
+            : data.customMenuFile
+        }),
         items: {
           create: [
             {
@@ -231,6 +243,18 @@ invoiceRoutes.post("/", async (req, res, next) => {
       include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
 
+    if (customMenuUpload) {
+      await prisma.invoiceFile.create({
+        data: {
+          invoiceId: invoice.id,
+          fileUrl: customMenuUpload.fileUrl,
+          cloudinaryPublicId: customMenuUpload.cloudinaryPublicId,
+          fileName: data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu",
+          mimeType: customMenuUpload.mimeType
+        }
+      });
+    }
+
     const designGroups: Array<{ type: CustomizationType; folder: string; designs: Record<string, any> | undefined }> = [
       { type: "CART_DESIGN", folder: cloudinaryFolders.cartDesigns, designs: data.cartDesigns },
       { type: "CUP_STICKER", folder: cloudinaryFolders.cupStickers, designs: data.stickerDesigns },
@@ -290,7 +314,7 @@ invoiceRoutes.get("/:invoiceNo", async (req, res, next) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { invoiceNo: req.params.invoiceNo },
-      include: { paymentReceipts: true, customizationFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
     res.json(toInvoicePayload(invoice));

@@ -26,29 +26,15 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void, y
 export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
   const [missingTemplates, setMissingTemplates] = useState({ hot: false, cold: false });
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
-  const hotKey = `${activeKey}:hot`;
-  const coldKey = `${activeKey}:cold`;
-  const hotDesign = designs[hotKey] ?? designs[activeKey];
-  const coldDesign = designs[coldKey] ?? designs[activeKey];
-  const hasSameDesign = Boolean(hotDesign && coldDesign && hotDesign.originalDataUrl === coldDesign.originalDataUrl);
+  const activeDesign = designs[activeKey];
 
-  function update(target: "hot" | "cold", patch: Partial<CustomizationDesign>) {
-    const key = target === "hot" ? hotKey : coldKey;
-    const active = target === "hot" ? hotDesign : coldDesign;
-    if (!active) return;
-    onDesigns({ ...designs, [key]: { ...active, ...patch } });
+  function update(patch: Partial<CustomizationDesign>) {
+    if (!activeDesign) return;
+    onDesigns({ ...designs, [activeKey]: { ...activeDesign, ...patch, size: Math.min(patch.size ?? activeDesign.size, 58) } });
   }
 
   function setBoth(design: CustomizationDesign) {
-    onDesigns({
-      ...designs,
-      [hotKey]: { ...design, y: 56 },
-      [coldKey]: { ...design, y: 50 }
-    });
-  }
-
-  function setOne(target: "hot" | "cold", design: CustomizationDesign) {
-    onDesigns({ ...designs, [target === "hot" ? hotKey : coldKey]: design });
+    onDesigns({ ...designs, [activeKey]: { ...design, size: Math.min(design.size, 58), y: 50 } });
   }
 
   function logo(design: CustomizationDesign | undefined, label: string) {
@@ -63,13 +49,13 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
           transform: `translate(-50%, -50%) rotate(${design.rotation}deg)`
         }}
       />
-    ) : <span>Logo</span>;
+    ) : null;
   }
 
   return (
     <div>
       <h2>Cup Sticker Logo</h2>
-      <p className="step-copy">Upload one logo for both cups, or upload separate designs for hot and cold cups.</p>
+      <p className="step-copy">Upload one logo for both cup sticker previews.</p>
       {serviceDates.length > 1 ? (
         <select className="design-select" value={activeKey} onChange={(event) => onActiveDate(event.target.value)}>
           {serviceDates.map((date, index) => (
@@ -84,14 +70,14 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
           <strong className="custom-preview-label">Hot cup</strong>
           <div className="cup-template-preview">
             <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.hotCupTemplateUrl} alt="Hot cup template" onLoad={() => setMissingTemplates((current) => ({ ...current, hot: false }))} onError={() => setMissingTemplates((current) => ({ ...current, hot: true }))} />
-            <div className="cup-template-overlay">{logo(hotDesign, "Hot cup sticker logo")}</div>
+            <div className="cup-template-overlay">{logo(activeDesign ? { ...activeDesign, y: 56 } : undefined, "Hot cup sticker logo")}</div>
           </div>
         </div>
         <div>
           <strong className="custom-preview-label">Cold cup</strong>
           <div className="cup-template-preview">
             <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.coldCupTemplateUrl} alt="Cold cup template" onLoad={() => setMissingTemplates((current) => ({ ...current, cold: false }))} onError={() => setMissingTemplates((current) => ({ ...current, cold: true }))} />
-            <div className="cup-template-overlay">{logo(coldDesign, "Cold cup sticker logo")}</div>
+            <div className="cup-template-overlay">{logo(activeDesign ? { ...activeDesign, y: 50 } : undefined, "Cold cup sticker logo")}</div>
           </div>
         </div>
       </div>
@@ -108,52 +94,17 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
           }}
         />
       </label>
-      <div className="custom-upload-grid">
-        <label className="upload-box">
-          <strong>Upload hot cup logo</strong>
-          <span>PNG or JPG only</span>
-          <input
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) readFile(file, (design) => setOne("hot", design), 56);
-            }}
-          />
-        </label>
-        <label className="upload-box">
-          <strong>Upload cold cup logo</strong>
-          <span>PNG or JPG only</span>
-          <input
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) readFile(file, (design) => setOne("cold", design), 50);
-            }}
-          />
-        </label>
-      </div>
-      {hotDesign || coldDesign ? (
+      {activeDesign ? (
         <>
-          {hotDesign ? <p className="upload-ok">Hot cup uploaded: {hotDesign.fileName}</p> : null}
-          {coldDesign ? <p className="upload-ok">Cold cup uploaded: {coldDesign.fileName}</p> : null}
-          {hasSameDesign ? <p className="upload-ok">Same design is applied to both cup templates.</p> : null}
+          <p className="upload-ok">Uploaded: {activeDesign.fileName}</p>
+          <p className="upload-ok">Same logo is applied to both cup templates.</p>
           <label className="range-field">
-            Hot cup logo size
-            <input type="range" min={10} max={70} value={hotDesign?.size ?? 34} disabled={!hotDesign} onChange={(event) => update("hot", { size: Number(event.target.value) })} />
+            Logo size
+            <input type="range" min={10} max={58} value={Math.min(activeDesign.size, 58)} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
           <label className="range-field">
-            Hot cup rotation
-            <input type="range" min={-30} max={30} value={hotDesign?.rotation ?? 0} disabled={!hotDesign} onChange={(event) => update("hot", { rotation: Number(event.target.value) })} />
-          </label>
-          <label className="range-field">
-            Cold cup logo size
-            <input type="range" min={10} max={70} value={coldDesign?.size ?? 34} disabled={!coldDesign} onChange={(event) => update("cold", { size: Number(event.target.value) })} />
-          </label>
-          <label className="range-field">
-            Cold cup rotation
-            <input type="range" min={-30} max={30} value={coldDesign?.rotation ?? 0} disabled={!coldDesign} onChange={(event) => update("cold", { rotation: Number(event.target.value) })} />
+            Rotation: {activeDesign.rotation}°
+            <input type="range" min={-180} max={180} value={activeDesign.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
           </label>
         </>
       ) : null}

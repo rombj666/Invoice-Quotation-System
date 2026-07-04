@@ -18,7 +18,11 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 28, rotation: 0, x: 50, y: 60 });
+    const image = new Image();
+    image.onload = () => {
+      callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 28, rotation: 0, x: 50, y: 60, aspectRatio: image.naturalHeight / Math.max(1, image.naturalWidth) });
+    };
+    image.src = dataUrl;
   };
   reader.readAsDataURL(file);
 }
@@ -27,10 +31,30 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
   const [templateMissing, setTemplateMissing] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
+  const aspectRatio = active?.aspectRatio ?? 1;
+  const maxSize = Math.min(80, 100 / Math.max(1, aspectRatio));
+  const widthCm = active ? (active.size / 100) * 90 : 0;
+  const heightCm = widthCm * aspectRatio;
 
   function update(patch: Partial<CustomizationDesign>) {
     if (!active) return;
-    onDesigns({ ...designs, [activeKey]: { ...active, ...patch } });
+    const nextSize = Math.min(maxSize, patch.size ?? active.size);
+    const nextWidthCm = (nextSize / 100) * 90;
+    const nextHeightCm = nextWidthCm * aspectRatio;
+    onDesigns({
+      ...designs,
+      [activeKey]: {
+        ...active,
+        ...patch,
+        size: nextSize,
+        xPercent: patch.x ?? active.x,
+        yPercent: patch.y ?? active.y,
+        widthPercent: nextSize,
+        heightPercent: nextSize * aspectRatio,
+        widthCm: nextWidthCm,
+        heightCm: nextHeightCm
+      }
+    });
   }
 
   return (
@@ -81,8 +105,9 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
           <p className="upload-ok">Uploaded: {active.fileName}</p>
           <label className="range-field">
             Logo size
-            <input type="range" min={12} max={48} step={0.5} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
+            <input type="range" min={12} max={maxSize} step={0.5} value={Math.min(active.size, maxSize)} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
+          <div className="mini-summary">Logo size: {widthCm.toFixed(1)}cm x {heightCm.toFixed(1)}cm</div>
         </>
       ) : null}
     </div>

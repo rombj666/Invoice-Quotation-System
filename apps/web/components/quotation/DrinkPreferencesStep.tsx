@@ -40,6 +40,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   const [activeDateId, setActiveDateId] = useState(data.serviceDates[0]?.id ?? "");
   const [editingDrinkId, setEditingDrinkId] = useState<DrinkId | null>(null);
   const [modalValues, setModalValues] = useState({ ice: 0, hot: 0 });
+  const [modalError, setModalError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const activeDate = useMemo(() => data.serviceDates.find((date) => date.id === activeDateId) ?? data.serviceDates[0], [activeDateId, data.serviceDates]);
   const letsHourCoffeeDecide = Boolean(data.letHourCoffeeDecideDrinks);
@@ -69,27 +70,50 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
     const quantity = data.drinkOrders[activeDate.id]?.[drinkId] ?? { ice: 0, hot: 0 };
     setEditingDrinkId(drinkId);
     setModalValues(quantity);
+    setModalError("");
   }
 
   function closeModal() {
     setEditingDrinkId(null);
     setModalValues({ ice: 0, hot: 0 });
+    setModalError("");
   }
 
-  function adjustModal(type: "ice" | "hot", amount: number) {
-    setModalValues((current) => ({ ...current, [type]: Math.max(0, current[type] + amount) }));
-  }
-
-  function saveModal() {
-    if (!editingDrinkId || !activeDate) return;
+  function modalTotal(values = modalValues) {
+    if (!editingDrinkId || !activeDate) return 0;
     const drink = drinks.find((item) => item.id === editingDrinkId);
     const otherTotal = drinks.reduce((sum, item) => {
       if (item.id === editingDrinkId) return sum;
       const quantity = data.drinkOrders[activeDate.id]?.[item.id] ?? { ice: 0, hot: 0 };
       return sum + quantity.ice + quantity.hot;
     }, 0);
+    return otherTotal + values.ice + (drink?.hasHot ? values.hot : 0);
+  }
+
+  function setModalQuantity(type: "ice" | "hot", value: number) {
+    const nextValues = { ...modalValues, [type]: Math.max(0, Number.isFinite(value) ? value : 0) };
+    setModalValues(nextValues);
+    setModalError(modalTotal(nextValues) > activeDate.cups ? "You have exceeded the total cups for this date. Please re-enter the quantity." : "");
+  }
+
+  function adjustModal(type: "ice" | "hot", amount: number) {
+    const nextValues = { ...modalValues, [type]: Math.max(0, modalValues[type] + amount) };
+    if (modalTotal(nextValues) > activeDate.cups) {
+      setModalError("You have exceeded the total cups for this date. Please re-enter the quantity.");
+      return;
+    }
+    setModalValues(nextValues);
+    setModalError("");
+  }
+
+  function saveModal() {
+    if (!editingDrinkId || !activeDate) return;
+    const drink = drinks.find((item) => item.id === editingDrinkId);
     const hot = drink?.hasHot ? modalValues.hot : 0;
-    if (otherTotal + modalValues.ice + hot > activeDate.cups) return;
+    if (modalTotal({ ice: modalValues.ice, hot }) > activeDate.cups) {
+      setModalError("You have exceeded the total cups for this date. Please re-enter the quantity.");
+      return;
+    }
     const dateOrder = data.drinkOrders[activeDate.id] ?? {};
     setData({
       ...data,
@@ -131,7 +155,18 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   function toggleSameDistribution(checked: boolean) {
     if (checked) {
       closeModal();
-      setData({ ...data, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: true, masterDrinkDate: undefined });
+      const resetOrders = Object.fromEntries(
+        data.serviceDates.map((date) => [
+          date.id,
+          {
+            americano: { ice: 0, hot: 0 },
+            latte: { ice: 0, hot: 0 },
+            chocolate: { ice: 0, hot: 0 },
+            lemonade: { ice: 0, hot: 0 }
+          }
+        ])
+      ) as DrinkOrderByDate;
+      setData({ ...data, drinkOrders: resetOrders, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: true, masterDrinkDate: undefined });
       setCopyMessage("");
     } else {
       setData({ ...data, sameDrinkDistribution: false, letHourCoffeeDecideDrinks: false });
@@ -142,6 +177,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   if (!activeDate) return null;
 
   const assigned = totalForDate(activeDate.id, data.drinkOrders);
+  const isModalOverLimit = modalTotal() > activeDate.cups;
 
   return (
     <div>
@@ -209,7 +245,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
                   <button type="button" onClick={() => adjustModal("ice", -1)}>
                     -
                   </button>
-                  <input type="number" min={0} value={modalValues.ice} onChange={(event) => setModalValues({ ...modalValues, ice: Math.max(0, Number(event.target.value)) })} />
+                  <input type="number" min={0} value={modalValues.ice} onChange={(event) => setModalQuantity("ice", event.target.value === "" ? 0 : Number(event.target.value))} />
                   <button type="button" onClick={() => adjustModal("ice", 1)}>
                     +
                   </button>
@@ -222,7 +258,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
                     <button type="button" onClick={() => adjustModal("hot", -1)}>
                       -
                     </button>
-                    <input type="number" min={0} value={modalValues.hot} onChange={(event) => setModalValues({ ...modalValues, hot: Math.max(0, Number(event.target.value)) })} />
+                    <input type="number" min={0} value={modalValues.hot} onChange={(event) => setModalQuantity("hot", event.target.value === "" ? 0 : Number(event.target.value))} />
                     <button type="button" onClick={() => adjustModal("hot", 1)}>
                       +
                     </button>
@@ -230,14 +266,15 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
                 </div>
               ) : null}
             </div>
-            <p className={totalForDate(activeDate.id, data.drinkOrders) === activeDate.cups ? "ok-text" : "muted-text"}>
-              Current assigned total: {assigned} of {activeDate.cups} cups.
+            <p className={isModalOverLimit ? "error" : modalTotal() === activeDate.cups ? "ok-text" : "muted-text"}>
+              Assigned {modalTotal()} of {activeDate.cups} cups for {formatShortDate(activeDate.serviceDate)}.
             </p>
+            {modalError ? <p className="error">{modalError}</p> : null}
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={closeModal}>
                 Cancel
               </Button>
-              <Button type="button" onClick={saveModal}>
+              <Button type="button" onClick={saveModal} disabled={isModalOverLimit}>
                 Save
               </Button>
             </div>

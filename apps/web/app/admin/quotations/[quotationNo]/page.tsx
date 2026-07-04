@@ -147,14 +147,6 @@ export default function AdminQuotationDetailPage() {
             <p>Total: {formatMoney(pricing.total)}</p>
           </section>
         </div>
-        <div className="admin-bottom-actions">
-          {!isApproved ? <button className="admin-approve-button" type="button" onClick={approve}>Approve Quotation</button> : null}
-          <button type="button" onClick={remove}>Delete Quotation</button>
-          <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
-            {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
-          </button>
-          <Link href="/admin/quotations">Back to Quotation List</Link>
-        </div>
       </Card>
     </main>
   );

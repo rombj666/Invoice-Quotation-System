@@ -7,11 +7,11 @@ export default async function QuotationSubmittedPage({ searchParams }: { searchP
     <main className="hc-page">
       <div className="hc-card result-card">
         <h1>Quotation Submitted</h1>
-        <div className="ok-summary">Your quotation has been submitted successfully.</div>
-        {quotationNo ? <p className="approval-note">Quotation No.: {quotationNo}</p> : null}
-        <p>Thank you for your time and for choosing Hour Coffee.</p>
-        <p>Our PIC or partner will review your quotation and contact you shortly.</p>
-        <p className="approval-note">You can only continue to the invoice page after admin approval.</p>
+        <p>Thank you for choosing Hour Coffee.</p>
+        <p>Your quotation has been submitted successfully.</p>
+        {quotationNo ? <p><strong>Quotation No.:</strong> {quotationNo}</p> : null}
+        <p className="muted-text">Our PIC will review it and contact you shortly.</p>
+        <p className="approval-note">Invoice access is available after admin approval.</p>
         <div className="result-actions">
           <Link className="hc-button hc-button-primary" href="/invoice">
             Continue to Invoice

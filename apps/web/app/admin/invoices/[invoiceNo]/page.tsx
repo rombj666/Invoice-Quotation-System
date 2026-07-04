@@ -29,7 +29,7 @@ function FileActions({ fileUrl, openLabel, downloadLabel, fileName }: { fileUrl:
       <a className="admin-file-link" href={fileUrl} target="_blank" rel="noopener noreferrer">
         {openLabel}
       </a>
-      <a className="admin-file-link" href={downloadUrl} download={fileName}>
+      <a className="admin-file-link" href={downloadUrl} download={fileName} target="_blank" rel="noopener noreferrer">
         {downloadLabel}
       </a>
     </div>
@@ -233,6 +233,9 @@ export default function AdminInvoiceDetailPage() {
           </section>
           {invoice.invoicePdfUrl ? <GenericFilePreview title="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} mimeType="application/pdf" openLabel="Open Invoice PDF" downloadLabel="Download Invoice PDF" /> : null}
           <ReceiptPreview fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} mimeType={invoice.receiptMimeType} />
+          {invoice.customMenuFile?.fileUrl ? (
+            <GenericFilePreview title="Custom Menu File" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />
+          ) : null}
           {(invoice.invoiceFiles ?? []).map((file) => (
             <GenericFilePreview key={file.fileUrl} title="Invoice File" fileUrl={file.fileUrl} fileName={file.fileName} mimeType={file.mimeType} />
           ))}

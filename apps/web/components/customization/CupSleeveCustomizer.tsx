@@ -19,7 +19,7 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 36, rotation: 0, x: 50, y: 50 });
+    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y: 50 });
   };
   reader.readAsDataURL(file);
 }
@@ -119,11 +119,11 @@ export function CupSleeveCustomizer({ serviceDates, designs, activeDateId, onAct
           <p className="upload-ok">Uploaded: {active.fileName}</p>
           <label className="range-field">
             Size
-            <input type="range" min={16} max={90} step={0.5} value={active.size} onChange={(event) => update({ size: Number(event.target.value) })} />
+            <input type="range" min={12} max={68} step={0.5} value={Math.min(active.size, 68)} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
           <label className="range-field">
-            Rotation
-            <input type="range" min={-30} max={30} step={0.5} value={active.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
+            Rotation: {active.rotation}°
+            <input type="range" min={-180} max={180} step={1} value={active.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
           </label>
         </>
       ) : null}

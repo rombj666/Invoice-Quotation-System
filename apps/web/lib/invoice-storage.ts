@@ -54,6 +54,7 @@ export function saveInvoiceLocally(data: InvoiceDetails): Promise<InvoiceDetails
     invoiceStatus: data.invoiceStatus ?? "SUBMITTED",
     paymentStatus: data.paymentStatus ?? "RECEIPT_UPLOADED",
     receiptDataUrl: undefined,
+    customMenuFile: data.customMenuFile ? { ...data.customMenuFile, dataUrl: undefined } : undefined,
     cartDesigns: stripDesignDataUrls(data.cartDesigns),
     stickerDesigns: stripDesignDataUrls(data.stickerDesigns),
     sleeveDesigns: stripDesignDataUrls(data.sleeveDesigns)
@@ -62,6 +63,9 @@ export function saveInvoiceLocally(data: InvoiceDetails): Promise<InvoiceDetails
   formData.append("payload", JSON.stringify(payload));
   if (data.receiptDataUrl) {
     formData.append("receipt", dataUrlToBlob(data.receiptDataUrl), data.receiptName || "receipt");
+  }
+  if (data.customMenuFile?.dataUrl) {
+    formData.append("customMenuFile", dataUrlToBlob(data.customMenuFile.dataUrl), data.customMenuFile.fileName || "custom-menu");
   }
 
   ([

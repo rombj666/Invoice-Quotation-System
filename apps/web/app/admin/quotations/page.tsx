@@ -51,8 +51,6 @@ export default function AdminQuotationListPage() {
       <Card className="admin-card">
         <div className="admin-nav">
           <Link href="/admin">Admin Home</Link>
-          <Link href="/quotation">Quotation Page</Link>
-          <Link href="/invoice">Invoice Page</Link>
           <Link href="/admin/invoices">Invoice List</Link>
         </div>
         <h1>Quotation List</h1>
@@ -94,9 +92,11 @@ export default function AdminQuotationListPage() {
                             Approve Quotation
                           </button>
                         ) : null}
-                        <button type="button" onClick={() => remove(quotation.quotationNo)}>
-                          Delete
-                        </button>
+                        {!isApproved ? (
+                          <button type="button" onClick={() => remove(quotation.quotationNo)}>
+                            Delete
+                          </button>
+                        ) : null}
                         <button type="button" onClick={() => openAdminCustomerWhatsApp(quotation)} disabled={!normalizeMalaysiaWhatsAppNumber(quotation.customer.phone)}>
                           {normalizeMalaysiaWhatsAppNumber(quotation.customer.phone) ? "Contact Customer" : "No phone number"}
                         </button>

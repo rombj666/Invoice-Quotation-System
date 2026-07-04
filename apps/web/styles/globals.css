@@ -1145,7 +1145,7 @@ p {
 
 .cart-preview {
   position: relative;
-  max-width: 420px;
+  max-width: 560px;
   margin: 0 auto 16px;
   border-radius: 12px;
   background: #f5f1ea;
@@ -1192,7 +1192,7 @@ p {
 .cup-template-preview,
 .sleeve-template-preview {
   position: relative;
-  max-width: 420px;
+  max-width: 520px;
   margin: 0 auto 16px;
   border-radius: 12px;
   background: #f5f1ea;
@@ -1230,6 +1230,20 @@ p {
   pointer-events: none;
   touch-action: none;
   user-select: none;
+}
+
+.file-upload-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.file-upload-summary button {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 9px 12px;
 }
 
 .sleeve-draggable {
