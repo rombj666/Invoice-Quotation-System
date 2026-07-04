@@ -68,6 +68,7 @@ export default function AdminQuotationDetailPage() {
           <Link href="/admin">Admin Home</Link>
           <Link href="/admin/quotations">Quotation List</Link>
           <Link href="/admin/invoices">Invoice List</Link>
+          <Link href="/admin/product-availability">Product Availability</Link>
         </div>
         <div className="admin-detail-header">
           <div>

@@ -24,6 +24,7 @@ export default function AdminInvoiceListPage() {
         <div className="admin-nav">
           <Link href="/admin">Admin Home</Link>
           <Link href="/admin/quotations">Quotation List</Link>
+          <Link href="/admin/product-availability">Product Availability</Link>
         </div>
         <h1>Invoice List</h1>
         {error ? <p className="error">{error}</p> : null}

@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { CustomizationOption, QuotationAddon, QuotationData } from "../../types/quotation";
 import { formatMoney } from "../../lib/formatters";
+import { addonAvailabilityKeys, flattenAvailability, loadProductAvailability, type AvailabilityItem } from "../../lib/product-availability";
 import { getCupSleevePrice, getCupStickerPrice, getMachineRentalFee } from "../../lib/pricing";
 import { StepNavigation } from "../common/StepNavigation";
 
@@ -53,6 +55,8 @@ function DesignOptions({
 }
 
 export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
+  const [availability, setAvailability] = useState<Record<string, AvailabilityItem>>({});
+  const [availabilityWarning, setAvailabilityWarning] = useState("");
   const customizationOptions = data.customizationOptions ?? {
     cart: { mode: "same" as const, designCount: 1 },
     sticker: { mode: "same" as const, designCount: 1 },
@@ -63,7 +67,29 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
   const hasLargeDate = data.serviceDates.some((date) => date.cups >= 100);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
 
+  useEffect(() => {
+    loadProductAvailability().then((groups) => setAvailability(flattenAvailability(groups))).catch(() => setAvailability({}));
+  }, []);
+
+  function isAvailable(name: string): boolean {
+    const key = addonAvailabilityKeys[name];
+    return !key || availability[key]?.isAvailable !== false;
+  }
+
+  function unavailableLabel(name: string) {
+    return isAvailable(name) ? null : <span className="unavailable-badge">Unavailable</span>;
+  }
+
+  function hasUnavailableSelected() {
+    return (
+      data.selectedAddons.some((addon) => !isAvailable(addon.name)) ||
+      (data.hasCupStickers && !isAvailable("Custom Cup Stickers")) ||
+      (data.hasCupSleeves && !isAvailable("Custom Cup Sleeves"))
+    );
+  }
+
   function toggleAddon(addon: QuotationAddon) {
+    if (!isAvailable(addon.name)) return;
     const exists = hasAddon(data, addon.name);
     setData({
       ...data,
@@ -72,8 +98,20 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
   }
 
   function setCoffeeCart() {
-    if (hasLargeDate) return;
+    if (hasAddon(data, "Coffee Cart")) {
+      toggleAddon({ name: "Coffee Cart", price: 150 });
+      return;
+    }
+    if (hasLargeDate || !isAvailable("Coffee Cart")) return;
     toggleAddon({ name: "Coffee Cart", price: 150 });
+  }
+
+  function handleNext() {
+    if (hasUnavailableSelected()) {
+      setAvailabilityWarning("This item is currently unavailable. Please contact Hour Coffee.");
+      return;
+    }
+    onNext();
   }
 
   function updateCustomizationOption(type: "cart" | "sticker" | "sleeve", option: CustomizationOption) {
@@ -109,7 +147,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
 
       <div className="addon-card active">
         <div>
-          <strong>Smart QR Ordering System</strong>
+          <strong>Smart QR Ordering System {unavailableLabel("Smart QR Ordering System")}</strong>
           <p>Included with every service.</p>
         </div>
         <span>FREE</span>
@@ -118,7 +156,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       {allSmallDates ? (
         <div className="addon-card active">
           <div>
-            <strong>Premium Table Setup</strong>
+            <strong>Premium Table Setup {unavailableLabel("Premium Table Setup")}</strong>
             <p>Included for 50 to 99 cup orders.</p>
           </div>
           <span>FREE</span>
@@ -126,9 +164,9 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       ) : null}
 
       {allSmallDates || hasLargeDate ? (
-        <button type="button" className={`addon-card ${hasLargeDate || hasAddon(data, "Coffee Cart") ? "active" : ""}`} onClick={setCoffeeCart}>
+        <button type="button" className={`addon-card ${hasLargeDate || hasAddon(data, "Coffee Cart") ? "active" : ""}`} disabled={!isAvailable("Coffee Cart") && !hasAddon(data, "Coffee Cart")} onClick={setCoffeeCart}>
           <div>
-            <strong>Coffee Cart</strong>
+            <strong>Coffee Cart {unavailableLabel("Coffee Cart")}</strong>
             <p>{hasLargeDate ? "Included with your order." : "Upgrade to a mobile coffee cart."}</p>
           </div>
           <span>{hasLargeDate ? "FREE" : "RM 150"}</span>
@@ -139,9 +177,9 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
         const isSelected = hasAddon(data, addon.name);
         return (
           <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
-            <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" onClick={() => toggleAddon(addon)}>
+            <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" disabled={!isAvailable(addon.name) && !isSelected} onClick={() => toggleAddon(addon)}>
               <div>
-                <strong>{addon.name}</strong>
+                <strong>{addon.name} {unavailableLabel(addon.name)}</strong>
                 <p>2-week lead time</p>
               </div>
               <span>{formatMoney(addon.price)}</span>
@@ -154,9 +192,9 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       })}
 
       <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
-        <button type="button" className={`addon-card ${data.hasCupStickers ? "active" : ""}`} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
+        <button type="button" className={`addon-card ${data.hasCupStickers ? "active" : ""}`} disabled={!isAvailable("Custom Cup Stickers") && !data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
           <div>
-            <strong>Custom Cup Stickers</strong>
+            <strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span>{formatMoney(getCupStickerPrice(totalCups))}</span>
@@ -167,9 +205,9 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       </div>
 
       <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
-        <button type="button" className={`addon-card ${data.hasCupSleeves ? "active" : ""}`} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
+        <button type="button" className={`addon-card ${data.hasCupSleeves ? "active" : ""}`} disabled={!isAvailable("Custom Cup Sleeves") && !data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
           <div>
-            <strong>Custom Cup Sleeves</strong>
+            <strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span>{formatMoney(getCupSleevePrice(totalCups))}</span>
@@ -180,7 +218,8 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       </div>
 
       <div className="addon-total">Add-on Total: {formatMoney(selectedTotal)}</div>
-      <StepNavigation onBack={onBack} onNext={onNext} />
+      {availabilityWarning ? <div className="warn-summary">{availabilityWarning}</div> : null}
+      <StepNavigation onBack={onBack} onNext={handleNext} />
     </div>
   );
 }

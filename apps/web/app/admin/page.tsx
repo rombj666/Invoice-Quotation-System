@@ -14,6 +14,9 @@ export default function AdminHomePage() {
           <Link className="hc-button hc-button-secondary" href="/admin/invoices">
             View Invoice List
           </Link>
+          <Link className="hc-button hc-button-secondary" href="/admin/product-availability">
+            Product Availability
+          </Link>
         </div>
       </Card>
     </main>

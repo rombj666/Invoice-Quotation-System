@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DrinkId, DrinkOrderByDate, DrinkOption, QuotationData, ServiceDate } from "../../types/quotation";
 import { formatShortDate } from "../../lib/formatters";
+import { beverageAvailabilityKeys, flattenAvailability, loadProductAvailability, type AvailabilityItem } from "../../lib/product-availability";
 import { Button } from "../common/Button";
 import { StepNavigation } from "../common/StepNavigation";
 
@@ -42,8 +43,34 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
   const [modalValues, setModalValues] = useState({ ice: 0, hot: 0 });
   const [modalError, setModalError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [availability, setAvailability] = useState<Record<string, AvailabilityItem>>({});
+  const [availabilityWarning, setAvailabilityWarning] = useState("");
   const activeDate = useMemo(() => data.serviceDates.find((date) => date.id === activeDateId) ?? data.serviceDates[0], [activeDateId, data.serviceDates]);
   const letsHourCoffeeDecide = Boolean(data.letHourCoffeeDecideDrinks);
+
+  useEffect(() => {
+    loadProductAvailability().then((groups) => setAvailability(flattenAvailability(groups))).catch(() => setAvailability({}));
+  }, []);
+
+  useEffect(() => {
+    const unavailableDrinkIds = drinks.filter((drink) => availability[beverageAvailabilityKeys[drink.id]]?.isAvailable === false).map((drink) => drink.id);
+    if (!unavailableDrinkIds.length) return;
+    let changed = false;
+    const nextOrders = Object.fromEntries(Object.entries(data.drinkOrders).map(([dateId, order]) => {
+      const nextOrder = { ...order };
+      unavailableDrinkIds.forEach((drinkId) => {
+        if ((nextOrder[drinkId]?.ice ?? 0) > 0 || (nextOrder[drinkId]?.hot ?? 0) > 0) {
+          nextOrder[drinkId] = { ice: 0, hot: 0 };
+          changed = true;
+        }
+      });
+      return [dateId, nextOrder];
+    })) as DrinkOrderByDate;
+    if (changed) {
+      setAvailabilityWarning("Unavailable beverage quantities were reset to 0.");
+      setData({ ...data, drinkOrders: nextOrders });
+    }
+  }, [availability, data, setData]);
 
   function updateDrink(drinkId: DrinkId, type: "ice" | "hot", value: number) {
     if (letsHourCoffeeDecide) return;
@@ -64,6 +91,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
 
   function openModal(drinkId: DrinkId) {
     if (!activeDate) return;
+    if (availability[beverageAvailabilityKeys[drinkId]]?.isAvailable === false) return;
     if (letsHourCoffeeDecide) {
       return;
     }
@@ -178,6 +206,24 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
 
   const assigned = totalForDate(activeDate.id, data.drinkOrders);
   const isModalOverLimit = modalTotal() > activeDate.cups;
+  const allBeveragesUnavailable = drinks.every((drink) => availability[beverageAvailabilityKeys[drink.id]]?.isAvailable === false);
+
+  function handleNext() {
+    if (allBeveragesUnavailable) {
+      setAvailabilityWarning("All beverages are currently unavailable. Please contact Hour Coffee.");
+      return;
+    }
+    const hasUnavailableQuantity = data.serviceDates.some((date) => drinks.some((drink) => {
+      if (availability[beverageAvailabilityKeys[drink.id]]?.isAvailable !== false) return false;
+      const quantity = data.drinkOrders[date.id]?.[drink.id] ?? { ice: 0, hot: 0 };
+      return quantity.ice + quantity.hot > 0;
+    }));
+    if (hasUnavailableQuantity) {
+      setAvailabilityWarning("Unavailable beverage quantities were reset to 0. Please continue with available drinks only.");
+      return;
+    }
+    onNext();
+  }
 
   return (
     <div>
@@ -196,11 +242,13 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
       <div className="drink-list">
         {drinks.map((drink) => {
           const quantity = data.drinkOrders[activeDate.id]?.[drink.id] ?? { ice: 0, hot: 0 };
+          const isUnavailable = availability[beverageAvailabilityKeys[drink.id]]?.isAvailable === false;
           return (
-            <button className="drink-row drink-card-button" type="button" key={drink.id} disabled={letsHourCoffeeDecide} onClick={() => openModal(drink.id)}>
+            <button className="drink-row drink-card-button" type="button" key={drink.id} disabled={letsHourCoffeeDecide || isUnavailable} onClick={() => openModal(drink.id)}>
               <strong>
                 <span className="drink-icon">{drinkIcons[drink.id]}</span>
                 {drink.name}
+                {isUnavailable ? <span className="unavailable-badge">Unavailable</span> : null}
               </strong>
               <span>Ice {quantity.ice}</span>
               {drink.hasHot ? <span>Hot {quantity.hot}</span> : <span>Hot not available</span>}
@@ -228,8 +276,10 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
         </>
       ) : null}
       {letsHourCoffeeDecide ? <div className="ok-summary">Hour Coffee will decide the drink distribution for this event.</div> : copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
+      {allBeveragesUnavailable ? <div className="warn-summary">All beverages are currently unavailable. Please contact Hour Coffee.</div> : null}
+      {availabilityWarning ? <div className="warn-summary">{availabilityWarning}</div> : null}
       {error ? <p className="error">{error}</p> : null}
-      <StepNavigation onBack={onBack} onNext={onNext} />
+      <StepNavigation onBack={onBack} onNext={handleNext} />
 
       {editingDrinkId ? (
         <div className="modal-backdrop">

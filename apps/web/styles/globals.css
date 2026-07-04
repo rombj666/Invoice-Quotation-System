@@ -1467,6 +1467,30 @@ p {
   color: #7a1e1e;
 }
 
+.unavailable-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #edb7af;
+  border-radius: 999px;
+  background: #f8e7e4;
+  color: #7a1e1e;
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: 8px;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.addon-card:disabled,
+.drink-card-button:disabled {
+  cursor: not-allowed;
+}
+
+.availability-section {
+  margin-top: 24px;
+}
+
 .admin-approve-button {
   background: #2d7a4f !important;
   border-color: #2d7a4f !important;

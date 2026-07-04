@@ -287,3 +287,16 @@ model AdminUser {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
+
+model ProductAvailability {
+  id          String   @id @default(cuid())
+  category    String
+  itemKey     String   @unique
+  itemName    String
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isAvailable])
+}

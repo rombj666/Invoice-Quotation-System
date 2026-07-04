@@ -1,6 +1,7 @@
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
+import { adminProductAvailabilityRoutes } from "./routes/admin-product-availability";
 import { fileRoutes } from "./routes/files";
 import { invoiceRoutes } from "./routes/invoices";
 import { quotationRoutes } from "./routes/quotations";
@@ -19,6 +20,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/quotations", quotationRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);

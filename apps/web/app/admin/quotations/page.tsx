@@ -52,6 +52,7 @@ export default function AdminQuotationListPage() {
         <div className="admin-nav">
           <Link href="/admin">Admin Home</Link>
           <Link href="/admin/invoices">Invoice List</Link>
+          <Link href="/admin/product-availability">Product Availability</Link>
         </div>
         <h1>Quotation List</h1>
         {error ? <p className="error">{error}</p> : null}
