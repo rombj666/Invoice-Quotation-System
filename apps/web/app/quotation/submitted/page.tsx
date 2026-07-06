@@ -1,7 +1,18 @@
-import Link from "next/link";
+"use client";
 
-export default async function QuotationSubmittedPage({ searchParams }: { searchParams?: Promise<{ quotationNo?: string }> }) {
-  const quotationNo = (await searchParams)?.quotationNo;
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { submittedQuotationStorageKey } from "../../../components/quotation/QuotationShell";
+
+function QuotationSubmittedContent() {
+  const searchParams = useSearchParams();
+  const quotationNo = searchParams.get("quotationNo") ?? "";
+
+  function createAnotherQuotation() {
+    window.localStorage.removeItem(submittedQuotationStorageKey);
+    window.localStorage.removeItem("hourCoffeeQuotationDraft");
+  }
 
   return (
     <main className="hc-page">
@@ -16,11 +27,19 @@ export default async function QuotationSubmittedPage({ searchParams }: { searchP
           <Link className="hc-button hc-button-primary" href="/invoice">
             Continue to Invoice
           </Link>
-          <Link className="hc-button hc-button-secondary" href="/quotation">
+          <Link className="hc-button hc-button-secondary" href="/quotation" onClick={createAnotherQuotation}>
             Create Another Quotation
           </Link>
         </div>
       </div>
     </main>
+  );
+}
+
+export default function QuotationSubmittedPage() {
+  return (
+    <Suspense fallback={null}>
+      <QuotationSubmittedContent />
+    </Suspense>
   );
 }

@@ -13,6 +13,7 @@ import { AddOnsStep } from "../quotation/AddOnsStep";
 import { DrinkPreferencesStep } from "../quotation/DrinkPreferencesStep";
 import { PlanEventStep } from "../quotation/PlanEventStep";
 import { CartLogoCustomizer } from "../customization/CartLogoCustomizer";
+import { cartPanelPercent } from "../customization/CartLogoCustomizer";
 import { CupSleeveCustomizer } from "../customization/CupSleeveCustomizer";
 import { CupStickerCustomizer } from "../customization/CupStickerCustomizer";
 import { EventDetailsStep } from "./EventDetailsStep";
@@ -74,7 +75,8 @@ async function mergeCustomizationPreview(type: CustomizationType, design: NonNul
         : type === "cold-cup"
           ? CUSTOMIZATION_ASSETS.coldCupTemplateUrl
         : CUSTOMIZATION_ASSETS.sleeveTemplateUrl;
-  const [templateImage, designImage] = await Promise.all([loadImage(templateUrl), loadImage(design.originalDataUrl ?? design.dataUrl)]);
+  const logoLayers = design.logos?.length ? design.logos : [design];
+  const [templateImage, ...designImages] = await Promise.all([loadImage(templateUrl), ...logoLayers.map((logo) => loadImage(logo.originalDataUrl ?? logo.dataUrl))]);
   const canvas = document.createElement("canvas");
   const sourceWidth = templateImage.naturalWidth || 1000;
   const sourceHeight = templateImage.naturalHeight || 700;
@@ -87,14 +89,21 @@ async function mergeCustomizationPreview(type: CustomizationType, design: NonNul
   if (!context) throw new Error("Unable to create final customization preview.");
 
   context.drawImage(templateImage, 0, 0, width, height);
-  const targetWidth = width * design.size * 0.01;
-  const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
-  const targetHeight = targetWidth * ratio;
-  context.save();
-  context.translate((design.x / 100) * width, (design.y / 100) * height);
-  context.rotate((design.rotation * Math.PI) / 180);
-  context.drawImage(designImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
-  context.restore();
+  logoLayers.forEach((logo, index) => {
+    const designImage = designImages[index];
+    const baseX = type === "cart" ? (cartPanelPercent.left / 100) * width : 0;
+    const baseY = type === "cart" ? (cartPanelPercent.top / 100) * height : 0;
+    const baseWidth = type === "cart" ? (cartPanelPercent.width / 100) * width : width;
+    const baseHeight = type === "cart" ? (cartPanelPercent.height / 100) * height : height;
+    const targetWidth = baseWidth * logo.size * 0.01;
+    const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
+    const targetHeight = targetWidth * ratio;
+    context.save();
+    context.translate(baseX + (logo.x / 100) * baseWidth, baseY + (logo.y / 100) * baseHeight);
+    context.rotate((logo.rotation * Math.PI) / 180);
+    context.drawImage(designImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+    context.restore();
+  });
   const blob = await canvasToBlob(canvas);
   const dataUrl = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -244,6 +253,14 @@ export function InvoiceShell() {
     return option.mode === "same" ? quotation.serviceDates.slice(0, 1) : quotation.serviceDates.slice(0, Math.max(1, option.designCount));
   }
 
+  function hasAnyDesign(designs: CustomizationByDate): boolean {
+    return Object.values(designs).some((design) => !!design);
+  }
+
+  function hasAnySleeveDesign(designs: CustomizationByDate): boolean {
+    return Object.values(designs).some((design) => !!design && ((design.logos?.length ?? 0) > 0 || !!design.dataUrl));
+  }
+
   function next() {
     setError("");
     if (currentStep === "review") return;
@@ -253,6 +270,9 @@ export function InvoiceShell() {
     if (currentStep === "details" && dressCode === "Custom" && !customDressCode.trim()) return setError("Please describe the custom dress code.");
     if (currentStep === "receipt" && !receiptName) return setError("Please upload your payment receipt before continuing.");
     if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
+    if (currentStep === "cart" && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
+    if (currentStep === "sticker" && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
+    if (currentStep === "sleeve" && !hasAnySleeveDesign(sleeveDesigns)) return setError("Please upload your sleeve design before continuing.");
     setStepIndex((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -266,6 +286,10 @@ export function InvoiceShell() {
   async function submit() {
     if (!quotation) return;
     setError("");
+    if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart") && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
+    if (quotation.hasCupStickers && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
+    if (quotation.hasCupSleeves && !hasAnySleeveDesign(sleeveDesigns)) return setError("Please upload your sleeve design before continuing.");
+    if (quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu") && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     setIsSubmittingInvoice(true);
     try {
       const [finalCartDesigns, finalStickerDesigns, finalSleeveDesigns] = await Promise.all([

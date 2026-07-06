@@ -20,35 +20,75 @@ const optionalAddons: QuotationAddon[] = [
   { name: "Custom Latte Art Stencil", price: 100 }
 ];
 
+const leadTimeAddonNames = new Set(["Custom Branded Cart", "Custom Menu"]);
+const coffeeCartAddon: QuotationAddon = { name: "Coffee Cart", price: 50 };
+
 function hasAddon(data: QuotationData, name: string): boolean {
   return data.selectedAddons.some((addon) => addon.name === name);
+}
+
+function hasEnoughLeadTime(data: QuotationData): boolean {
+  const earliestTime = data.serviceDates.reduce<number | null>((earliest, date) => {
+    if (!date.serviceDate) return earliest;
+    const time = new Date(`${date.serviceDate}T00:00:00`).getTime();
+    return earliest === null ? time : Math.min(earliest, time);
+  }, null);
+  if (earliestTime === null) return true;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysUntilEvent = Math.floor((earliestTime - today.getTime()) / (24 * 60 * 60 * 1000));
+  return daysUntilEvent >= 14;
+}
+
+function normalizeDesignOption(option: CustomizationOption, selectedDateCount: number): CustomizationOption {
+  if (selectedDateCount <= 1 || option.mode === "same") return { mode: "same", designCount: 1 };
+  const maxDesigns = Math.max(2, selectedDateCount);
+  return {
+    mode: option.mode,
+    designCount: Math.min(maxDesigns, Math.max(2, option.designCount || selectedDateCount))
+  };
 }
 
 function DesignOptions({
   label,
   option,
+  selectedDateCount,
   maxDesigns,
   onChange
 }: {
   label: string;
   option: CustomizationOption;
+  selectedDateCount: number;
   maxDesigns: number;
   onChange: (option: CustomizationOption) => void;
 }) {
+  const showMode = selectedDateCount > 1;
+  const normalized = normalizeDesignOption(option, selectedDateCount);
   return (
     <div className="addon-options" onClick={(event) => event.stopPropagation()}>
       <div className="addon-option-title">{label} design options</div>
-      <label>
-        <span>Design mode</span>
-        <select value={option.mode} onChange={(event) => onChange({ ...option, mode: event.target.value as CustomizationOption["mode"], designCount: event.target.value === "same" ? 1 : option.designCount })}>
-          <option value="same">Same design for all dates</option>
-          <option value="per-date">Different design per date</option>
-        </select>
-      </label>
-      <label>
-        <span>Number of design versions</span>
-        <input type="number" min={1} max={maxDesigns} value={option.designCount} onChange={(event) => onChange({ ...option, designCount: Math.max(1, Number(event.target.value) || 1) })} />
-      </label>
+      {showMode ? (
+        <label>
+          <span>Design mode</span>
+          <select value={normalized.mode} onChange={(event) => onChange(normalizeDesignOption({ ...normalized, mode: event.target.value as CustomizationOption["mode"], designCount: event.target.value === "same" ? 1 : selectedDateCount }, selectedDateCount))}>
+            <option value="same">Same design for all dates</option>
+            <option value="per-date">Different design per date</option>
+          </select>
+        </label>
+      ) : null}
+      {showMode && normalized.mode !== "same" ? (
+        <label>
+          <span>Number of design versions</span>
+          <input
+            type="number"
+            min={2}
+            max={maxDesigns}
+            value={normalized.designCount}
+            onChange={(event) => onChange({ ...normalized, designCount: Math.max(2, Number(event.target.value) || 2) })}
+          />
+        </label>
+      ) : null}
       <p>No extra design-version cost is added. Current add-on price stays unchanged.</p>
     </div>
   );
@@ -64,12 +104,37 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
   };
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const allSmallDates = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100);
-  const hasLargeDate = data.serviceDates.some((date) => date.cups >= 100);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
+  const enoughLeadTime = hasEnoughLeadTime(data);
 
   useEffect(() => {
     loadProductAvailability().then((groups) => setAvailability(flattenAvailability(groups))).catch(() => setAvailability({}));
   }, []);
+
+  useEffect(() => {
+    const needsLeadTimeRemoval = !enoughLeadTime && data.selectedAddons.some((addon) => leadTimeAddonNames.has(addon.name));
+    const normalizedOptions = {
+      cart: normalizeDesignOption(customizationOptions.cart, data.serviceDates.length),
+      sticker: normalizeDesignOption(customizationOptions.sticker, data.serviceDates.length),
+      sleeve: normalizeDesignOption(customizationOptions.sleeve, data.serviceDates.length)
+    };
+    const optionsChanged =
+      normalizedOptions.cart.mode !== customizationOptions.cart.mode ||
+      normalizedOptions.cart.designCount !== customizationOptions.cart.designCount ||
+      normalizedOptions.sticker.mode !== customizationOptions.sticker.mode ||
+      normalizedOptions.sticker.designCount !== customizationOptions.sticker.designCount ||
+      normalizedOptions.sleeve.mode !== customizationOptions.sleeve.mode ||
+      normalizedOptions.sleeve.designCount !== customizationOptions.sleeve.designCount;
+
+    if (needsLeadTimeRemoval || optionsChanged) {
+      setData({
+        ...data,
+        selectedAddons: needsLeadTimeRemoval ? data.selectedAddons.filter((addon) => !leadTimeAddonNames.has(addon.name)) : data.selectedAddons,
+        customizationOptions: normalizedOptions
+      });
+      if (needsLeadTimeRemoval) setAvailabilityWarning("This add-on requires at least 2 weeks lead time.");
+    }
+  }, [data, customizationOptions, enoughLeadTime, setData]);
 
   function isAvailable(name: string): boolean {
     const key = addonAvailabilityKeys[name];
@@ -90,6 +155,10 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
 
   function toggleAddon(addon: QuotationAddon) {
     if (!isAvailable(addon.name)) return;
+    if (leadTimeAddonNames.has(addon.name) && !enoughLeadTime) {
+      setAvailabilityWarning("This add-on requires at least 2 weeks lead time.");
+      return;
+    }
     const exists = hasAddon(data, addon.name);
     setData({
       ...data,
@@ -99,11 +168,11 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
 
   function setCoffeeCart() {
     if (hasAddon(data, "Coffee Cart")) {
-      toggleAddon({ name: "Coffee Cart", price: 150 });
+      toggleAddon(coffeeCartAddon);
       return;
     }
-    if (hasLargeDate || !isAvailable("Coffee Cart")) return;
-    toggleAddon({ name: "Coffee Cart", price: 150 });
+    if (!isAvailable("Coffee Cart")) return;
+    toggleAddon(coffeeCartAddon);
   }
 
   function handleNext() {
@@ -115,11 +184,16 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
   }
 
   function updateCustomizationOption(type: "cart" | "sticker" | "sleeve", option: CustomizationOption) {
+    if (option.mode !== "same" && option.designCount > data.serviceDates.length) {
+      setAvailabilityWarning("Design versions cannot exceed the number of selected event dates.");
+      return;
+    }
+    const normalized = normalizeDesignOption(option, data.serviceDates.length);
     setData({
       ...data,
       customizationOptions: {
         ...customizationOptions,
-        [type]: option
+        [type]: normalized
       }
     });
   }
@@ -163,13 +237,13 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
         </div>
       ) : null}
 
-      {allSmallDates || hasLargeDate ? (
-        <button type="button" className={`addon-card ${hasLargeDate || hasAddon(data, "Coffee Cart") ? "active" : ""}`} disabled={!isAvailable("Coffee Cart") && !hasAddon(data, "Coffee Cart")} onClick={setCoffeeCart}>
+      {data.serviceDates.length ? (
+        <button type="button" className={`addon-card ${hasAddon(data, "Coffee Cart") ? "active" : ""}`} disabled={!isAvailable("Coffee Cart") && !hasAddon(data, "Coffee Cart")} onClick={setCoffeeCart}>
           <div>
             <strong>Coffee Cart {unavailableLabel("Coffee Cart")}</strong>
-            <p>{hasLargeDate ? "Included with your order." : "Upgrade to a mobile coffee cart."}</p>
+            <p>Optional mobile coffee cart.</p>
           </div>
-          <span>{hasLargeDate ? "FREE" : "RM 150"}</span>
+          <span>{formatMoney(coffeeCartAddon.price)}</span>
         </button>
       ) : null}
 
@@ -177,15 +251,15 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
         const isSelected = hasAddon(data, addon.name);
         return (
           <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
-            <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" disabled={!isAvailable(addon.name) && !isSelected} onClick={() => toggleAddon(addon)}>
+            <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" disabled={((!isAvailable(addon.name) || (leadTimeAddonNames.has(addon.name) && !enoughLeadTime)) && !isSelected)} onClick={() => toggleAddon(addon)}>
               <div>
                 <strong>{addon.name} {unavailableLabel(addon.name)}</strong>
-                <p>2-week lead time</p>
+                <p>{leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
               </div>
               <span>{formatMoney(addon.price)}</span>
             </button>
             {addon.name === "Custom Branded Cart" && isSelected ? (
-              <DesignOptions label="Cart" option={customizationOptions.cart} maxDesigns={Math.max(1, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("cart", option)} />
+              <DesignOptions label="Cart" option={customizationOptions.cart} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("cart", option)} />
             ) : null}
           </div>
         );
@@ -200,7 +274,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
           <span>{formatMoney(getCupStickerPrice(totalCups))}</span>
         </button>
         {data.hasCupStickers ? (
-          <DesignOptions label="Cup sticker" option={customizationOptions.sticker} maxDesigns={Math.max(1, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sticker", option)} />
+          <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sticker", option)} />
         ) : null}
       </div>
 
@@ -213,7 +287,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
           <span>{formatMoney(getCupSleevePrice(totalCups))}</span>
         </button>
         {data.hasCupSleeves ? (
-          <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} maxDesigns={Math.max(1, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sleeve", option)} />
+          <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sleeve", option)} />
         ) : null}
       </div>
 

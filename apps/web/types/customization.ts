@@ -1,3 +1,15 @@
+export type CustomizationLogo = {
+  id: string;
+  fileName: string;
+  dataUrl: string;
+  originalDataUrl?: string;
+  size: number;
+  rotation: number;
+  x: number;
+  y: number;
+  aspectRatio?: number;
+};
+
 export type CustomizationDesign = {
   fileName: string;
   dataUrl: string;
@@ -13,6 +25,7 @@ export type CustomizationDesign = {
   heightPercent?: number;
   widthCm?: number;
   heightCm?: number;
+  logos?: CustomizationLogo[];
 };
 
 export type CustomizationByDate = Record<string, CustomizationDesign | undefined>;

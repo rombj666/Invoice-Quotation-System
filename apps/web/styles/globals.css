@@ -1166,6 +1166,11 @@ p {
   pointer-events: none;
 }
 
+.cart-template-overlay.cart-design-panel {
+  inset: auto;
+  outline: 1px dashed rgba(170, 145, 110, 0.35);
+}
+
 .cart-template-overlay img {
   position: absolute;
   max-height: 34%;
@@ -1227,9 +1232,14 @@ p {
   position: absolute;
   object-fit: contain;
   cursor: grab;
-  pointer-events: none;
+  pointer-events: auto;
   touch-action: none;
   user-select: none;
+}
+
+.sleeve-logo-layer.dragging,
+.sleeve-logo-layer:active {
+  cursor: grabbing;
 }
 
 .file-upload-summary {
@@ -1300,6 +1310,19 @@ p {
   max-width: 520px;
 }
 
+.sleeve-logo-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.secondary-mini-button {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
 .sleeve-shape {
   position: relative;
   min-height: 260px;
@@ -1366,6 +1389,14 @@ p {
   background: #fafaf8;
   padding: 16px;
   margin-top: 16px;
+}
+
+.final-action-section .hc-button + h3 {
+  margin-top: 18px;
+}
+
+.print-document {
+  display: none;
 }
 
 .final-action-section p {
@@ -1606,18 +1637,24 @@ p {
 @media print {
   @page {
     size: A4;
-    margin: 8mm;
+    margin: 6mm;
   }
 
   body {
     background: #fff;
+    font-size: 10px;
   }
 
   .team-topbar,
   .progress-header,
   .hc-nav-row,
-  .pdf-btn {
+  .pdf-btn,
+  .screen-only {
     display: none !important;
+  }
+
+  .print-document {
+    display: block !important;
   }
 
   .hc-page,
@@ -1633,31 +1670,79 @@ p {
     border-radius: 0;
     width: 100%;
     padding: 0;
-    font-size: 11px;
+    font-size: 10px;
     overflow: visible;
   }
 
   .invoice-title {
-    font-size: 32px;
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .invoice-header,
+  .invoice-two-col {
+    gap: 8px;
+  }
+
+  .invoice-meta {
+    gap: 5px;
+    margin-top: 6px;
+  }
+
+  .invoice-section,
+  .invoice-table,
+  .invoice-totals,
+  .invoice-bank,
+  .invoice-item-table,
+  .invoice-item-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .invoice-section,
   .invoice-table,
   .invoice-totals,
   .invoice-bank {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    margin-top: 8px;
   }
 
   .invoice-table th,
   .invoice-table td {
-    padding: 7px 8px;
+    padding: 4px 5px;
+    font-size: 9px;
+    line-height: 1.2;
   }
 
   .invoice-meta div,
   .invoice-bank,
   .bank-card,
   .invoice-summary-grid div {
-    padding: 8px;
+    border-radius: 6px;
+    padding: 5px 6px;
+  }
+
+  .invoice-summary-grid {
+    gap: 5px;
+  }
+
+  .invoice-totals {
+    gap: 4px;
+    max-width: 320px;
+  }
+
+  .invoice-totals .final {
+    font-size: 14px;
+    padding-top: 5px;
+  }
+
+  .invoice-card h3,
+  .invoice-card p {
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .invoice-card footer {
+    margin-top: 8px;
+    font-size: 10px;
   }
 }

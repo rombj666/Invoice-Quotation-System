@@ -20,35 +20,52 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
     const dataUrl = String(reader.result);
     const image = new Image();
     image.onload = () => {
-      callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 28, rotation: 0, x: 50, y: 60, aspectRatio: image.naturalHeight / Math.max(1, image.naturalWidth) });
+      callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 28, rotation: 0, x: 50, y: 50, aspectRatio: image.naturalHeight / Math.max(1, image.naturalWidth) });
     };
     image.src = dataUrl;
   };
   reader.readAsDataURL(file);
 }
 
+export const cartPanelPercent = {
+  left: 18,
+  top: 17,
+  width: 64,
+  height: 64
+};
+
+const cartPanelSizeCm = 90;
+const minCartLogoWidthCm = 5;
+
 export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
   const [templateMissing, setTemplateMissing] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
   const aspectRatio = active?.aspectRatio ?? 1;
-  const maxSize = Math.min(80, 100 / Math.max(1, aspectRatio));
-  const widthCm = active ? (active.size / 100) * 90 : 0;
+  const minSize = (minCartLogoWidthCm / cartPanelSizeCm) * 100;
+  const maxSize = Math.min(100, 100 / Math.max(1, aspectRatio));
+  const widthCm = active ? (Math.min(active.size, maxSize) / 100) * cartPanelSizeCm : 0;
   const heightCm = widthCm * aspectRatio;
 
   function update(patch: Partial<CustomizationDesign>) {
     if (!active) return;
-    const nextSize = Math.min(maxSize, patch.size ?? active.size);
-    const nextWidthCm = (nextSize / 100) * 90;
+    const nextSize = Math.min(maxSize, Math.max(minSize, patch.size ?? active.size));
+    const nextWidthCm = (nextSize / 100) * cartPanelSizeCm;
     const nextHeightCm = nextWidthCm * aspectRatio;
+    const halfWidth = nextSize / 2;
+    const halfHeight = (nextSize * aspectRatio) / 2;
+    const nextX = Math.min(100 - halfWidth, Math.max(halfWidth, patch.x ?? active.x));
+    const nextY = Math.min(100 - halfHeight, Math.max(halfHeight, patch.y ?? active.y));
     onDesigns({
       ...designs,
       [activeKey]: {
         ...active,
         ...patch,
         size: nextSize,
-        xPercent: patch.x ?? active.x,
-        yPercent: patch.y ?? active.y,
+        x: nextX,
+        y: nextY,
+        xPercent: nextX,
+        yPercent: nextY,
         widthPercent: nextSize,
         heightPercent: nextSize * aspectRatio,
         widthCm: nextWidthCm,
@@ -72,7 +89,15 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
       ) : null}
       <div className="cart-preview">
         <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.cartTemplateUrl} alt="Cart template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
-        <div className="cart-template-overlay">
+        <div
+          className="cart-template-overlay cart-design-panel"
+          style={{
+            left: `${cartPanelPercent.left}%`,
+            top: `${cartPanelPercent.top}%`,
+            width: `${cartPanelPercent.width}%`,
+            height: `${cartPanelPercent.height}%`
+          }}
+        >
           {active ? (
             <img
               src={active.originalDataUrl ?? active.dataUrl}
@@ -105,7 +130,7 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
           <p className="upload-ok">Uploaded: {active.fileName}</p>
           <label className="range-field">
             Logo size
-            <input type="range" min={12} max={maxSize} step={0.5} value={Math.min(active.size, maxSize)} onChange={(event) => update({ size: Number(event.target.value) })} />
+            <input type="range" min={minSize} max={maxSize} step={0.25} value={Math.min(Math.max(active.size, minSize), maxSize)} onChange={(event) => update({ size: Number(event.target.value) })} />
           </label>
           <div className="mini-summary">Logo size: {widthCm.toFixed(1)}cm x {heightCm.toFixed(1)}cm</div>
         </>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { DrinkId, DrinkOrderByDate, QuotationData, ServiceDate } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
 import { getNextQuotationNo } from "../../lib/quotation-storage";
@@ -16,6 +17,7 @@ import { QuotationReviewStep } from "./QuotationReviewStep";
 
 const totalSteps = 7;
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
+export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 
 const emptyQuotation: QuotationData = {
   quotationNo: "Q00001",
@@ -73,15 +75,28 @@ function drinkTotalForDate(data: QuotationData, dateId: string): number {
 }
 
 export function QuotationShell() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [data, setData] = useState<QuotationData>(emptyQuotation);
 
   useEffect(() => {
+    const savedSubmission = window.localStorage.getItem(submittedQuotationStorageKey);
+    if (savedSubmission) {
+      try {
+        const parsed = JSON.parse(savedSubmission) as { quotationNo?: string; status?: string };
+        if (parsed.quotationNo && parsed.status === "submitted") {
+          router.replace(`/quotation/submitted?quotationNo=${encodeURIComponent(parsed.quotationNo)}`);
+          return;
+        }
+      } catch {
+        window.localStorage.removeItem(submittedQuotationStorageKey);
+      }
+    }
     getNextQuotationNo()
       .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
       .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
-  }, []);
+  }, [router]);
 
   function next() {
     setError("");
@@ -149,6 +164,7 @@ export function QuotationShell() {
   }
 
   function resetQuotation() {
+    window.localStorage.removeItem(submittedQuotationStorageKey);
     setStep(0);
     setError("");
     getNextQuotationNo()
