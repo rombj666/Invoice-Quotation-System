@@ -268,6 +268,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
         </div>
       ) : null}
 
+      {letsHourCoffeeDecide ? <div className="ok-summary">Hour Coffee will decide the drink distribution for this event.</div> : null}
       {data.serviceDates.length > 1 ? (
         <>
           <Button type="button" variant="secondary" onClick={copyToAll} disabled={letsHourCoffeeDecide}>
@@ -275,7 +276,7 @@ export function DrinkPreferencesStep({ data, setData, onBack, onNext, error }: P
           </Button>
         </>
       ) : null}
-      {letsHourCoffeeDecide ? <div className="ok-summary">Hour Coffee will decide the drink distribution for this event.</div> : copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
+      {!letsHourCoffeeDecide && copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
       {allBeveragesUnavailable ? <div className="warn-summary">All beverages are currently unavailable. Please contact Hour Coffee.</div> : null}
       {availabilityWarning ? <div className="warn-summary">{availabilityWarning}</div> : null}
       {error ? <p className="error">{error}</p> : null}

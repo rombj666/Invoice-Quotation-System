@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
 import type { DrinkId, QuotationData, ServiceDate } from "../../types/quotation";
-import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
+import { CART_DESIGN_PANEL, CUSTOMIZATION_ASSETS, getCartLogoSizeBounds } from "../../lib/customization-assets";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
 import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
@@ -13,7 +13,6 @@ import { AddOnsStep } from "../quotation/AddOnsStep";
 import { DrinkPreferencesStep } from "../quotation/DrinkPreferencesStep";
 import { PlanEventStep } from "../quotation/PlanEventStep";
 import { CartLogoCustomizer } from "../customization/CartLogoCustomizer";
-import { cartPanelPercent } from "../customization/CartLogoCustomizer";
 import { CupSleeveCustomizer } from "../customization/CupSleeveCustomizer";
 import { CupStickerCustomizer } from "../customization/CupStickerCustomizer";
 import { EventDetailsStep } from "./EventDetailsStep";
@@ -28,6 +27,20 @@ type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
+
+function sleeveDesignId(index: number) {
+  return `sleeve-design-${index + 1}`;
+}
+
+function getSleeveDesignCount(quotation: QuotationData): number {
+  const option = quotation.customizationOptions?.sleeve ?? { mode: "same", designCount: 1 };
+  return option.mode === "same" ? 1 : Math.max(2, Math.min(quotation.serviceDates.length, option.designCount));
+}
+
+function defaultSleeveAssignments(quotation: QuotationData): Record<string, string> {
+  const count = getSleeveDesignCount(quotation);
+  return Object.fromEntries(quotation.serviceDates.map((date, index) => [date.id, sleeveDesignId(index % count)]));
+}
 
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
@@ -46,6 +59,10 @@ function drinkTotalForDate(data: QuotationData, dateId: string): number {
     const quantity = order[drinkId] ?? { ice: 0, hot: 0 };
     return sum + quantity.ice + quantity.hot;
   }, 0);
+}
+
+function assignedSleeveDesigns(designs: CustomizationByDate, serviceDates: ServiceDate[], assignments: Record<string, string>): CustomizationByDate {
+  return Object.fromEntries(serviceDates.map((date) => [date.id, designs[assignments[date.id] ?? sleeveDesignId(0)]]));
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -91,12 +108,15 @@ async function mergeCustomizationPreview(type: CustomizationType, design: NonNul
   context.drawImage(templateImage, 0, 0, width, height);
   logoLayers.forEach((logo, index) => {
     const designImage = designImages[index];
-    const baseX = type === "cart" ? (cartPanelPercent.left / 100) * width : 0;
-    const baseY = type === "cart" ? (cartPanelPercent.top / 100) * height : 0;
-    const baseWidth = type === "cart" ? (cartPanelPercent.width / 100) * width : width;
-    const baseHeight = type === "cart" ? (cartPanelPercent.height / 100) * height : height;
-    const targetWidth = baseWidth * logo.size * 0.01;
     const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
+    const baseX = type === "cart" ? (CART_DESIGN_PANEL.left / 100) * width : 0;
+    const baseY = type === "cart" ? (CART_DESIGN_PANEL.top / 100) * height : 0;
+    const baseWidth = type === "cart" ? (CART_DESIGN_PANEL.width / 100) * width : width;
+    const baseHeight = type === "cart" ? (CART_DESIGN_PANEL.height / 100) * height : height;
+    const logoSize = type === "cart"
+      ? Math.min(getCartLogoSizeBounds(ratio).max, Math.max(getCartLogoSizeBounds(ratio).min, logo.size))
+      : logo.size;
+    const targetWidth = baseWidth * logoSize * 0.01;
     const targetHeight = targetWidth * ratio;
     context.save();
     context.translate(baseX + (logo.x / 100) * baseWidth, baseY + (logo.y / 100) * baseHeight);
@@ -159,9 +179,11 @@ export function InvoiceShell() {
   const [receiptDataUrl, setReceiptDataUrl] = useState("");
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false, false]);
   const [activeDesignDateId, setActiveDesignDateId] = useState("");
+  const [activeSleeveDesignId, setActiveSleeveDesignId] = useState(sleeveDesignId(0));
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
   const [customMenuFile, setCustomMenuFile] = useState<InvoiceUploadFile | undefined>();
   const [sleeveDesigns, setSleeveDesigns] = useState<CustomizationByDate>({});
+  const [sleeveDateAssignments, setSleeveDateAssignments] = useState<Record<string, string>>({});
   const [stickerDesigns, setStickerDesigns] = useState<CustomizationByDate>({});
   const [isFindingQuotation, setIsFindingQuotation] = useState(false);
   const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
@@ -171,6 +193,16 @@ export function InvoiceShell() {
       .then(setInvoiceNo)
       .catch(() => setError("Unable to load the next invoice number. Please check the API connection."));
   }, []);
+
+  useEffect(() => {
+    if (!quotation) return;
+    const count = getSleeveDesignCount(quotation);
+    const allowedDesignIds = new Set(Array.from({ length: count }, (_, index) => sleeveDesignId(index)));
+    setSleeveDateAssignments((current) => Object.fromEntries(
+      quotation.serviceDates.map((date, index) => [date.id, allowedDesignIds.has(current[date.id]) ? current[date.id] : sleeveDesignId(index % count)])
+    ));
+    if (!allowedDesignIds.has(activeSleeveDesignId)) setActiveSleeveDesignId(sleeveDesignId(0));
+  }, [quotation, activeSleeveDesignId]);
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
@@ -204,6 +236,8 @@ export function InvoiceShell() {
         return;
       }
       setQuotation(approvedQuotation);
+      setSleeveDateAssignments(defaultSleeveAssignments(approvedQuotation));
+      setActiveSleeveDesignId(sleeveDesignId(0));
       if (approvedQuotation.serviceDates[0]) setActiveDesignDateId(approvedQuotation.serviceDates[0].id);
       setStepIndex(0);
     } finally {
@@ -257,8 +291,9 @@ export function InvoiceShell() {
     return Object.values(designs).some((design) => !!design);
   }
 
-  function hasAnySleeveDesign(designs: CustomizationByDate): boolean {
-    return Object.values(designs).some((design) => !!design && ((design.logos?.length ?? 0) > 0 || !!design.dataUrl));
+  function hasRequiredSleeveDesigns(designs: CustomizationByDate): boolean {
+    if (!quotation) return false;
+    return Array.from({ length: getSleeveDesignCount(quotation) }, (_, index) => designs[sleeveDesignId(index)]).every((design) => !!design && ((design.logos?.length ?? 0) > 0 || !!design.dataUrl));
   }
 
   function next() {
@@ -272,7 +307,7 @@ export function InvoiceShell() {
     if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     if (currentStep === "cart" && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
     if (currentStep === "sticker" && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
-    if (currentStep === "sleeve" && !hasAnySleeveDesign(sleeveDesigns)) return setError("Please upload your sleeve design before continuing.");
+    if (currentStep === "sleeve" && !hasRequiredSleeveDesigns(sleeveDesigns)) return setError("Please upload each required sleeve design before continuing.");
     setStepIndex((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -288,14 +323,14 @@ export function InvoiceShell() {
     setError("");
     if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart") && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
     if (quotation.hasCupStickers && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
-    if (quotation.hasCupSleeves && !hasAnySleeveDesign(sleeveDesigns)) return setError("Please upload your sleeve design before continuing.");
+    if (quotation.hasCupSleeves && !hasRequiredSleeveDesigns(sleeveDesigns)) return setError("Please upload each required sleeve design before continuing.");
     if (quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu") && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     setIsSubmittingInvoice(true);
     try {
       const [finalCartDesigns, finalStickerDesigns, finalSleeveDesigns] = await Promise.all([
         mergeCustomizationGroup("cart", cartDesigns),
         mergeCupStickerDesigns(stickerDesigns),
-        mergeCustomizationGroup("sleeve", sleeveDesigns)
+        mergeCustomizationGroup("sleeve", assignedSleeveDesigns(sleeveDesigns, quotation.serviceDates, sleeveDateAssignments))
       ]);
       const invoice: InvoiceDetails = {
         invoiceNo,
@@ -440,7 +475,16 @@ export function InvoiceShell() {
         ) : null}
         {currentStep === "menu" ? <CustomMenuUpload file={customMenuFile} onFile={setCustomMenuFile} /> : null}
         {currentStep === "sleeve" ? (
-          <CupSleeveCustomizer serviceDates={designDates("sleeve")} designs={sleeveDesigns} activeDateId={activeDesignDateId || designDates("sleeve")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setSleeveDesigns} />
+          <CupSleeveCustomizer
+            serviceDates={quotation.serviceDates}
+            designCount={getSleeveDesignCount(quotation)}
+            designs={sleeveDesigns}
+            activeDesignId={activeSleeveDesignId}
+            onActiveDesign={setActiveSleeveDesignId}
+            dateAssignments={sleeveDateAssignments}
+            onDateAssignments={setSleeveDateAssignments}
+            onDesigns={setSleeveDesigns}
+          />
         ) : null}
         {currentStep === "sticker" ? (
           <CupStickerCustomizer serviceDates={designDates("sticker")} designs={stickerDesigns} activeDateId={activeDesignDateId || designDates("sticker")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setStickerDesigns} />

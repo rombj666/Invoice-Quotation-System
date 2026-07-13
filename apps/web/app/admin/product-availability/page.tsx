@@ -58,7 +58,7 @@ export default function ProductAvailabilityPage() {
                       <td>{item.itemName}</td>
                       <td><span className={`admin-status-badge ${item.isAvailable ? "approved" : "deleted"}`}>{item.isAvailable ? "Available" : "Unavailable"}</span></td>
                       <td>
-                        <button className={item.isAvailable ? "" : "admin-approve-button"} type="button" onClick={() => toggle(item.itemKey, item.isAvailable)}>
+                        <button className={`availability-action-button ${item.isAvailable ? "mark-unavailable" : "mark-available"}`} type="button" onClick={() => toggle(item.itemKey, item.isAvailable)}>
                           {item.isAvailable ? "Mark Unavailable" : "Mark Available"}
                         </button>
                       </td>

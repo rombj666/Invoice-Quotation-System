@@ -65,29 +65,34 @@ function DesignOptions({
 }) {
   const showMode = selectedDateCount > 1;
   const normalized = normalizeDesignOption(option, selectedDateCount);
+  const designModeLabel = normalized.mode === "same" ? "Same design for all dates" : "Different design for different dates";
   return (
     <div className="addon-options" onClick={(event) => event.stopPropagation()}>
-      <div className="addon-option-title">{label} design options</div>
+      <div className="addon-option-title">{label} design</div>
+      <div className="design-mode-summary">{designModeLabel}</div>
       {showMode ? (
-        <label>
-          <span>Design mode</span>
-          <select value={normalized.mode} onChange={(event) => onChange(normalizeDesignOption({ ...normalized, mode: event.target.value as CustomizationOption["mode"], designCount: event.target.value === "same" ? 1 : selectedDateCount }, selectedDateCount))}>
-            <option value="same">Same design for all dates</option>
-            <option value="per-date">Different design per date</option>
-          </select>
-        </label>
-      ) : null}
-      {showMode && normalized.mode !== "same" ? (
-        <label>
-          <span>Number of design versions</span>
-          <input
-            type="number"
-            min={2}
-            max={maxDesigns}
-            value={normalized.designCount}
-            onChange={(event) => onChange({ ...normalized, designCount: Math.max(2, Number(event.target.value) || 2) })}
-          />
-        </label>
+        <details className="design-mode-details" open={normalized.mode !== "same"}>
+          <summary>Change design setup</summary>
+          <label>
+            <span>Design mode</span>
+            <select value={normalized.mode} onChange={(event) => onChange(normalizeDesignOption({ ...normalized, mode: event.target.value as CustomizationOption["mode"], designCount: event.target.value === "same" ? 1 : selectedDateCount }, selectedDateCount))}>
+              <option value="same">Same design for all dates</option>
+              <option value="per-date">Different design for different dates</option>
+            </select>
+          </label>
+          {normalized.mode !== "same" ? (
+            <label>
+              <span>Number of design versions</span>
+              <input
+                type="number"
+                min={2}
+                max={maxDesigns}
+                value={normalized.designCount}
+                onChange={(event) => onChange({ ...normalized, designCount: Math.max(2, Number(event.target.value) || 2) })}
+              />
+            </label>
+          ) : null}
+        </details>
       ) : null}
       <p>No extra design-version cost is added. Current add-on price stays unchanged.</p>
     </div>

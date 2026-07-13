@@ -88,7 +88,6 @@ export default function AdminQuotationDetailPage() {
         </div>
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
-        {isApproved ? <div className="ok-summary">This quotation has been approved. Customer can now continue to invoice.</div> : null}
         <div className="detail-grid">
           <section>
             <h3>Customer Info</h3>

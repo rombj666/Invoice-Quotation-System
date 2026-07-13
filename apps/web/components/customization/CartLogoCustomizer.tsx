@@ -2,7 +2,7 @@
 
 import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
 import type { ServiceDate } from "../../types/quotation";
-import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
+import { CART_DESIGN_PANEL, CUSTOMIZATION_ASSETS, getCartLogoSizeBounds } from "../../lib/customization-assets";
 import { formatShortDate } from "../../lib/formatters";
 import { useState } from "react";
 
@@ -27,24 +27,18 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   reader.readAsDataURL(file);
 }
 
-export const cartPanelPercent = {
-  left: 18,
-  top: 17,
-  width: 64,
-  height: 64
-};
+export const cartPanelPercent = CART_DESIGN_PANEL;
 
 const cartPanelSizeCm = 90;
-const minCartLogoWidthCm = 5;
 
 export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
   const [templateMissing, setTemplateMissing] = useState(false);
   const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
   const active = designs[activeKey];
   const aspectRatio = active?.aspectRatio ?? 1;
-  const minSize = (minCartLogoWidthCm / cartPanelSizeCm) * 100;
-  const maxSize = Math.min(100, 100 / Math.max(1, aspectRatio));
-  const widthCm = active ? (Math.min(active.size, maxSize) / 100) * cartPanelSizeCm : 0;
+  const { min: minSize, max: maxSize } = getCartLogoSizeBounds(aspectRatio);
+  const safeActiveSize = active ? Math.min(Math.max(active.size, minSize), maxSize) : 0;
+  const widthCm = active ? (safeActiveSize / 100) * cartPanelSizeCm : 0;
   const heightCm = widthCm * aspectRatio;
 
   function update(patch: Partial<CustomizationDesign>) {
@@ -103,7 +97,7 @@ export function CartLogoCustomizer({ serviceDates, designs, activeDateId, onActi
               src={active.originalDataUrl ?? active.dataUrl}
               alt="Cart logo preview"
               style={{
-                width: `${active.size}%`,
+                width: `${safeActiveSize}%`,
                 left: `${active.x}%`,
                 top: `${active.y}%`,
                 transform: `translate(-50%, -50%) rotate(${active.rotation}deg)`
