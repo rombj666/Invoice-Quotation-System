@@ -539,7 +539,7 @@ export function InvoiceShell() {
             onBack={stepIndex > 0 ? back : undefined}
             canGoBack={stepIndex > 0}
             onNext={stepIndex === steps.length - 2 ? submit : next}
-            nextLabel={stepIndex === steps.length - 2 ? (isSubmittingInvoice ? "SAVING..." : "DONE - NEXT STEP") : "CONTINUE"}
+            nextLabel={currentStep === "preview" ? "PROCEED TO PAYMENT" : stepIndex === steps.length - 2 ? (isSubmittingInvoice ? "SAVING..." : "DONE - NEXT STEP") : "CONTINUE"}
           />
         ) : null}
       </Card>

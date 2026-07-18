@@ -10,6 +10,7 @@ import {
   CUSTOMIZATION_LAYOUT,
   designAspectRatio,
   formatCustomizationDate,
+  getCupLogoSizeMm,
   getCupWidthBounds,
   normalizeDesignGeometry,
   SHOW_CUSTOMIZATION_BOUNDARIES
@@ -60,6 +61,7 @@ export function CupStickerCustomizer({ mode, serviceDates, designs, activeDate, 
     : undefined;
   const aspectRatio = activeDesign ? designAspectRatio(activeDesign) : 1;
   const bounds = getCupWidthBounds(aspectRatio);
+  const logoSizeMm = activeDesign ? getCupLogoSizeMm(activeDesign) : null;
 
   function updateWidth(widthRatio: number) {
     if (!activeDesign) return;
@@ -127,7 +129,8 @@ export function CupStickerCustomizer({ mode, serviceDates, designs, activeDate, 
             Logo size
             <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={Math.min(bounds.max, Math.max(bounds.min, activeDesign.widthRatio ?? activeDesign.size / 100))} onChange={(event) => updateWidth(Number(event.target.value))} />
           </label>
-          <div className="mini-summary">Logo size: {Math.round((activeDesign.widthRatio ?? activeDesign.size / 100) * 100)}%</div>
+          {logoSizeMm ? <div className="mini-summary">Logo size: {logoSizeMm.width.toFixed(1)} mm x {logoSizeMm.height.toFixed(1)} mm</div> : null}
+          <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
         </>
       ) : null}
     </div>

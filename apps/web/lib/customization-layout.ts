@@ -14,7 +14,7 @@ type LayoutConfig = {
   maxLogoSizeMm?: { width: number; height: number };
 };
 
-export const CART_MAX_LOGO_SIZE_CM = { width: 80, height: 50 };
+export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 60 };
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
 
 const CART_PHYSICAL_AREA_CM = { width: 90, height: 90 };
@@ -42,7 +42,7 @@ export const CUSTOMIZATION_LAYOUT: Record<CustomizationTemplate, LayoutConfig> =
   coldCup: {
     designArea: { x: 0.35, y: 0.35, width: 0.3, height: 0.28 },
     templateSizePx: { width: 1024, height: 1536 },
-    defaultCenter: { x: 0.5, y: 0.5 },
+    defaultCenter: { x: 0.5, y: 0.55 },
     minWidthRatio: 0.05,
     paddingRatio: 0.03,
     physicalAreaMm: CUP_PRINTABLE_AREA_MM,
@@ -113,6 +113,25 @@ export function getCupWidthBounds(aspectRatio: number) {
   const hot = getContainedWidthBounds("hotCup", aspectRatio);
   const cold = getContainedWidthBounds("coldCup", aspectRatio);
   return { min: Math.max(hot.min, cold.min), max: Math.min(hot.max, cold.max) };
+}
+
+export function getCupLogoSizeMm(design: CustomizationDesign) {
+  const aspectRatio = designAspectRatio(design);
+  const bounds = getCupWidthBounds(aspectRatio);
+  const requestedWidthRatio = design.widthRatio ?? design.size / 100;
+  const commonWidthRatio = clamp(requestedWidthRatio, bounds.min, bounds.max);
+  const commonDesign = {
+    ...design,
+    widthRatio: commonWidthRatio,
+    hotWidthRatio: commonWidthRatio,
+    coldWidthRatio: commonWidthRatio
+  };
+  const hotRect = calculateContainedDesignRect("hotCup", commonDesign);
+  const coldRect = calculateContainedDesignRect("coldCup", commonDesign);
+  const resolvedWidthRatio = Math.min(hotRect.widthRatio, coldRect.widthRatio);
+  const width = resolvedWidthRatio * CUP_PRINTABLE_AREA_MM.width;
+
+  return { width, height: width * aspectRatio };
 }
 
 export function calculateContainedDesignRect(
