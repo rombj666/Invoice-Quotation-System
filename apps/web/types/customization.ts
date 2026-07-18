@@ -19,6 +19,11 @@ export type CustomizationDesign = {
   x: number;
   y: number;
   aspectRatio?: number;
+  centerXRatio?: number;
+  centerYRatio?: number;
+  widthRatio?: number;
+  hotWidthRatio?: number;
+  coldWidthRatio?: number;
   xPercent?: number;
   yPercent?: number;
   widthPercent?: number;

@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
-import type { DrinkId, QuotationData, ServiceDate } from "../../types/quotation";
-import { CART_DESIGN_PANEL, CUSTOMIZATION_ASSETS, getCartLogoSizeBounds } from "../../lib/customization-assets";
+import type { CustomizationMode, DrinkId, QuotationData } from "../../types/quotation";
+import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
+import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
 import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
@@ -28,20 +29,6 @@ type ReviewEditStep = "dates" | "drinks" | "addons";
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
 
-function sleeveDesignId(index: number) {
-  return `sleeve-design-${index + 1}`;
-}
-
-function getSleeveDesignCount(quotation: QuotationData): number {
-  const option = quotation.customizationOptions?.sleeve ?? { mode: "same", designCount: 1 };
-  return option.mode === "same" ? 1 : Math.max(2, Math.min(quotation.serviceDates.length, option.designCount));
-}
-
-function defaultSleeveAssignments(quotation: QuotationData): Record<string, string> {
-  const count = getSleeveDesignCount(quotation);
-  return Object.fromEntries(quotation.serviceDates.map((date, index) => [date.id, sleeveDesignId(index % count)]));
-}
-
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
     ...quotation,
@@ -59,10 +46,6 @@ function drinkTotalForDate(data: QuotationData, dateId: string): number {
     const quantity = order[drinkId] ?? { ice: 0, hot: 0 };
     return sum + quantity.ice + quantity.hot;
   }, 0);
-}
-
-function assignedSleeveDesigns(designs: CustomizationByDate, serviceDates: ServiceDate[], assignments: Record<string, string>): CustomizationByDate {
-  return Object.fromEntries(serviceDates.map((date) => [date.id, designs[assignments[date.id] ?? sleeveDesignId(0)]]));
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -109,17 +92,16 @@ async function mergeCustomizationPreview(type: CustomizationType, design: NonNul
   logoLayers.forEach((logo, index) => {
     const designImage = designImages[index];
     const ratio = designImage.naturalHeight / Math.max(1, designImage.naturalWidth);
-    const baseX = type === "cart" ? (CART_DESIGN_PANEL.left / 100) * width : 0;
-    const baseY = type === "cart" ? (CART_DESIGN_PANEL.top / 100) * height : 0;
-    const baseWidth = type === "cart" ? (CART_DESIGN_PANEL.width / 100) * width : width;
-    const baseHeight = type === "cart" ? (CART_DESIGN_PANEL.height / 100) * height : height;
-    const logoSize = type === "cart"
-      ? Math.min(getCartLogoSizeBounds(ratio).max, Math.max(getCartLogoSizeBounds(ratio).min, logo.size))
-      : logo.size;
-    const targetWidth = baseWidth * logoSize * 0.01;
+    if (type !== "sleeve") {
+      const template = type === "cart" ? "cart" : type === "hot-cup" ? "hotCup" : "coldCup";
+      const normalized = normalizeDesignGeometry({ ...design, ...logo, aspectRatio: ratio, rotation: 0 }, template);
+      renderContainedDesignToCanvas(context, designImage, width, height, template, normalized);
+      return;
+    }
+    const targetWidth = width * logo.size * 0.01;
     const targetHeight = targetWidth * ratio;
     context.save();
-    context.translate(baseX + (logo.x / 100) * baseWidth, baseY + (logo.y / 100) * baseHeight);
+    context.translate((logo.x / 100) * width, (logo.y / 100) * height);
     context.rotate((logo.rotation * Math.PI) / 180);
     context.drawImage(designImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
     context.restore();
@@ -152,12 +134,33 @@ async function mergeCupStickerDesigns(designs: CustomizationByDate): Promise<Cus
     if (designKey.endsWith(":hot")) return [{ designKey, cupType: "hot-cup" as const, design }];
     if (designKey.endsWith(":cold")) return [{ designKey, cupType: "cold-cup" as const, design }];
     return [
-      { designKey: `${designKey}:hot`, cupType: "hot-cup" as const, design: { ...design, y: 56 } },
-      { designKey: `${designKey}:cold`, cupType: "cold-cup" as const, design: { ...design, y: 50 } }
+      { designKey: `${designKey}:hot`, cupType: "hot-cup" as const, design: { ...design, rotation: 0 } },
+      { designKey: `${designKey}:cold`, cupType: "cold-cup" as const, design: { ...design, rotation: 0 } }
     ];
   });
   const entries = await Promise.all(pendingEntries.map(async ({ designKey, cupType, design }) => [designKey, await mergeCustomizationPreview(cupType, design)] as const));
   return Object.fromEntries(entries);
+}
+
+function sameDesignMap(left: CustomizationByDate, right: CustomizationByDate): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
+}
+
+function synchronizeDesigns(designs: CustomizationByDate, quotation: QuotationData, mode: CustomizationMode): CustomizationByDate {
+  if (mode === "same") {
+    const firstDate = quotation.serviceDates[0];
+    const shared = designs.shared ?? designs[firstDate?.serviceDate] ?? designs[firstDate?.id] ?? Object.values(designs).find(Boolean);
+    const next = shared ? { shared } : {};
+    return sameDesignMap(designs, next) ? designs : next;
+  }
+  const next = Object.fromEntries(quotation.serviceDates.map((date) => [date.serviceDate, designs[date.serviceDate] ?? designs[date.id]]));
+  return sameDesignMap(designs, next) ? designs : next;
+}
+
+function expandDesignsForDates(designs: CustomizationByDate, quotation: QuotationData, mode: CustomizationMode): CustomizationByDate {
+  return Object.fromEntries(quotation.serviceDates.map((date) => [date.serviceDate, designs[mode === "same" ? "shared" : date.serviceDate]]));
 }
 
 export function InvoiceShell() {
@@ -168,6 +171,7 @@ export function InvoiceShell() {
   const [findName, setFindName] = useState("");
   const [findPhone, setFindPhone] = useState("");
   const [findQuotationNo, setFindQuotationNo] = useState("");
+  const [lookupStatus, setLookupStatus] = useState("");
   const [reviewEditStep, setReviewEditStep] = useState<ReviewEditStep>("dates");
   const [reviewError, setReviewError] = useState("");
   const [eventAddress, setEventAddress] = useState("");
@@ -178,12 +182,10 @@ export function InvoiceShell() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptDataUrl, setReceiptDataUrl] = useState("");
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false, false]);
-  const [activeDesignDateId, setActiveDesignDateId] = useState("");
-  const [activeSleeveDesignId, setActiveSleeveDesignId] = useState(sleeveDesignId(0));
+  const [activeDesignDate, setActiveDesignDate] = useState("");
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
   const [customMenuFile, setCustomMenuFile] = useState<InvoiceUploadFile | undefined>();
   const [sleeveDesigns, setSleeveDesigns] = useState<CustomizationByDate>({});
-  const [sleeveDateAssignments, setSleeveDateAssignments] = useState<Record<string, string>>({});
   const [stickerDesigns, setStickerDesigns] = useState<CustomizationByDate>({});
   const [isFindingQuotation, setIsFindingQuotation] = useState(false);
   const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
@@ -196,13 +198,13 @@ export function InvoiceShell() {
 
   useEffect(() => {
     if (!quotation) return;
-    const count = getSleeveDesignCount(quotation);
-    const allowedDesignIds = new Set(Array.from({ length: count }, (_, index) => sleeveDesignId(index)));
-    setSleeveDateAssignments((current) => Object.fromEntries(
-      quotation.serviceDates.map((date, index) => [date.id, allowedDesignIds.has(current[date.id]) ? current[date.id] : sleeveDesignId(index % count)])
-    ));
-    if (!allowedDesignIds.has(activeSleeveDesignId)) setActiveSleeveDesignId(sleeveDesignId(0));
-  }, [quotation, activeSleeveDesignId]);
+    const options = quotation.customizationOptions;
+    setCartDesigns((current) => synchronizeDesigns(current, quotation, options.cart.mode));
+    setStickerDesigns((current) => synchronizeDesigns(current, quotation, options.sticker.mode));
+    setSleeveDesigns((current) => synchronizeDesigns(current, quotation, options.sleeve.mode));
+    const dates = quotation.serviceDates.map((date) => date.serviceDate);
+    setActiveDesignDate((current) => dates.includes(current) ? current : dates[0] ?? "");
+  }, [quotation]);
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
@@ -222,24 +224,25 @@ export function InvoiceShell() {
 
   async function findQuotation() {
     setError("");
+    setLookupStatus("");
     setIsFindingQuotation(true);
     const quotationNo = findQuotationNo.trim().toUpperCase();
     try {
-      const found = await findStoredQuotation({ quotationNo, name: findName, phone: findPhone });
-      if (!found) {
-        setError("We could not find this quotation. Please check your details or contact Hour Coffee.");
+      const result = await findStoredQuotation({ quotationNo, name: findName, phone: findPhone });
+      if (!result.matched) {
+        setError("We could not find this quotation. Please check your details and try again.");
         return;
       }
-      const approvedQuotation = withCustomizationDefaults(found);
-      if (approvedQuotation.status !== "APPROVED") {
-        setError("Your quotation is still pending approval. Please contact Hour Coffee or try again after approval.");
+      if (result.access === "PENDING_REVIEW") {
+        setLookupStatus("Your quotation is being reviewed. We will contact you shortly.");
         return;
       }
+      const approvedQuotation = withCustomizationDefaults(result.quotation);
       setQuotation(approvedQuotation);
-      setSleeveDateAssignments(defaultSleeveAssignments(approvedQuotation));
-      setActiveSleeveDesignId(sleeveDesignId(0));
-      if (approvedQuotation.serviceDates[0]) setActiveDesignDateId(approvedQuotation.serviceDates[0].id);
+      if (approvedQuotation.serviceDates[0]) setActiveDesignDate(approvedQuotation.serviceDates[0].serviceDate);
       setStepIndex(0);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to find the quotation. Please try again.");
     } finally {
       setIsFindingQuotation(false);
     }
@@ -281,19 +284,21 @@ export function InvoiceShell() {
     return true;
   }
 
-  function designDates(type: "cart" | "sticker" | "sleeve"): ServiceDate[] {
-    if (!quotation) return [];
-    const option = quotation.customizationOptions?.[type] ?? { mode: "same", designCount: 1 };
-    return option.mode === "same" ? quotation.serviceDates.slice(0, 1) : quotation.serviceDates.slice(0, Math.max(1, option.designCount));
-  }
-
-  function hasAnyDesign(designs: CustomizationByDate): boolean {
-    return Object.values(designs).some((design) => !!design);
+  function hasRequiredDesigns(type: "cart" | "sticker", designs: CustomizationByDate): boolean {
+    if (!quotation) return false;
+    const mode = quotation.customizationOptions[type].mode;
+    const keys = mode === "same" ? ["shared"] : quotation.serviceDates.map((date) => date.serviceDate);
+    return keys.every((key) => Boolean(designs[key]?.dataUrl));
   }
 
   function hasRequiredSleeveDesigns(designs: CustomizationByDate): boolean {
     if (!quotation) return false;
-    return Array.from({ length: getSleeveDesignCount(quotation) }, (_, index) => designs[sleeveDesignId(index)]).every((design) => !!design && ((design.logos?.length ?? 0) > 0 || !!design.dataUrl));
+    const mode = quotation.customizationOptions.sleeve.mode;
+    const keys = mode === "same" ? ["shared"] : quotation.serviceDates.map((date) => date.serviceDate);
+    return keys.every((key) => {
+      const design = designs[key];
+      return Boolean(design && ((design.logos?.length ?? 0) > 0 || design.dataUrl));
+    });
   }
 
   function next() {
@@ -305,8 +310,8 @@ export function InvoiceShell() {
     if (currentStep === "details" && dressCode === "Custom" && !customDressCode.trim()) return setError("Please describe the custom dress code.");
     if (currentStep === "receipt" && !receiptName) return setError("Please upload your payment receipt before continuing.");
     if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
-    if (currentStep === "cart" && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
-    if (currentStep === "sticker" && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
+    if (currentStep === "cart" && !hasRequiredDesigns("cart", cartDesigns)) return setError("Please upload the required cart design for every selected date.");
+    if (currentStep === "sticker" && !hasRequiredDesigns("sticker", stickerDesigns)) return setError("Please upload the required cup sticker design for every selected date.");
     if (currentStep === "sleeve" && !hasRequiredSleeveDesigns(sleeveDesigns)) return setError("Please upload each required sleeve design before continuing.");
     setStepIndex((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -321,16 +326,16 @@ export function InvoiceShell() {
   async function submit() {
     if (!quotation) return;
     setError("");
-    if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart") && !hasAnyDesign(cartDesigns)) return setError("Please upload your cart logo before continuing.");
-    if (quotation.hasCupStickers && !hasAnyDesign(stickerDesigns)) return setError("Please upload your cup sticker logo before continuing.");
+    if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart") && !hasRequiredDesigns("cart", cartDesigns)) return setError("Please upload the required cart design for every selected date.");
+    if (quotation.hasCupStickers && !hasRequiredDesigns("sticker", stickerDesigns)) return setError("Please upload the required cup sticker design for every selected date.");
     if (quotation.hasCupSleeves && !hasRequiredSleeveDesigns(sleeveDesigns)) return setError("Please upload each required sleeve design before continuing.");
     if (quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu") && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     setIsSubmittingInvoice(true);
     try {
       const [finalCartDesigns, finalStickerDesigns, finalSleeveDesigns] = await Promise.all([
-        mergeCustomizationGroup("cart", cartDesigns),
-        mergeCupStickerDesigns(stickerDesigns),
-        mergeCustomizationGroup("sleeve", assignedSleeveDesigns(sleeveDesigns, quotation.serviceDates, sleeveDateAssignments))
+        mergeCustomizationGroup("cart", expandDesignsForDates(cartDesigns, quotation, quotation.customizationOptions.cart.mode)),
+        mergeCupStickerDesigns(expandDesignsForDates(stickerDesigns, quotation, quotation.customizationOptions.sticker.mode)),
+        mergeCustomizationGroup("sleeve", expandDesignsForDates(sleeveDesigns, quotation, quotation.customizationOptions.sleeve.mode))
       ]);
       const invoice: InvoiceDetails = {
         invoiceNo,
@@ -375,6 +380,7 @@ export function InvoiceShell() {
             <span>Quotation No.</span>
             <input value={findQuotationNo} onChange={(event) => setFindQuotationNo(event.target.value.toUpperCase())} placeholder="Q00001" />
           </label>
+          {lookupStatus ? <p className="lookup-status">{lookupStatus}</p> : null}
           {error ? <p className="error">{error}</p> : null}
           <button className="hc-button hc-button-primary find-button" type="button" onClick={findQuotation} disabled={isFindingQuotation}>
             {isFindingQuotation ? "FINDING..." : "FIND QUOTATION"}
@@ -418,9 +424,12 @@ export function InvoiceShell() {
               <PlanEventStep
                 serviceDates={quotation.serviceDates}
                 setServiceDates={(serviceDates) => {
-                  const selectedIds = new Set(serviceDates.map((date) => date.id));
-                  const drinkOrders = Object.fromEntries(Object.entries(quotation.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as typeof quotation.drinkOrders;
-                  setQuotation({ ...quotation, serviceDates, drinkOrders });
+                  setQuotation((current) => {
+                    if (!current) return current;
+                    const selectedIds = new Set(serviceDates.map((date) => date.id));
+                    const drinkOrders = Object.fromEntries(Object.entries(current.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as typeof current.drinkOrders;
+                    return { ...current, serviceDates, drinkOrders };
+                  });
                 }}
                 onNext={() => {
                   if (validateEditedDates()) setReviewEditStep("drinks");
@@ -471,23 +480,21 @@ export function InvoiceShell() {
         ) : null}
         {currentStep === "receipt" ? <ReceiptUpload receiptName={receiptName} onReceiptName={setReceiptName} onReceiptDataUrl={setReceiptDataUrl} /> : null}
         {currentStep === "cart" ? (
-          <CartLogoCustomizer serviceDates={designDates("cart")} designs={cartDesigns} activeDateId={activeDesignDateId || designDates("cart")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setCartDesigns} />
+          <CartLogoCustomizer mode={quotation.customizationOptions.cart.mode} serviceDates={quotation.serviceDates} designs={cartDesigns} activeDate={activeDesignDate} onActiveDate={setActiveDesignDate} onDesigns={setCartDesigns} />
         ) : null}
         {currentStep === "menu" ? <CustomMenuUpload file={customMenuFile} onFile={setCustomMenuFile} /> : null}
         {currentStep === "sleeve" ? (
           <CupSleeveCustomizer
+            mode={quotation.customizationOptions.sleeve.mode}
             serviceDates={quotation.serviceDates}
-            designCount={getSleeveDesignCount(quotation)}
             designs={sleeveDesigns}
-            activeDesignId={activeSleeveDesignId}
-            onActiveDesign={setActiveSleeveDesignId}
-            dateAssignments={sleeveDateAssignments}
-            onDateAssignments={setSleeveDateAssignments}
+            activeDate={activeDesignDate}
+            onActiveDate={setActiveDesignDate}
             onDesigns={setSleeveDesigns}
           />
         ) : null}
         {currentStep === "sticker" ? (
-          <CupStickerCustomizer serviceDates={designDates("sticker")} designs={stickerDesigns} activeDateId={activeDesignDateId || designDates("sticker")[0]?.id || ""} onActiveDate={setActiveDesignDateId} onDesigns={setStickerDesigns} />
+          <CupStickerCustomizer mode={quotation.customizationOptions.sticker.mode} serviceDates={quotation.serviceDates} designs={stickerDesigns} activeDate={activeDesignDate} onActiveDate={setActiveDesignDate} onDesigns={setStickerDesigns} />
         ) : null}
         {currentStep === "success" ? <InvoiceSuccess invoiceNo={invoiceNo} /> : null}
 

@@ -18,11 +18,8 @@ function QuotationSubmittedContent() {
     <main className="hc-page">
       <div className="hc-card result-card">
         <h1>Quotation Submitted</h1>
-        <p>Thank you for choosing Hour Coffee.</p>
-        <p>Your quotation has been submitted successfully.</p>
-        {quotationNo ? <p><strong>Quotation No.:</strong> {quotationNo}</p> : null}
-        <p className="muted-text">Our PIC will review it and contact you shortly.</p>
-        <p className="approval-note">Invoice access is available after admin approval.</p>
+        <p>Your quotation is received and is under review.<br />We will contact you shortly. Thank you.</p>
+        {quotationNo ? <p className="quotation-number"><strong>Quotation No.:</strong> {quotationNo}</p> : null}
         <div className="result-actions">
           <Link className="hc-button hc-button-primary" href="/invoice">
             Continue to Invoice

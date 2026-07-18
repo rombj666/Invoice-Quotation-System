@@ -1,98 +1,123 @@
 "use client";
 
-import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
-import type { ServiceDate } from "../../types/quotation";
-import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
-import { formatShortDate } from "../../lib/formatters";
 import { useState } from "react";
+import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
+import type { CustomizationMode, ServiceDate } from "../../types/quotation";
+import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
+import {
+  calculateContainedDesignRect,
+  createDefaultDesignGeometry,
+  CUSTOMIZATION_LAYOUT,
+  designAspectRatio,
+  formatCustomizationDate,
+  getCupWidthBounds,
+  normalizeDesignGeometry,
+  SHOW_CUSTOMIZATION_BOUNDARIES
+} from "../../lib/customization-layout";
 
 type Props = {
+  mode: CustomizationMode;
   serviceDates: ServiceDate[];
   designs: CustomizationByDate;
-  activeDateId: string;
-  onActiveDate: (id: string) => void;
+  activeDate: string;
+  onActiveDate: (isoDate: string) => void;
   onDesigns: (designs: CustomizationByDate) => void;
 };
 
-function readFile(file: File, callback: (design: CustomizationDesign) => void, y = 50) {
+function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y });
+    const image = new Image();
+    image.onload = () => {
+      const base = createDefaultDesignGeometry({
+        fileName: file.name,
+        dataUrl,
+        originalDataUrl: dataUrl,
+        size: 30,
+        rotation: 0,
+        x: 50,
+        y: 50,
+        aspectRatio: image.naturalHeight / Math.max(1, image.naturalWidth),
+        hotWidthRatio: 0.3,
+        coldWidthRatio: 0.3
+      }, "hotCup", 0.3);
+      callback(normalizeDesignGeometry({ ...base, coldWidthRatio: 0.3 }, "coldCup"));
+    };
+    image.src = dataUrl;
   };
   reader.readAsDataURL(file);
 }
 
-export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onActiveDate, onDesigns }: Props) {
+export function CupStickerCustomizer({ mode, serviceDates, designs, activeDate, onActiveDate, onDesigns }: Props) {
   const [missingTemplates, setMissingTemplates] = useState({ hot: false, cold: false });
-  const activeKey = serviceDates.some((date) => date.id === activeDateId) ? activeDateId : serviceDates[0]?.id ?? "";
-  const activeDesign = designs[activeKey];
+  const dates = serviceDates.map((date) => date.serviceDate);
+  const selectedDate = dates.includes(activeDate) ? activeDate : dates[0] ?? "";
+  const activeKey = mode === "same" ? "shared" : selectedDate;
+  const rawDesign = designs[activeKey];
+  const activeDesign = rawDesign
+    ? normalizeDesignGeometry(normalizeDesignGeometry({ ...rawDesign, rotation: 0 }, "hotCup"), "coldCup")
+    : undefined;
+  const aspectRatio = activeDesign ? designAspectRatio(activeDesign) : 1;
+  const bounds = getCupWidthBounds(aspectRatio);
 
-  function update(patch: Partial<CustomizationDesign>) {
+  function updateWidth(widthRatio: number) {
     if (!activeDesign) return;
-    onDesigns({ ...designs, [activeKey]: { ...activeDesign, ...patch, size: Math.min(patch.size ?? activeDesign.size, 58) } });
+    const next = normalizeDesignGeometry(normalizeDesignGeometry({
+      ...activeDesign,
+      size: widthRatio * 100,
+      rotation: 0,
+      widthRatio,
+      hotWidthRatio: widthRatio,
+      coldWidthRatio: widthRatio
+    }, "hotCup"), "coldCup");
+    onDesigns({ ...designs, [activeKey]: next });
   }
 
-  function setBoth(design: CustomizationDesign) {
-    onDesigns({ ...designs, [activeKey]: { ...design, size: Math.min(design.size, 58), y: 50 } });
-  }
-
-  function logo(design: CustomizationDesign | undefined, label: string) {
-    return design ? (
-      <img
-        src={design.originalDataUrl ?? design.dataUrl}
-        alt={label}
-        style={{
-          width: `${design.size}%`,
-          left: `${design.x}%`,
-          top: `${design.y}%`,
-          transform: `translate(-50%, -50%) rotate(${design.rotation}deg)`
-        }}
-      />
-    ) : null;
+  function preview(template: "hotCup" | "coldCup", label: string, url: string, missingKey: "hot" | "cold") {
+    const area = CUSTOMIZATION_LAYOUT[template].designArea;
+    const rect = activeDesign ? calculateContainedDesignRect(template, activeDesign) : null;
+    return (
+      <div>
+        <strong className="custom-preview-label">{label}</strong>
+        <div className="cup-template-preview">
+          <img className="custom-template-img" src={url} alt={`${label} template`} onLoad={() => setMissingTemplates((current) => ({ ...current, [missingKey]: false }))} onError={() => setMissingTemplates((current) => ({ ...current, [missingKey]: true }))} />
+          <div
+            className={`cup-template-overlay cup-design-area ${SHOW_CUSTOMIZATION_BOUNDARIES ? "custom-boundary-debug" : ""}`}
+            style={{ left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.width * 100}%`, height: `${area.height * 100}%` }}
+          >
+            {activeDesign && rect ? <img src={activeDesign.originalDataUrl ?? activeDesign.dataUrl} alt={`${label} sticker logo`} style={{ width: `${rect.widthRatio * 100}%`, left: `${rect.centerXRatio * 100}%`, top: `${rect.centerYRatio * 100}%`, transform: "translate(-50%, -50%)" }} /> : null}
+            {SHOW_CUSTOMIZATION_BOUNDARIES && rect ? <small className="custom-debug-label">x {rect.centerXRatio.toFixed(3)} y {rect.centerYRatio.toFixed(3)} w {rect.widthRatio.toFixed(3)}</small> : null}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div>
       <h2>Cup Sticker Logo</h2>
       <p className="step-copy">Upload one logo for both cup sticker previews.</p>
-      {serviceDates.length > 1 ? (
-        <select className="design-select" value={activeKey} onChange={(event) => onActiveDate(event.target.value)}>
-          {serviceDates.map((date, index) => (
-            <option value={date.id} key={date.id}>
-              Design {index + 1} - {formatShortDate(date.serviceDate)}
-            </option>
-          ))}
-        </select>
+      {mode === "per-date" && serviceDates.length > 1 ? (
+        <label className="hc-field">
+          <span>Editing design</span>
+          <select className="design-select" value={selectedDate} onChange={(event) => onActiveDate(event.target.value)}>
+            {serviceDates.map((date) => <option value={date.serviceDate} key={date.serviceDate}>{formatCustomizationDate(date.serviceDate)}</option>)}
+          </select>
+        </label>
       ) : null}
       <div className="cup-template-grid">
-        <div>
-          <strong className="custom-preview-label">Hot cup</strong>
-          <div className="cup-template-preview">
-            <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.hotCupTemplateUrl} alt="Hot cup template" onLoad={() => setMissingTemplates((current) => ({ ...current, hot: false }))} onError={() => setMissingTemplates((current) => ({ ...current, hot: true }))} />
-            <div className="cup-template-overlay">{logo(activeDesign ? { ...activeDesign, y: 56 } : undefined, "Hot cup sticker logo")}</div>
-          </div>
-        </div>
-        <div>
-          <strong className="custom-preview-label">Cold cup</strong>
-          <div className="cup-template-preview">
-            <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.coldCupTemplateUrl} alt="Cold cup template" onLoad={() => setMissingTemplates((current) => ({ ...current, cold: false }))} onError={() => setMissingTemplates((current) => ({ ...current, cold: true }))} />
-            <div className="cup-template-overlay">{logo(activeDesign ? { ...activeDesign, y: 50 } : undefined, "Cold cup sticker logo")}</div>
-          </div>
-        </div>
+        {preview("hotCup", "Hot cup", CUSTOMIZATION_ASSETS.hotCupTemplateUrl, "hot")}
+        {preview("coldCup", "Cold cup", CUSTOMIZATION_ASSETS.coldCupTemplateUrl, "cold")}
       </div>
       {missingTemplates.hot || missingTemplates.cold ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
       <label className="upload-box">
         <strong>Tap to upload same logo for both cups</strong>
         <span>PNG or JPG only</span>
-        <input
-          type="file"
-          accept="image/png,image/jpeg"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) readFile(file, setBoth);
-          }}
-        />
+        <input type="file" accept="image/png,image/jpeg" onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
+        }} />
       </label>
       {activeDesign ? (
         <>
@@ -100,12 +125,9 @@ export function CupStickerCustomizer({ serviceDates, designs, activeDateId, onAc
           <p className="upload-ok">Same logo is applied to both cup templates.</p>
           <label className="range-field">
             Logo size
-            <input type="range" min={10} max={58} value={Math.min(activeDesign.size, 58)} onChange={(event) => update({ size: Number(event.target.value) })} />
+            <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={Math.min(bounds.max, Math.max(bounds.min, activeDesign.widthRatio ?? activeDesign.size / 100))} onChange={(event) => updateWidth(Number(event.target.value))} />
           </label>
-          <label className="range-field">
-            Rotation: {activeDesign.rotation}°
-            <input type="range" min={-180} max={180} value={activeDesign.rotation} onChange={(event) => update({ rotation: Number(event.target.value) })} />
-          </label>
+          <div className="mini-summary">Logo size: {Math.round((activeDesign.widthRatio ?? activeDesign.size / 100) * 100)}%</div>
         </>
       ) : null}
     </div>

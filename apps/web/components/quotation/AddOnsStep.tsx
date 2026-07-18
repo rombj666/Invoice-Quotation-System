@@ -43,24 +43,18 @@ function hasEnoughLeadTime(data: QuotationData): boolean {
 
 function normalizeDesignOption(option: CustomizationOption, selectedDateCount: number): CustomizationOption {
   if (selectedDateCount <= 1 || option.mode === "same") return { mode: "same", designCount: 1 };
-  const maxDesigns = Math.max(2, selectedDateCount);
-  return {
-    mode: option.mode,
-    designCount: Math.min(maxDesigns, Math.max(2, option.designCount || selectedDateCount))
-  };
+  return { mode: "per-date", designCount: selectedDateCount };
 }
 
 function DesignOptions({
   label,
   option,
   selectedDateCount,
-  maxDesigns,
   onChange
 }: {
   label: string;
   option: CustomizationOption;
   selectedDateCount: number;
-  maxDesigns: number;
   onChange: (option: CustomizationOption) => void;
 }) {
   const showMode = selectedDateCount > 1;
@@ -80,18 +74,6 @@ function DesignOptions({
               <option value="per-date">Different design for different dates</option>
             </select>
           </label>
-          {normalized.mode !== "same" ? (
-            <label>
-              <span>Number of design versions</span>
-              <input
-                type="number"
-                min={2}
-                max={maxDesigns}
-                value={normalized.designCount}
-                onChange={(event) => onChange({ ...normalized, designCount: Math.max(2, Number(event.target.value) || 2) })}
-              />
-            </label>
-          ) : null}
         </details>
       ) : null}
       <p>No extra design-version cost is added. Current add-on price stays unchanged.</p>
@@ -264,7 +246,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
               <span>{formatMoney(addon.price)}</span>
             </button>
             {addon.name === "Custom Branded Cart" && isSelected ? (
-              <DesignOptions label="Cart" option={customizationOptions.cart} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("cart", option)} />
+              <DesignOptions label="Cart" option={customizationOptions.cart} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("cart", option)} />
             ) : null}
           </div>
         );
@@ -279,7 +261,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
           <span>{formatMoney(getCupStickerPrice(totalCups))}</span>
         </button>
         {data.hasCupStickers ? (
-          <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sticker", option)} />
+          <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sticker", option)} />
         ) : null}
       </div>
 
@@ -292,7 +274,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
           <span>{formatMoney(getCupSleevePrice(totalCups))}</span>
         </button>
         {data.hasCupSleeves ? (
-          <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} maxDesigns={Math.max(2, data.serviceDates.length)} onChange={(option) => updateCustomizationOption("sleeve", option)} />
+          <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sleeve", option)} />
         ) : null}
       </div>
 

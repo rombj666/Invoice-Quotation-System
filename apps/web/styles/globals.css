@@ -278,6 +278,9 @@ p {
   cursor: pointer;
   font-size: 12px;
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .hc-cal-cell:not(.hc-cal-empty):not(.hc-cal-past):hover {
@@ -1189,7 +1192,6 @@ p {
 
 .cart-template-overlay.cart-design-panel {
   inset: auto;
-  outline: 1px dashed rgba(170, 145, 110, 0.35);
 }
 
 .cart-template-overlay img {
@@ -1243,6 +1245,10 @@ p {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.cup-template-overlay.cup-design-area {
+  inset: auto;
 }
 
 .cup-template-overlay img {
@@ -1354,29 +1360,43 @@ p {
   gap: 8px;
 }
 
-.sleeve-date-assignments {
-  display: grid;
-  gap: 9px;
-  margin: 0 0 16px;
-  padding: 12px;
-  border: 1px solid #e7e2da;
+.custom-boundary-debug {
+  outline: 2px dashed #e5484d;
+  outline-offset: -2px;
+}
+
+.custom-boundary-debug img {
+  outline: 2px solid #2274e0;
+}
+
+.custom-debug-label {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 2;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font: 10px/1.3 monospace;
+  padding: 3px 5px;
+}
+
+.field-error {
+  color: #a32727 !important;
+  font-size: 12px;
+}
+
+.lookup-status {
+  border: 1px solid #dfc98f;
   border-radius: 10px;
-  background: #faf8f4;
+  background: #fff8e2;
+  color: #624b13;
+  padding: 12px;
 }
 
-.sleeve-date-assignments label {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, auto);
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-
-.sleeve-date-assignments select {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  padding: 8px 10px;
+.quotation-number {
+  margin: 20px 0;
+  font-size: 1.05rem;
 }
 
 .secondary-mini-button {

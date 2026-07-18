@@ -1,7 +1,7 @@
 "use client";
 
 import type { PointerEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ServiceDate } from "../../types/quotation";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
 import { getBaristasNeeded, getExtraBaristaFee, getSetupFee } from "../../lib/pricing";
@@ -16,17 +16,28 @@ type Props = {
 };
 
 export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: Props) {
-  const [dragStartIso, setDragStartIso] = useState<string | null>(null);
-  const [dragEndIso, setDragEndIso] = useState<string | null>(null);
-  const [dragMode, setDragMode] = useState<"select" | "remove">("select");
-  const [hasDragged, setHasDragged] = useState(false);
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const serviceDatesRef = useRef(serviceDates);
+  const pointerSessionRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startIso: string;
+    mode: "select" | "remove";
+    dragging: boolean;
+    handled: Set<string>;
+    captureTarget: HTMLButtonElement;
+  } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ mode: "select" | "remove"; dates: Set<string> } | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const date = new Date();
     date.setDate(1);
     return date;
   });
+
+  useEffect(() => {
+    serviceDatesRef.current = serviceDates;
+  }, [serviceDates]);
 
   const timeOptions = Array.from({ length: 30 }).map((_, index) => {
     const totalMinutes = 8 * 60 + index * 30;
@@ -36,9 +47,10 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
   });
 
   function addDate(value: string) {
-    if (!value || serviceDates.some((date) => date.serviceDate === value)) return;
-    setServiceDates([
-      ...serviceDates,
+    const current = serviceDatesRef.current;
+    if (!value || current.some((date) => date.serviceDate === value)) return;
+    const next = [
+      ...current,
       {
         id: crypto.randomUUID(),
         serviceDate: value,
@@ -46,7 +58,9 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
         startTime: "",
         endTime: ""
       }
-    ].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)));
+    ].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
+    serviceDatesRef.current = next;
+    setServiceDates(next);
   }
 
   function addDateWithList(value: string, dates: ServiceDate[]): ServiceDate[] {
@@ -87,74 +101,89 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
     ...Array.from({ length: firstDay.getDay() }).map(() => ""),
     ...Array.from({ length: daysInMonth }).map((_, index) => dateToIso(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1)))
   ];
-  const previewDates = new Set<string>();
-  if (dragStartIso && dragEndIso) {
-    const start = new Date(`${dragStartIso}T12:00:00`);
-    const end = new Date(`${dragEndIso}T12:00:00`);
-    const from = start <= end ? start : end;
-    const to = start <= end ? end : start;
-    for (let cursor = new Date(from); cursor <= to; cursor.setDate(cursor.getDate() + 1)) {
-      previewDates.add(dateToIso(cursor));
-    }
-  }
-
   function updateDate(id: string, patch: Partial<ServiceDate>) {
     setServiceDates(serviceDates.map((date) => (date.id === id ? { ...date, ...patch } : date)));
   }
 
   function removeDate(id: string) {
-    setServiceDates(serviceDates.filter((date) => date.id !== id));
-  }
-
-  function applyDateRange(startIso: string, endIso: string, mode: "select" | "remove") {
-    const start = new Date(`${startIso}T12:00:00`);
-    const end = new Date(`${endIso}T12:00:00`);
-    const from = start <= end ? start : end;
-    const to = start <= end ? end : start;
-    let next = [...serviceDates];
-    for (let cursor = new Date(from); cursor <= to; cursor.setDate(cursor.getDate() + 1)) {
-      const iso = dateToIso(cursor);
-      if (iso < todayIso) continue;
-      if (mode === "select") next = addDateWithList(iso, next);
-      else next = next.filter((date) => date.serviceDate !== iso);
-    }
-    setServiceDates(next.sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)));
+    const next = serviceDatesRef.current.filter((date) => date.id !== id);
+    serviceDatesRef.current = next;
+    setServiceDates(next);
   }
 
   function startDrag(iso: string, event: PointerEvent<HTMLButtonElement>) {
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-    setDragStartIso(iso);
-    setDragEndIso(iso);
-    setDragMode(iso >= todayIso && selectedDateValues.includes(iso) ? "remove" : "select");
-    setHasDragged(false);
+    if (iso < todayIso || (event.pointerType === "mouse" && event.button !== 0)) return;
+    const mode = serviceDatesRef.current.some((date) => date.serviceDate === iso) ? "remove" : "select";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerSessionRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startIso: iso,
+      mode,
+      dragging: false,
+      handled: new Set(),
+      captureTarget: event.currentTarget
+    };
+  }
+
+  function applyDragDate(iso: string, mode: "select" | "remove") {
+    if (iso < todayIso) return;
+    const current = serviceDatesRef.current;
+    const next = mode === "select"
+      ? addDateWithList(iso, current)
+      : current.filter((date) => date.serviceDate !== iso);
+    if (next === current || (next.length === current.length && next.every((date, index) => date === current[index]))) return;
+    serviceDatesRef.current = next;
+    setServiceDates(next);
+  }
+
+  function dateUnderPointer(clientX: number, clientY: number): string | null {
+    const element = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-calendar-date]");
+    const iso = element?.dataset.calendarDate ?? null;
+    return iso && iso >= todayIso ? iso : null;
+  }
+
+  function handleCrossedDate(iso: string, session: NonNullable<typeof pointerSessionRef.current>) {
+    if (session.handled.has(iso) || iso < todayIso) return;
+    session.handled.add(iso);
+    applyDragDate(iso, session.mode);
+    setDragPreview({ mode: session.mode, dates: new Set(session.handled) });
   }
 
   function trackPointerMove(event: PointerEvent<HTMLButtonElement>) {
-    if (!pointerStartRef.current || hasDragged) return;
-    const distance = Math.hypot(event.clientX - pointerStartRef.current.x, event.clientY - pointerStartRef.current.y);
-    if (distance > 6) setHasDragged(true);
-  }
-
-  function clearDrag() {
-    pointerStartRef.current = null;
-    setDragStartIso(null);
-    setDragEndIso(null);
-    setHasDragged(false);
-  }
-
-  function endDrag(iso: string) {
-    if (!dragStartIso) {
-      toggleDate(iso);
-      return;
+    const session = pointerSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    if (!session.dragging) {
+      const distance = Math.hypot(event.clientX - session.startX, event.clientY - session.startY);
+      if (distance < 6) return;
+      session.dragging = true;
+      handleCrossedDate(session.startIso, session);
     }
-    if (hasDragged) applyDateRange(dragStartIso, dragEndIso ?? iso, dragMode);
-    else toggleDate(dragStartIso);
-    clearDrag();
+    event.preventDefault();
+    const iso = dateUnderPointer(event.clientX, event.clientY);
+    if (iso) handleCrossedDate(iso, session);
+  }
+
+  function finishPointer(event: PointerEvent<HTMLButtonElement>, cancelled = false) {
+    const session = pointerSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    if (!cancelled && session.dragging) {
+      const iso = dateUnderPointer(event.clientX, event.clientY);
+      if (iso) handleCrossedDate(iso, session);
+    } else if (!cancelled) {
+      toggleDate(session.startIso);
+    }
+    if (session.captureTarget.hasPointerCapture(session.pointerId)) {
+      session.captureTarget.releasePointerCapture(session.pointerId);
+    }
+    pointerSessionRef.current = null;
+    setDragPreview(null);
   }
 
   function toggleDate(value: string) {
     if (value < todayIso) return;
-    const existing = serviceDates.find((date) => date.serviceDate === value);
+    const existing = serviceDatesRef.current.find((date) => date.serviceDate === value);
     if (existing) removeDate(existing.id);
     else addDate(value);
   }
@@ -196,26 +225,20 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
             if (!iso) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
             const isPast = iso < todayIso;
             const isSelected = selectedDateValues.includes(iso);
-            const isPreview = !isPast && previewDates.has(iso);
+            const isPreview = !isPast && Boolean(dragPreview?.dates.has(iso));
             return (
               <button
-                className={`hc-cal-cell ${isPast ? "hc-cal-past" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragMode}` : ""}`}
+                className={`hc-cal-cell ${isPast ? "hc-cal-past" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragPreview?.mode}` : ""}`}
                 type="button"
                 key={iso}
+                data-calendar-date={iso}
+                disabled={isPast}
                 aria-disabled={isPast}
                 tabIndex={isPast ? -1 : 0}
-                onPointerDown={(event) => {
-                  startDrag(iso, event);
-                }}
+                onPointerDown={(event) => startDrag(iso, event)}
                 onPointerMove={trackPointerMove}
-                onPointerEnter={() => {
-                  if (dragStartIso) {
-                    setDragEndIso(iso);
-                    if (iso !== dragStartIso) setHasDragged(true);
-                  }
-                }}
-                onPointerUp={() => endDrag(iso)}
-                onPointerCancel={clearDrag}
+                onPointerUp={(event) => finishPointer(event)}
+                onPointerCancel={(event) => finishPointer(event, true)}
               >
                 {Number(iso.slice(-2))}
               </button>

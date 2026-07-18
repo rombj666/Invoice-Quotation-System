@@ -23,6 +23,11 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+function normalizePhone(value: unknown): string {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.startsWith("60") ? `0${digits.slice(2)}` : digits;
+}
+
 async function getNextQuotationNo(): Promise<string> {
   const latest = await prisma.quotation.findFirst({
     orderBy: { quotationNo: "desc" },
@@ -147,13 +152,19 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
 quotationRoutes.post("/find", async (req, res, next) => {
   try {
     const { quotationNo, name, phone } = req.body;
-    const quotation = await prisma.quotation.findUnique({ where: { quotationNo }, include: { customer: true } });
-    if (!quotation) return res.status(404).json({ error: "Quotation not found" });
-    const normalizedPhone = String(phone || "").replace(/\D/g, "");
-    const customerPhone = quotation.customer.phone.replace(/\D/g, "");
+    const normalizedQuotationNo = String(quotationNo ?? "").trim().toUpperCase();
+    const quotation = await prisma.quotation.findUnique({ where: { quotationNo: normalizedQuotationNo }, include: { customer: true } });
+    if (!quotation) return res.status(404).json({ matched: false, access: "NOT_FOUND" });
+    const normalizedPhone = normalizePhone(phone);
+    const customerPhone = normalizePhone(quotation.customer.phone);
     const nameMatches = quotation.customer.name.trim().toLowerCase() === String(name || "").trim().toLowerCase();
-    if (!nameMatches || normalizedPhone !== customerPhone) return res.status(404).json({ error: "Quotation not found" });
-    res.json(toQuotationPayload(quotation));
+    if (!nameMatches || !normalizedPhone || normalizedPhone !== customerPhone) {
+      return res.status(404).json({ matched: false, access: "NOT_FOUND" });
+    }
+    if (quotation.status !== "APPROVED") {
+      return res.json({ matched: true, access: "PENDING_REVIEW", quotationNo: quotation.quotationNo });
+    }
+    res.json({ matched: true, access: "APPROVED", quotation: toQuotationPayload(quotation) });
   } catch (error) {
     next(error);
   }

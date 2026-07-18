@@ -1,9 +1,11 @@
 export function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 export function isValidMalaysiaPhone(value: string): boolean {
-  return /^01\d{8,9}$/.test(value.replace(/\D/g, ""));
+  const digits = value.replace(/\D/g, "");
+  const local = digits.startsWith("60") ? `0${digits.slice(2)}` : digits;
+  return /^01\d{8,9}$/.test(local);
 }
 
 export function hasText(value: string): boolean {

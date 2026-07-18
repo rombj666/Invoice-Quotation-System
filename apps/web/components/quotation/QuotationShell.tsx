@@ -7,6 +7,7 @@ import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validator
 import { getNextQuotationNo } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
 import { AddOnsStep } from "./AddOnsStep";
+import { ContactDetailsStep } from "./ContactDetailsStep";
 import { CustomerDetailsStep } from "./CustomerDetailsStep";
 import { DrinkPreferencesStep } from "./DrinkPreferencesStep";
 import { LocationStep } from "./LocationStep";
@@ -15,9 +16,10 @@ import { ProgressHeader } from "./ProgressHeader";
 import { QuotationReferenceStep } from "./QuotationReferenceStep";
 import { QuotationReviewStep } from "./QuotationReviewStep";
 
-const totalSteps = 7;
+const totalSteps = 8;
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
+const quotationDraftStorageKey = "hourCoffeeQuotationDraft";
 
 const emptyQuotation: QuotationData = {
   quotationNo: "Q00001",
@@ -79,6 +81,7 @@ export function QuotationShell() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [data, setData] = useState<QuotationData>(emptyQuotation);
+  const [draftReady, setDraftReady] = useState(false);
 
   useEffect(() => {
     const savedSubmission = window.localStorage.getItem(submittedQuotationStorageKey);
@@ -93,10 +96,42 @@ export function QuotationShell() {
         window.localStorage.removeItem(submittedQuotationStorageKey);
       }
     }
+    const savedDraft = window.localStorage.getItem(quotationDraftStorageKey);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft) as { version?: number; step?: number; currentStep?: number; data?: Partial<QuotationData> } & Partial<QuotationData>;
+        const draftData = parsed.data ?? parsed;
+        if (draftData.customer && Array.isArray(draftData.serviceDates)) {
+          const restored = {
+            ...emptyQuotation,
+            ...draftData,
+            customer: { ...emptyQuotation.customer, ...draftData.customer },
+            customizationOptions: { ...emptyQuotation.customizationOptions, ...draftData.customizationOptions }
+          } as QuotationData;
+          const contactIsValid = hasText(restored.customer.name) && isValidMalaysiaPhone(restored.customer.phone) && isValidEmail(restored.customer.email);
+          const legacyStep = Number(parsed.step ?? parsed.currentStep ?? 0);
+          const restoredStep = parsed.version === 2
+            ? legacyStep
+            : contactIsValid ? legacyStep + 1 : 0;
+          setData(restored);
+          setStep(Math.min(totalSteps - 1, Math.max(0, restoredStep)));
+          setDraftReady(true);
+          return;
+        }
+      } catch {
+        window.localStorage.removeItem(quotationDraftStorageKey);
+      }
+    }
     getNextQuotationNo()
       .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
-      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
+      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."))
+      .finally(() => setDraftReady(true));
   }, [router]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 2, step, data }));
+  }, [data, draftReady, step]);
 
   function next() {
     setError("");
@@ -123,8 +158,10 @@ export function QuotationShell() {
 
   function updateServiceDates(serviceDates: ServiceDate[]) {
     const selectedIds = new Set(serviceDates.map((date) => date.id));
-    const drinkOrders = Object.fromEntries(Object.entries(data.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as DrinkOrderByDate;
-    setData({ ...data, serviceDates, drinkOrders });
+    setData((current) => {
+      const drinkOrders = Object.fromEntries(Object.entries(current.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as DrinkOrderByDate;
+      return { ...current, serviceDates, drinkOrders };
+    });
   }
 
   function validateLocation() {
@@ -146,11 +183,17 @@ export function QuotationShell() {
     next();
   }
 
-  function validateCustomer() {
+  function validateContact() {
     const customer = data.customer;
     if (!hasText(customer.name)) return setError("Customer name is required.");
     if (!isValidMalaysiaPhone(customer.phone)) return setError("Valid phone number is required.");
     if (!isValidEmail(customer.email)) return setError("Valid email is required.");
+    setData({ ...data, customer: { ...customer, name: customer.name.trim(), email: customer.email.trim() } });
+    next();
+  }
+
+  function validateCustomer() {
+    const customer = data.customer;
     if (!hasText(customer.billingAddress)) return setError("Billing address is required.");
     next();
   }
@@ -165,6 +208,7 @@ export function QuotationShell() {
 
   function resetQuotation() {
     window.localStorage.removeItem(submittedQuotationStorageKey);
+    window.localStorage.removeItem(quotationDraftStorageKey);
     setStep(0);
     setError("");
     getNextQuotationNo()
@@ -178,13 +222,14 @@ export function QuotationShell() {
       <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
       <Card>
         <ProgressHeader currentStep={step} totalSteps={totalSteps} />
-        {step === 0 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onNext={validatePlanEvent} error={error} /> : null}
-        {step === 1 ? <LocationStep data={data} setData={setData} onBack={back} onNext={validateLocation} error={error} /> : null}
-        {step === 2 ? <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={validateDrinks} error={error} /> : null}
-        {step === 3 ? <AddOnsStep data={data} setData={setData} onBack={back} onNext={next} /> : null}
-        {step === 4 ? <CustomerDetailsStep data={data} setData={setData} onBack={back} onNext={validateCustomer} error={error} /> : null}
-        {step === 5 ? <QuotationReferenceStep data={data} setData={setData} onBack={back} onNext={validateReference} error={error} /> : null}
-        {step === 6 ? <QuotationReviewStep data={data} onBack={back} onReset={resetQuotation} /> : null}
+        {step === 0 ? <ContactDetailsStep data={data} setData={setData} onNext={validateContact} /> : null}
+        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onNext={validatePlanEvent} error={error} /> : null}
+        {step === 2 ? <LocationStep data={data} setData={setData} onBack={back} onNext={validateLocation} error={error} /> : null}
+        {step === 3 ? <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={validateDrinks} error={error} /> : null}
+        {step === 4 ? <AddOnsStep data={data} setData={setData} onBack={back} onNext={next} /> : null}
+        {step === 5 ? <CustomerDetailsStep data={data} setData={setData} onBack={back} onNext={validateCustomer} error={error} /> : null}
+        {step === 6 ? <QuotationReferenceStep data={data} setData={setData} onBack={back} onNext={validateReference} error={error} /> : null}
+        {step === 7 ? <QuotationReviewStep data={data} onBack={back} onReset={resetQuotation} /> : null}
       </Card>
     </main>
   );

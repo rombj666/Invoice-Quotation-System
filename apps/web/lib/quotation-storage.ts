@@ -7,6 +7,17 @@ type FindQuotationInput = {
   quotationNo: string;
 };
 
+export type QuotationLookupResult =
+  | { matched: false; access: "NOT_FOUND" }
+  | { matched: true; access: "PENDING_REVIEW"; quotationNo: string }
+  | { matched: true; access: "APPROVED"; quotation: QuotationData };
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -18,7 +29,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error ?? "Request failed");
+    throw new ApiRequestError(payload?.error ?? "Request failed", response.status);
   }
 
   if (response.status === 204) return undefined as T;
@@ -40,11 +51,16 @@ export function loadQuotationByNo(quotationNo: string): Promise<QuotationData | 
   return request<QuotationData>(`/api/quotations/${encodeURIComponent(quotationNo)}`).catch(() => null);
 }
 
-export function findQuotation(input: FindQuotationInput): Promise<QuotationData | null> {
-  return request<QuotationData>("/api/quotations/find", {
-    method: "POST",
-    body: JSON.stringify(input)
-  }).catch(() => null);
+export async function findQuotation(input: FindQuotationInput): Promise<QuotationLookupResult> {
+  try {
+    return await request<QuotationLookupResult>("/api/quotations/find", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return { matched: false, access: "NOT_FOUND" };
+    throw error;
+  }
 }
 
 export function approveQuotation(quotationNo: string): Promise<QuotationData> {
