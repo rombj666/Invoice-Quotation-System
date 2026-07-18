@@ -1636,7 +1636,8 @@ p {
 .admin-actions button,
 .admin-bottom-actions a,
 .admin-bottom-actions button,
-.admin-file-link {
+.admin-file-link,
+.admin-invoice-view-button {
   border: 1px solid #ccc;
   border-radius: 8px;
   background: #fff;
@@ -1646,6 +1647,24 @@ p {
   padding: 9px 12px;
   text-decoration: none;
   font-size: 13px;
+}
+
+.admin-invoice-view-button {
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-invoice-view-button:hover {
+  background: #f5f1ea;
+  border-color: #8c6b4a;
+}
+
+.admin-invoice-view-button:focus-visible {
+  border-color: #8c6b4a;
+  box-shadow: 0 0 0 3px rgb(140 107 74 / 22%);
+  outline: none;
 }
 
 .admin-actions,

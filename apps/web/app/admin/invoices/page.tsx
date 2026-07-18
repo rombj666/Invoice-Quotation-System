@@ -57,7 +57,7 @@ export default function AdminInvoiceListPage() {
                     <td>{invoice.paymentStatus ?? "RECEIPT_UPLOADED"}</td>
                     <td>{invoice.invoiceStatus ?? "SUBMITTED"}</td>
                     <td>
-                      <Link href={`/admin/invoices/${invoice.invoiceNo}`}>View Details</Link>
+                      <Link className="admin-invoice-view-button" href={`/admin/invoices/${invoice.invoiceNo}`}>View Details</Link>
                     </td>
                   </tr>
                 );
