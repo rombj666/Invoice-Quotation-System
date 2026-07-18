@@ -3,6 +3,7 @@ import { Request, Router } from "express";
 import { cloudinary, cloudinaryFolders } from "../services/cloudinary.service";
 import { calculatePricing } from "../utils/pricing";
 import { prisma } from "../utils/prisma";
+import { toInvoicePayload } from "../utils/invoice-payload";
 
 export const invoiceRoutes = Router();
 
@@ -94,30 +95,6 @@ async function parseMultipartRequest(req: Request) {
   return { fields, files };
 }
 
-function toInvoicePayload(record: any) {
-  return {
-    ...record.metadata,
-    invoiceStatus: record.status,
-    paymentStatus: record.paymentStatus,
-    invoicePdfUrl: record.invoicePdfUrl,
-    receiptUrl: record.paymentReceipts?.[0]?.fileUrl,
-    receiptMimeType: record.paymentReceipts?.[0]?.mimeType,
-    invoiceFiles: record.invoiceFiles?.map((file: any) => ({
-      fileUrl: file.fileUrl,
-      fileName: file.fileName,
-      mimeType: file.mimeType
-    })) ?? [],
-    customizationUrls: record.customizationFiles?.map((file: any) => ({
-      type: file.type,
-      designKey: file.designKey,
-      fileUrl: file.fileUrl,
-      fileName: file.fileName,
-      mimeType: file.mimeType,
-      metadata: file.metadata
-    })) ?? []
-  };
-}
-
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -143,6 +120,14 @@ invoiceRoutes.post("/", async (req, res, next) => {
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     if (quotation.status !== "APPROVED") return res.status(403).json({ error: "Quotation is still pending approval" });
+    const existingInvoice = await prisma.invoice.findFirst({ where: { quotationId: quotation.id }, select: { invoiceNo: true, status: true } });
+    if (existingInvoice) {
+      return res.status(409).json({
+        error: existingInvoice.status === "DRAFT" ? "An invoice draft already exists for this quotation." : "This quotation already has a submitted invoice.",
+        access: existingInvoice.status === "DRAFT" ? "DRAFT_INVOICE" : "SUBMITTED_INVOICE",
+        invoiceNo: existingInvoice.invoiceNo
+      });
+    }
 
     const pricing = calculatePricing(data.quotation);
     const invoiceNo = data.invoiceNo || `A${String((await prisma.invoice.count()) + 1).padStart(5, "0")}`;

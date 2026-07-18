@@ -6,6 +6,7 @@ import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
 import type { CustomizationMode, DrinkId, QuotationData } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
+import { calculatePricing } from "../../lib/pricing";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
 import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
@@ -22,12 +23,14 @@ import { CustomMenuUpload } from "./CustomMenuUpload";
 import { InvoicePreview } from "./InvoicePreview";
 import { InvoiceSuccess } from "./InvoiceSuccess";
 import { ReceiptUpload } from "./ReceiptUpload";
+import { SubmittedInvoiceView } from "./SubmittedInvoiceView";
 
 type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "preview" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
+const submittedInvoiceIdentityKey = "hourCoffeeSubmittedInvoiceIdentity";
 
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
@@ -189,11 +192,29 @@ export function InvoiceShell() {
   const [stickerDesigns, setStickerDesigns] = useState<CustomizationByDate>({});
   const [isFindingQuotation, setIsFindingQuotation] = useState(false);
   const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
+  const [submittedInvoice, setSubmittedInvoice] = useState<InvoiceDetails | null>(null);
 
   useEffect(() => {
     getNextInvoiceNo()
       .then(setInvoiceNo)
       .catch(() => setError("Unable to load the next invoice number. Please check the API connection."));
+  }, []);
+
+  useEffect(() => {
+    const requestedInvoiceNo = new URLSearchParams(window.location.search).get("invoiceNo");
+    if (!requestedInvoiceNo) return;
+    const savedIdentity = window.sessionStorage.getItem(submittedInvoiceIdentityKey);
+    if (!savedIdentity) return;
+    try {
+      const identity = JSON.parse(savedIdentity) as { quotationNo: string; name: string; phone: string; invoiceNo?: string };
+      if (identity.invoiceNo && identity.invoiceNo !== requestedInvoiceNo) return;
+      setFindQuotationNo(identity.quotationNo);
+      setFindName(identity.name);
+      setFindPhone(identity.phone);
+      void findQuotation(identity);
+    } catch {
+      window.sessionStorage.removeItem(submittedInvoiceIdentityKey);
+    }
   }, []);
 
   useEffect(() => {
@@ -208,12 +229,11 @@ export function InvoiceShell() {
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
-    const list: InvoiceStep[] = ["review", "acknowledgements", "preview", "receipt"];
+    const list: InvoiceStep[] = ["review", "acknowledgements", "preview", "receipt", "details"];
     const hasCart = quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart");
     const hasCustomMenu = quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu");
     if (hasCart) list.push("cart");
     if (hasCustomMenu) list.push("menu");
-    list.push("details");
     if (quotation.hasCupSleeves) list.push("sleeve");
     if (quotation.hasCupStickers) list.push("sticker");
     list.push("success");
@@ -222,19 +242,31 @@ export function InvoiceShell() {
 
   const currentStep = steps[stepIndex];
 
-  async function findQuotation() {
+  async function findQuotation(override?: { quotationNo: string; name: string; phone: string }) {
     setError("");
     setLookupStatus("");
     setIsFindingQuotation(true);
-    const quotationNo = findQuotationNo.trim().toUpperCase();
+    const quotationNo = (override?.quotationNo ?? findQuotationNo).trim().toUpperCase();
+    const name = override?.name ?? findName;
+    const phone = override?.phone ?? findPhone;
     try {
-      const result = await findStoredQuotation({ quotationNo, name: findName, phone: findPhone });
+      const result = await findStoredQuotation({ quotationNo, name, phone });
       if (!result.matched) {
         setError("We could not find this quotation. Please check your details and try again.");
         return;
       }
       if (result.access === "PENDING_REVIEW") {
         setLookupStatus("Your quotation is being reviewed. We will contact you shortly.");
+        return;
+      }
+      if (result.access === "DRAFT_INVOICE") {
+        setLookupStatus(`Invoice draft ${result.invoiceNo} already exists for this quotation.`);
+        return;
+      }
+      if (result.access === "SUBMITTED_INVOICE") {
+        setSubmittedInvoice(result.invoice);
+        window.sessionStorage.setItem(submittedInvoiceIdentityKey, JSON.stringify({ quotationNo, name, phone, invoiceNo: result.invoiceNo }));
+        window.history.replaceState(null, "", `/invoice?invoiceNo=${encodeURIComponent(result.invoiceNo)}`);
         return;
       }
       const approvedQuotation = withCustomizationDefaults(result.quotation);
@@ -362,6 +394,8 @@ export function InvoiceShell() {
     }
   }
 
+  if (submittedInvoice) return <SubmittedInvoiceView invoice={submittedInvoice} />;
+
   if (!quotation) {
     return (
       <main className="hc-page">
@@ -382,7 +416,7 @@ export function InvoiceShell() {
           </label>
           {lookupStatus ? <p className="lookup-status">{lookupStatus}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <button className="hc-button hc-button-primary find-button" type="button" onClick={findQuotation} disabled={isFindingQuotation}>
+          <button className="hc-button hc-button-primary find-button" type="button" onClick={() => findQuotation()} disabled={isFindingQuotation}>
             {isFindingQuotation ? "FINDING..." : "FIND QUOTATION"}
           </button>
         </Card>
@@ -435,6 +469,7 @@ export function InvoiceShell() {
                   if (validateEditedDates()) setReviewEditStep("drinks");
                 }}
                 error={reviewError}
+                pricing={calculatePricing(quotation)}
               />
             ) : null}
             {reviewEditStep === "drinks" ? (

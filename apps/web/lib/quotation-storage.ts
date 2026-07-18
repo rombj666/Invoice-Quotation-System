@@ -1,4 +1,5 @@
-import type { QuotationData } from "../types/quotation";
+import type { InvoiceDetails } from "../types/invoice";
+import type { PreviousQuotationSummary, QuotationData } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
 
 type FindQuotationInput = {
@@ -10,10 +11,21 @@ type FindQuotationInput = {
 export type QuotationLookupResult =
   | { matched: false; access: "NOT_FOUND" }
   | { matched: true; access: "PENDING_REVIEW"; quotationNo: string }
+  | { matched: true; access: "DRAFT_INVOICE"; invoiceNo: string }
+  | { matched: true; access: "SUBMITTED_INVOICE"; invoiceNo: string; invoice: InvoiceDetails }
   | { matched: true; access: "APPROVED"; quotation: QuotationData };
 
+export type PreviousQuotationHistory = {
+  quotations: PreviousQuotationSummary[];
+};
+
+export type PreviousQuotationLookupResult =
+  | { access: "QUOTATION_SUMMARY"; quotation: QuotationData }
+  | { access: "INVOICE_STARTED" }
+  | { access: "NOT_FOUND" };
+
 class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly payload?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -29,7 +41,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new ApiRequestError(payload?.error ?? "Request failed", response.status);
+    throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
   }
 
   if (response.status === 204) return undefined as T;
@@ -59,6 +71,29 @@ export async function findQuotation(input: FindQuotationInput): Promise<Quotatio
     });
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) return { matched: false, access: "NOT_FOUND" };
+    throw error;
+  }
+}
+
+export function findPreviousQuotations(input: { name: string; phone: string; email: string }) {
+  return request<PreviousQuotationHistory>("/api/quotations/history", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function loadPreviousQuotationSummary(
+  quotationNo: string,
+  identity: { name: string; phone: string; email: string }
+): Promise<PreviousQuotationLookupResult> {
+  try {
+    return await request<PreviousQuotationLookupResult>(
+      `/api/quotations/${encodeURIComponent(quotationNo)}/summary`,
+      { method: "POST", body: JSON.stringify(identity) }
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409) return { access: "INVOICE_STARTED" };
+    if (error instanceof ApiRequestError && error.status === 404) return { access: "NOT_FOUND" };
     throw error;
   }
 }

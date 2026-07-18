@@ -46,8 +46,6 @@ function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   reader.readAsDataURL(file);
 }
 
-const cartPanelSizeCm = 90;
-
 export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, onActiveDate, onDesigns }: Props) {
   const [templateMissing, setTemplateMissing] = useState(false);
   const dates = serviceDates.map((date) => date.serviceDate);
@@ -58,9 +56,10 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
   const aspectRatio = active ? designAspectRatio(active) : 1;
   const bounds = getContainedWidthBounds("cart", aspectRatio);
   const rect = active ? calculateContainedDesignRect("cart", active) : null;
-  const area = CUSTOMIZATION_LAYOUT.cart.designArea;
-  const widthCm = rect ? rect.widthRatio * cartPanelSizeCm : 0;
-  const heightCm = widthCm * aspectRatio;
+  const cartLayout = CUSTOMIZATION_LAYOUT.cart;
+  const area = cartLayout.designArea;
+  const widthCm = rect ? rect.widthRatio * (cartLayout.physicalAreaCm?.width ?? 0) : 0;
+  const heightCm = rect ? rect.heightRatio * (cartLayout.physicalAreaCm?.height ?? 0) : 0;
 
   function updateWidth(widthRatio: number) {
     if (!active) return;
@@ -117,7 +116,8 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
             Logo size
             <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={rect.widthRatio} onChange={(event) => updateWidth(Number(event.target.value))} />
           </label>
-          <div className="mini-summary">Logo size: {widthCm.toFixed(1)}cm x {heightCm.toFixed(1)}cm ({Math.round(rect.widthRatio * 100)}%)</div>
+          <div className="mini-summary">Logo size: {widthCm.toFixed(1)} cm x {heightCm.toFixed(1)} cm ({Math.round(rect.widthRatio * 100)}%)</div>
+          <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
         </>
       ) : null}
     </div>

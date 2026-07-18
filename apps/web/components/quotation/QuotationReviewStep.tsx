@@ -11,11 +11,13 @@ import { submittedQuotationStorageKey } from "./QuotationShell";
 
 type Props = {
   data: QuotationData;
-  onBack: () => void;
-  onReset: () => void;
+  onBack?: () => void;
+  onReset?: () => void;
+  readOnly?: boolean;
+  onCreateAnother?: () => void;
 };
 
-export function QuotationReviewStep({ data, onBack }: Props) {
+export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAnother }: Props) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,11 +95,11 @@ export function QuotationReviewStep({ data, onBack }: Props) {
                 </div>
                 <div>
                   <span>Quote Date</span>
-                  <strong>{formatCompactDate(new Date())}</strong>
+                  <strong>{formatCompactDate(readOnly && data.createdAt ? new Date(data.createdAt) : new Date())}</strong>
                 </div>
                 <div>
                   <span>Status</span>
-                  <strong>Preview</strong>
+                  <strong>{readOnly ? (data.status ?? "PENDING_APPROVAL").replaceAll("_", " ") : "Preview"}</strong>
                 </div>
               </div>
             </div>
@@ -179,8 +181,8 @@ export function QuotationReviewStep({ data, onBack }: Props) {
       </div>
 
       <div className="screen-only">
-      <h2>Review & Generate</h2>
-      <p className="step-copy">Confirm the quotation before submitting it for review.</p>
+      <h2>{readOnly ? "Quotation Summary" : "Review & Generate"}</h2>
+      {!readOnly ? <p className="step-copy">Confirm the quotation before submitting it for review.</p> : null}
 
       <div className="review-box review-table-box">
         <div className="review-section">
@@ -191,6 +193,13 @@ export function QuotationReviewStep({ data, onBack }: Props) {
             <div><strong>Email</strong><span>{data.customer.email}</span></div>
             <div><strong>Company</strong><span>{data.customer.companyName || "-"}</span></div>
             <div><strong>Billing address</strong><span>{data.customer.billingAddress}</span></div>
+          </div>
+        </div>
+        <div className="review-section">
+          <span>Event</span>
+          <div className="summary-rows">
+            <div><strong>Location</strong><span>{data.fullAddress || data.location}</span></div>
+            <div><strong>Event type</strong><span>{data.eventType === "Others" ? data.customEventType : data.eventType}</span></div>
           </div>
         </div>
         <div className="review-section">
@@ -253,7 +262,7 @@ export function QuotationReviewStep({ data, onBack }: Props) {
           <span>Reference</span>
           <div className="summary-rows">
             <div><strong>Quotation No.</strong><span>{data.quotationNo}</span></div>
-            <div><strong>Status</strong><span>PENDING APPROVAL</span></div>
+            <div><strong>Status</strong><span>{(data.status ?? "PENDING_APPROVAL").replaceAll("_", " ")}</span></div>
           </div>
         </div>
       </div>
@@ -262,17 +271,17 @@ export function QuotationReviewStep({ data, onBack }: Props) {
         <Button type="button" variant="secondary" onClick={downloadQuotation}>
           Download Quotation
         </Button>
-        <h3>Submit quotation for review</h3>
-        <p>Submit this quotation to our team. Our PIC or partner will review the details and contact you if anything needs confirmation. Once approved, you can continue to the invoice and payment step.</p>
-        <Button type="button" onClick={submitQuotation} disabled={isSubmitting}>
-          {isSubmitting ? "Submitting..." : "Submit Quotation"}
-        </Button>
+        {readOnly ? (
+          <Button type="button" onClick={onCreateAnother}>Create Another Quotation</Button>
+        ) : (
+          <div className="review-submit-row">
+            <Button type="button" variant="secondary" onClick={onBack}>BACK</Button>
+            <Button type="button" onClick={submitQuotation} disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit Quotation"}
+            </Button>
+          </div>
+        )}
         {submitError ? <p className="error">{submitError}</p> : null}
-      </div>
-      <div className="hc-nav-row">
-        <Button type="button" variant="secondary" onClick={onBack}>
-          BACK
-        </Button>
       </div>
       </div>
     </div>

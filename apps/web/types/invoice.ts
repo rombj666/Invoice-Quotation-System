@@ -10,8 +10,8 @@ export type InvoiceUploadFile = {
 
 export type InvoiceDetails = {
   invoiceNo: string;
-  invoiceStatus?: "SUBMITTED";
-  paymentStatus?: "RECEIPT_UPLOADED";
+  invoiceStatus?: "DRAFT" | "SUBMITTED" | "PENDING_PAYMENT_REVIEW" | "PAID" | "CONFIRMED" | "CANCELLED";
+  paymentStatus?: "UNPAID" | "RECEIPT_UPLOADED" | "VERIFIED" | "REJECTED";
   quotation: QuotationData;
   eventAddress: string;
   dressCode: string;

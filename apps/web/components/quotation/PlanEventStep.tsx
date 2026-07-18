@@ -3,8 +3,9 @@
 import type { PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ServiceDate } from "../../types/quotation";
+import type { PricingBreakdown } from "../../lib/pricing";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
-import { getBaristasNeeded, getExtraBaristaFee, getSetupFee } from "../../lib/pricing";
+import { getBaristasNeeded } from "../../lib/pricing";
 import { Button } from "../common/Button";
 import { StepNavigation } from "../common/StepNavigation";
 
@@ -13,9 +14,10 @@ type Props = {
   setServiceDates: (dates: ServiceDate[]) => void;
   onNext: () => void;
   error: string;
+  pricing: Pick<PricingBreakdown, "baseAmount" | "setupFee" | "extraBaristaFee">;
 };
 
-export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: Props) {
+export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pricing }: Props) {
   const serviceDatesRef = useRef(serviceDates);
   const pointerSessionRef = useRef<{
     pointerId: number;
@@ -253,9 +255,6 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
           <div className="date-row" key={date.id}>
             <div className="date-row-head">
               <strong>{formatDateLabel(date.serviceDate)}</strong>
-              <button type="button" onClick={() => removeDate(date.id)}>
-                REMOVE
-              </button>
             </div>
             <div className="date-grid">
               <label>
@@ -298,8 +297,6 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
                   {date.startTime && date.endTime ? `${formatTime(date.startTime)} to ${formatTime(date.endTime)}` : "Set service time"}
                   {" | "}
                   {getBaristasNeeded(date)} barista(s)
-                  {" | "}
-                  Extra barista fee {formatMoney(getExtraBaristaFee(date))}
                 </>
               )}
             </div>
@@ -318,7 +315,9 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error }: 
           <br />
           Service dates: {serviceDates.length}
           <br />
-          Estimated total before add-ons: {formatMoney(Math.max(totalCups * 10, 550) + getSetupFee(serviceDates) + serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0))}
+          Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
+          <br />
+          Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.setupFee + pricing.extraBaristaFee)}
         </div>
       ) : null}
       {serviceDates.length && hasInvalidTime ? <div className="warn-summary">Fix invalid service time before the order summary can be calculated.</div> : null}

@@ -45,7 +45,15 @@ export type CustomerDetails = {
 
 export type QuotationData = {
   quotationNo: string;
-  status?: "PENDING_APPROVAL" | "APPROVED";
+  status?:
+    | "DRAFT"
+    | "PENDING_APPROVAL"
+    | "APPROVED"
+    | "REVIEWED"
+    | "SENT"
+    | "CONVERTED_TO_INVOICE"
+    | "CANCELLED";
+  createdAt?: string;
   serviceDates: ServiceDate[];
   location: string;
   fullAddress: string;
@@ -73,4 +81,13 @@ export type QuotationData = {
     discountAmount: number;
     total: number;
   };
+};
+
+export type PreviousQuotationSummary = {
+  quotationNo: string;
+  createdAt: string;
+  firstEventDate: string | null;
+  status: string;
+  hasInvoice: boolean;
+  canViewQuotation: boolean;
 };

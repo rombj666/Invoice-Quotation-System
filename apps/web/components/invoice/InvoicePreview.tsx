@@ -1,10 +1,11 @@
 "use client";
 
 import type { QuotationData } from "../../types/quotation";
+import type { InvoiceDetails } from "../../types/invoice";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 
-export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; quotation: QuotationData }) {
+export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: string; quotation: QuotationData; invoice?: InvoiceDetails }) {
   const pricing = calculatePricing(quotation);
   const firstDate = quotation.serviceDates[0];
   const drinkColumns = [
@@ -35,7 +36,7 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
             </div>
             <div>
               <span>Invoice Date</span>
-              <strong>{formatCompactDate(new Date())}</strong>
+              <strong>{formatCompactDate(invoice?.submittedAt ? new Date(invoice.submittedAt) : new Date())}</strong>
             </div>
             <div>
               <span>Quote Ref</span>
@@ -62,6 +63,20 @@ export function InvoicePreview({ invoiceNo, quotation }: { invoiceNo: string; qu
           <p>{quotation.customer.email}</p>
         </div>
       </div>
+
+      {invoice ? (
+        <div className="invoice-section">
+          <h3>Event & Payment Details</h3>
+          <div className="invoice-summary-grid">
+            <div><span>Event address</span><strong>{invoice.eventAddress || quotation.fullAddress || quotation.location}</strong></div>
+            <div><span>Dress code</span><strong>{invoice.dressCode === "Custom" ? invoice.customDressCode : invoice.dressCode || "-"}</strong></div>
+            <div><span>Environment</span><strong>{invoice.environment || "-"}</strong></div>
+            <div><span>Invoice status</span><strong>{(invoice.invoiceStatus ?? "SUBMITTED").replaceAll("_", " ")}</strong></div>
+            <div><span>Payment status</span><strong>{(invoice.paymentStatus ?? "UNPAID").replaceAll("_", " ")}</strong></div>
+          </div>
+          {invoice.environmentNotes ? <p>{invoice.environmentNotes}</p> : null}
+        </div>
+      ) : null}
 
       <div className="invoice-section">
         <h3>Event Summary</h3>

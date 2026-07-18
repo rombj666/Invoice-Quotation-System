@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { DrinkId, DrinkOrderByDate, QuotationData, ServiceDate } from "../../types/quotation";
+import type { CustomerDetails, DrinkId, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
-import { getNextQuotationNo } from "../../lib/quotation-storage";
+import { calculatePricing } from "../../lib/pricing";
+import { findPreviousQuotations, getNextQuotationNo, loadPreviousQuotationSummary } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
 import { AddOnsStep } from "./AddOnsStep";
 import { ContactDetailsStep } from "./ContactDetailsStep";
@@ -15,11 +16,17 @@ import { PlanEventStep } from "./PlanEventStep";
 import { ProgressHeader } from "./ProgressHeader";
 import { QuotationReferenceStep } from "./QuotationReferenceStep";
 import { QuotationReviewStep } from "./QuotationReviewStep";
+import { PreviousQuotationsPanel } from "./PreviousQuotationsPanel";
 
 const totalSteps = 8;
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 const quotationDraftStorageKey = "hourCoffeeQuotationDraft";
+const quotationSummaryIdentityKey = "hourCoffeeQuotationSummaryIdentity";
+
+function identityKey(customer: Pick<CustomerDetails, "name" | "phone" | "email">) {
+  return `${customer.name.trim().toLowerCase()}|${customer.phone.replace(/\D/g, "")}|${customer.email.trim().toLowerCase()}`;
+}
 
 const emptyQuotation: QuotationData = {
   quotationNo: "Q00001",
@@ -82,10 +89,17 @@ export function QuotationShell() {
   const [error, setError] = useState("");
   const [data, setData] = useState<QuotationData>(emptyQuotation);
   const [draftReady, setDraftReady] = useState(false);
+  const [quotationView, setQuotationView] = useState<"editor" | "history" | "summary">("editor");
+  const [previousQuotations, setPreviousQuotations] = useState<PreviousQuotationSummary[]>([]);
+  const [summaryQuotation, setSummaryQuotation] = useState<QuotationData | null>(null);
+  const [historyError, setHistoryError] = useState("");
+  const [isCheckingHistory, setIsCheckingHistory] = useState(false);
+  const [lookedUpIdentity, setLookedUpIdentity] = useState("");
 
   useEffect(() => {
+    const summaryQuotationNo = new URLSearchParams(window.location.search).get("summary");
     const savedSubmission = window.localStorage.getItem(submittedQuotationStorageKey);
-    if (savedSubmission) {
+    if (!summaryQuotationNo && savedSubmission) {
       try {
         const parsed = JSON.parse(savedSubmission) as { quotationNo?: string; status?: string };
         if (parsed.quotationNo && parsed.status === "submitted") {
@@ -116,11 +130,28 @@ export function QuotationShell() {
           setData(restored);
           setStep(Math.min(totalSteps - 1, Math.max(0, restoredStep)));
           setDraftReady(true);
+          if (summaryQuotationNo) void openPreviousQuotation(summaryQuotationNo, restored.customer, false);
           return;
         }
       } catch {
         window.localStorage.removeItem(quotationDraftStorageKey);
       }
+    }
+    if (summaryQuotationNo) {
+      const savedIdentity = window.sessionStorage.getItem(quotationSummaryIdentityKey);
+      if (savedIdentity) {
+        try {
+          const identity = JSON.parse(savedIdentity) as Pick<CustomerDetails, "name" | "phone" | "email">;
+          setData((current) => ({ ...current, customer: { ...current.customer, ...identity } }));
+          setDraftReady(true);
+          void openPreviousQuotation(summaryQuotationNo, { ...emptyQuotation.customer, ...identity }, false);
+          return;
+        } catch {
+          window.sessionStorage.removeItem(quotationSummaryIdentityKey);
+        }
+      }
+      setHistoryError("Enter your contact details again to view this quotation.");
+      router.replace("/quotation");
     }
     getNextQuotationNo()
       .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
@@ -183,13 +214,106 @@ export function QuotationShell() {
     next();
   }
 
-  function validateContact() {
+  async function validateContact() {
     const customer = data.customer;
     if (!hasText(customer.name)) return setError("Customer name is required.");
     if (!isValidMalaysiaPhone(customer.phone)) return setError("Valid phone number is required.");
     if (!isValidEmail(customer.email)) return setError("Valid email is required.");
-    setData({ ...data, customer: { ...customer, name: customer.name.trim(), email: customer.email.trim() } });
-    next();
+    const normalizedCustomer = { ...customer, name: customer.name.trim(), email: customer.email.trim() };
+    setData({ ...data, customer: normalizedCustomer });
+    setError("");
+    setIsCheckingHistory(true);
+    try {
+      const result = await findPreviousQuotations({
+        name: normalizedCustomer.name,
+        phone: normalizedCustomer.phone,
+        email: normalizedCustomer.email
+      });
+      setLookedUpIdentity(identityKey(normalizedCustomer));
+      if (result.quotations.length) {
+        setPreviousQuotations(result.quotations);
+        setQuotationView("history");
+        setHistoryError("");
+        return;
+      }
+      next();
+    } catch (lookupError) {
+      setError(lookupError instanceof Error ? lookupError.message : "Unable to check previous quotations. Please try again.");
+    } finally {
+      setIsCheckingHistory(false);
+    }
+  }
+
+  function updateContactData(nextData: QuotationData) {
+    setError("");
+    if (lookedUpIdentity && identityKey(nextData.customer) !== lookedUpIdentity) {
+      setPreviousQuotations([]);
+      setSummaryQuotation(null);
+      setQuotationView("editor");
+      setHistoryError("");
+      setLookedUpIdentity("");
+    }
+    setData(nextData);
+  }
+
+  async function openPreviousQuotation(
+    quotationNo: string,
+    customer: CustomerDetails,
+    updateUrl = true
+  ) {
+    setIsCheckingHistory(true);
+    setHistoryError("");
+    try {
+      const identity = { name: customer.name, phone: customer.phone, email: customer.email };
+      const result = await loadPreviousQuotationSummary(quotationNo, identity);
+      if (result.access === "INVOICE_STARTED") {
+        const history = await findPreviousQuotations(identity);
+        setPreviousQuotations(history.quotations);
+        setQuotationView("history");
+        setHistoryError("This quotation has already proceeded to the invoice process.");
+        if (updateUrl) router.replace("/quotation");
+        return;
+      }
+      if (result.access === "NOT_FOUND") {
+        setQuotationView("history");
+        setHistoryError("This quotation could not be verified with the current contact details.");
+        if (updateUrl) router.replace("/quotation");
+        return;
+      }
+      setSummaryQuotation(result.quotation);
+      setQuotationView("summary");
+      window.sessionStorage.setItem(quotationSummaryIdentityKey, JSON.stringify(identity));
+      if (updateUrl) router.replace(`/quotation?summary=${encodeURIComponent(quotationNo)}`);
+    } catch (lookupError) {
+      setHistoryError(lookupError instanceof Error ? lookupError.message : "Unable to load this quotation.");
+    } finally {
+      setIsCheckingHistory(false);
+    }
+  }
+
+  function createAnotherQuotation() {
+    const customer = data.customer;
+    const preservedContact = {
+      ...emptyQuotation.customer,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email
+    };
+    window.localStorage.removeItem(submittedQuotationStorageKey);
+    window.sessionStorage.removeItem(quotationSummaryIdentityKey);
+    setData({ ...emptyQuotation, customer: preservedContact });
+    setPreviousQuotations([]);
+    setSummaryQuotation(null);
+    setQuotationView("editor");
+    setHistoryError("");
+    setLookedUpIdentity("");
+    setError("");
+    setStep(1);
+    router.replace("/quotation");
+    getNextQuotationNo()
+      .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
+      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function validateCustomer() {
@@ -217,13 +341,39 @@ export function QuotationShell() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  if (quotationView === "summary" && summaryQuotation) {
+    return (
+      <main className="hc-page">
+        <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
+        <Card><QuotationReviewStep data={summaryQuotation} readOnly onCreateAnother={createAnotherQuotation} /></Card>
+      </main>
+    );
+  }
+
+  if (quotationView === "history") {
+    return (
+      <main className="hc-page">
+        <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
+        <Card>
+          <PreviousQuotationsPanel
+            quotations={previousQuotations}
+            error={historyError}
+            isLoading={isCheckingHistory}
+            onView={(quotationNo) => openPreviousQuotation(quotationNo, data.customer)}
+            onCreateAnother={createAnotherQuotation}
+          />
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="hc-page">
       <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
       <Card>
         <ProgressHeader currentStep={step} totalSteps={totalSteps} />
-        {step === 0 ? <ContactDetailsStep data={data} setData={setData} onNext={validateContact} /> : null}
-        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onNext={validatePlanEvent} error={error} /> : null}
+        {step === 0 ? <ContactDetailsStep data={data} setData={updateContactData} onNext={validateContact} isChecking={isCheckingHistory} error={error} /> : null}
+        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onNext={validatePlanEvent} error={error} pricing={calculatePricing(data)} /> : null}
         {step === 2 ? <LocationStep data={data} setData={setData} onBack={back} onNext={validateLocation} error={error} /> : null}
         {step === 3 ? <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={validateDrinks} error={error} /> : null}
         {step === 4 ? <AddOnsStep data={data} setData={setData} onBack={back} onNext={next} /> : null}

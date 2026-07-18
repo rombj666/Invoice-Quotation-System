@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { QuotationData } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
 import { Button } from "../common/Button";
@@ -8,7 +8,9 @@ import { Button } from "../common/Button";
 type Props = {
   data: QuotationData;
   setData: (data: QuotationData) => void;
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
+  isChecking?: boolean;
+  error?: string;
 };
 
 type ContactField = "name" | "phone" | "email";
@@ -20,8 +22,9 @@ function fieldError(field: ContactField, value: string): string {
   return "";
 }
 
-export function ContactDetailsStep({ data, setData, onNext }: Props) {
+export function ContactDetailsStep({ data, setData, onNext, isChecking = false, error = "" }: Props) {
   const [touched, setTouched] = useState<Partial<Record<ContactField, boolean>>>({});
+  const inputRefs = useRef<Partial<Record<ContactField, HTMLInputElement | null>>>({});
   const customer = data.customer;
   const errors = {
     name: fieldError("name", customer.name),
@@ -40,6 +43,7 @@ export function ContactDetailsStep({ data, setData, onNext }: Props) {
       <label className="hc-field">
         <span>{label}</span>
         <input
+          ref={(element) => { inputRefs.current[field] = element; }}
           type={type}
           value={customer[field]}
           aria-invalid={Boolean(error)}
@@ -52,6 +56,16 @@ export function ContactDetailsStep({ data, setData, onNext }: Props) {
     );
   }
 
+  async function continueToQuotation() {
+    if (!isValid) {
+      setTouched({ name: true, phone: true, email: true });
+      const firstInvalid = (["name", "phone", "email"] as ContactField[]).find((field) => Boolean(errors[field]));
+      window.requestAnimationFrame(() => inputRefs.current[firstInvalid ?? "name"]?.focus());
+      return;
+    }
+    await onNext();
+  }
+
   return (
     <div>
       <h2>Contact Details</h2>
@@ -59,8 +73,10 @@ export function ContactDetailsStep({ data, setData, onNext }: Props) {
       {contactField("name", "Customer Full Name (PIC)")}
       {contactField("phone", "Phone Number", "tel")}
       {contactField("email", "Email Address", "email")}
+      <p className="field-reminder">Please complete all required fields before continuing.</p>
+      {error ? <p className="error">{error}</p> : null}
       <div className="hc-nav-row">
-        <Button type="button" disabled={!isValid} onClick={onNext}>CONTINUE</Button>
+        <Button type="button" disabled={isChecking} onClick={continueToQuotation}>{isChecking ? "CHECKING..." : "CONTINUE"}</Button>
       </div>
     </div>
   );
