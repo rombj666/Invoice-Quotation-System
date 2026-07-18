@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
+import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict, normalizeCartAddonPrices } from "../../lib/addons";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
@@ -22,8 +23,10 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const pricing = calculatePricing(data);
+  const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const quotationForInvoice = {
     ...data,
+    selectedAddons: normalizeCartAddonPrices(data.selectedAddons),
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: {
       subtotal: pricing.subtotal,
@@ -48,7 +51,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   function addOnNames() {
     return [
-      ...data.selectedAddons.map((addon) => `${addon.name} (${formatMoney(addon.price)})`),
+      ...data.selectedAddons.map((addon) => `${addon.name} (${formatMoney(getCanonicalAddonPrice(addon))})`),
       data.hasCupStickers ? `Custom Cup Stickers (${formatMoney(pricing.cupStickerFee)})` : "",
       data.hasCupSleeves ? `Custom Cup Sleeves (${formatMoney(pricing.cupSleeveFee)})` : ""
     ].filter(Boolean);
@@ -65,6 +68,10 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   async function submitQuotation() {
     setSubmitError("");
+    if (cartSelectionConflict) {
+      setSubmitError(CART_SELECTION_ERROR);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
@@ -238,13 +245,14 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <table className="summary-table">
               <thead><tr><th>Add-on</th><th>Amount</th></tr></thead>
               <tbody>
-                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{formatMoney(addon.price)}</td></tr>)}
+                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{formatMoney(getCanonicalAddonPrice(addon))}</td></tr>)}
                 {data.hasCupStickers ? <tr><td>Custom Cup Stickers ({data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
                 {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves ({data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
                 {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td className="amount-cell">{formatMoney(0)}</td></tr> : null}
               </tbody>
             </table>
           </div>
+          {cartSelectionConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
         </div>
         <div className="review-section">
           <span>Pricing</span>

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { apiBaseUrl } from "../../../../lib/api-client";
 import { calculatePricing } from "../../../../lib/pricing";
+import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict } from "../../../../lib/addons";
 import { loadInvoiceByNo } from "../../../../lib/invoice-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { CustomizationByDate } from "../../../../types/customization";
@@ -215,9 +216,10 @@ export default function AdminInvoiceDetailPage() {
             <h3>Add-ons</h3>
             {quotation.selectedAddons.map((addon) => (
               <p key={addon.name}>
-                {addon.name}: {formatMoney(addon.price)}
+                {addon.name}: {formatMoney(getCanonicalAddonPrice(addon))}
               </p>
             ))}
+            {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
             {quotation.hasCupStickers ? <p>Custom Cup Stickers</p> : null}
             {quotation.hasCupSleeves ? <p>Custom Cup Sleeves</p> : null}
           </section>

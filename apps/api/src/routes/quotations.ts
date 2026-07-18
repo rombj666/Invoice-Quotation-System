@@ -1,6 +1,7 @@
 import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
 import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact } from "../utils/pricing";
+import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeQuotationCartPrices } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 
@@ -14,10 +15,10 @@ const drinkNames: Record<string, string> = {
 };
 
 function toQuotationPayload(record: any) {
-  return {
+  return normalizeQuotationCartPrices({
     ...record.metadata,
     status: record.status
-  };
+  });
 }
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
@@ -72,7 +73,10 @@ quotationRoutes.get("/next-number", async (_req, res, next) => {
 
 quotationRoutes.post("/", async (req, res, next) => {
   try {
-    const data = req.body;
+    if (hasCartAddonConflict(req.body.selectedAddons)) {
+      return res.status(400).json({ error: CART_SELECTION_ERROR });
+    }
+    const data = normalizeQuotationCartPrices(req.body);
     const pricing = calculatePricing(data);
 
     const matchingCustomers = await findMatchingCustomers(data.customer);

@@ -1,4 +1,5 @@
-import type { DrinkOrderByDate, QuotationAddon, QuotationData, ServiceDate } from "../types/quotation";
+import type { DrinkOrderByDate, QuotationData, ServiceDate } from "../types/quotation";
+import { calculateSelectedAddonTotal } from "./addons";
 
 export type PricingBreakdown = {
   totalCups: number;
@@ -71,7 +72,7 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   const setupFee = getSetupFee(data.serviceDates);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
-  const addonTotal = data.selectedAddons.reduce((sum: number, addon: QuotationAddon) => sum + addon.price, 0);
+  const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const cupSleeveFee = data.hasCupSleeves ? getCupSleevePrice(totalCups) : 0;
   const cupStickerFee = data.hasCupStickers ? getCupStickerPrice(totalCups) : 0;
   const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;

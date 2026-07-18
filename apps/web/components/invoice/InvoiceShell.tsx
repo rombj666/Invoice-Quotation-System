@@ -5,6 +5,7 @@ import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
 import type { CustomizationMode, DrinkId, QuotationData } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
+import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeCartAddonPrices } from "../../lib/addons";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
 import { calculatePricing } from "../../lib/pricing";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
@@ -35,6 +36,7 @@ const submittedInvoiceIdentityKey = "hourCoffeeSubmittedInvoiceIdentity";
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
     ...quotation,
+    selectedAddons: normalizeCartAddonPrices(quotation.selectedAddons),
     customizationOptions: quotation.customizationOptions ?? {
       cart: { mode: "same", designCount: 1 },
       sticker: { mode: "same", designCount: 1 },
@@ -358,6 +360,7 @@ export function InvoiceShell() {
   async function submit() {
     if (!quotation) return;
     setError("");
+    if (hasCartAddonConflict(quotation.selectedAddons)) return setError(CART_SELECTION_ERROR);
     if (quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart") && !hasRequiredDesigns("cart", cartDesigns)) return setError("Please upload the required cart design for every selected date.");
     if (quotation.hasCupStickers && !hasRequiredDesigns("sticker", stickerDesigns)) return setError("Please upload the required cup sticker design for every selected date.");
     if (quotation.hasCupSleeves && !hasRequiredSleeveDesigns(sleeveDesigns)) return setError("Please upload each required sleeve design before continuing.");

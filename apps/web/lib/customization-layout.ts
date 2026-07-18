@@ -14,7 +14,7 @@ type LayoutConfig = {
   maxLogoSizeMm?: { width: number; height: number };
 };
 
-export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 60 };
+export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 70 };
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
 
 const CART_PHYSICAL_AREA_CM = { width: 90, height: 90 };

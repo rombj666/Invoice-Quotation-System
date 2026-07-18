@@ -614,6 +614,15 @@ p {
   text-align: left;
 }
 
+.addon-card > div {
+  min-width: 0;
+}
+
+.addon-card .addon-price {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .addon-card-shell {
   margin-top: 10px;
   border-radius: 10px;
@@ -627,6 +636,11 @@ p {
   margin: 4px 0 0;
   color: #777;
   font-size: 12px;
+}
+
+.addon-card p.cart-lock-message {
+  color: #7a1e1e;
+  font-weight: 700;
 }
 
 .addon-card.active {

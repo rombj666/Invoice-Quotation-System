@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculatePricing } from "../../../../lib/pricing";
+import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
@@ -128,9 +129,10 @@ export default function AdminQuotationDetailPage() {
             <h3>Add-ons</h3>
             {quotation.selectedAddons.map((addon) => (
               <p key={addon.name}>
-                {addon.name}: {formatMoney(addon.price)}
+                {addon.name}: {formatMoney(getCanonicalAddonPrice(addon))}
               </p>
             ))}
+            {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
             {quotation.hasCupStickers ? <p>Custom Cup Stickers</p> : null}
             {quotation.hasCupSleeves ? <p>Custom Cup Sleeves</p> : null}
           </section>

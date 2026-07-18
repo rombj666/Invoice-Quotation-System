@@ -2,6 +2,7 @@ import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prism
 import { Request, Router } from "express";
 import { cloudinary, cloudinaryFolders } from "../services/cloudinary.service";
 import { calculatePricing } from "../utils/pricing";
+import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeQuotationCartPrices } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 
@@ -112,7 +113,14 @@ invoiceRoutes.post("/", async (req, res, next) => {
   try {
     const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
     const multipart = isMultipart ? await parseMultipartRequest(req) : null;
-    const data = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
+    const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
+    if (hasCartAddonConflict(incomingData.quotation?.selectedAddons)) {
+      return res.status(400).json({ error: CART_SELECTION_ERROR });
+    }
+    const data = {
+      ...incomingData,
+      quotation: normalizeQuotationCartPrices(incomingData.quotation ?? {})
+    };
     const filesByField = new Map((multipart?.files ?? []).map((file) => [file.fieldName, file]));
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: data.quotation.quotationNo },

@@ -1,3 +1,5 @@
+import { calculateSelectedAddonTotal } from "./addons";
+
 type ServiceDate = {
   id: string;
   cups: number;
@@ -63,7 +65,7 @@ export function calculatePricing(data: QuotationPayload) {
   const setupFee = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100) ? 30 : 0;
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
-  const addonTotal = data.selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+  const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const cupSleeveFee = data.hasCupSleeves ? totalCups * (totalCups >= 150 ? 1.5 : 2) : 0;
   const cupStickerFee = data.hasCupStickers ? (totalCups <= 100 ? 50 : 50 + Math.ceil((totalCups - 100) / 100) * 10) : 0;
   const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
