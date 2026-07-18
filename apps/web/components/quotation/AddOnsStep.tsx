@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import type { CustomizationOption, QuotationAddon, QuotationData } from "../../types/quotation";
 import {
   CART_SELECTION_ERROR,
-  COFFEE_CART_ADDON,
-  CUSTOM_BRANDED_CART_ADDON,
+  COFFEE_CART_ADDON_NAME,
+  CUSTOM_BRANDED_CART_ADDON_NAME,
+  DEFAULT_ADDON_PRICING,
+  FIXED_ADDON_DEFAULTS,
   calculateSelectedAddonTotal,
+  getConfiguredAddonPricing,
+  getConfiguredFixedPrice,
   hasCartAddonConflict,
-  normalizeCartAddonPrices
 } from "../../lib/addons";
 import { formatMoney } from "../../lib/formatters";
 import { addonAvailabilityKeys, flattenAvailability, loadProductAvailability, type AvailabilityItem } from "../../lib/product-availability";
@@ -20,13 +23,8 @@ type Props = {
   setData: (data: QuotationData) => void;
   onBack: () => void;
   onNext: () => void;
+  useLatestPrices?: boolean;
 };
-
-const optionalAddons: QuotationAddon[] = [
-  CUSTOM_BRANDED_CART_ADDON,
-  { name: "Custom Menu", price: 30 },
-  { name: "Custom Latte Art Stencil", price: 100 }
-];
 
 const leadTimeAddonNames = new Set(["Custom Branded Cart", "Custom Menu"]);
 
@@ -88,7 +86,7 @@ function DesignOptions({
   );
 }
 
-export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
+export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = true }: Props) {
   const [availability, setAvailability] = useState<Record<string, AvailabilityItem>>({});
   const [availabilityWarning, setAvailabilityWarning] = useState("");
   const customizationOptions = data.customizationOptions ?? {
@@ -100,18 +98,45 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
   const allSmallDates = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const enoughLeadTime = hasEnoughLeadTime(data);
-  const coffeeCartSelected = hasAddon(data, COFFEE_CART_ADDON.name);
-  const customBrandedCartSelected = hasAddon(data, CUSTOM_BRANDED_CART_ADDON.name);
+  function fixedAddon(name: keyof typeof FIXED_ADDON_DEFAULTS, item: AvailabilityItem | undefined): QuotationAddon {
+    const configuredPrice = getConfiguredFixedPrice(item, FIXED_ADDON_DEFAULTS[name]);
+    const savedPrice = data.selectedAddons.find((addon) => addon.name === name)?.price;
+    return { name, price: !useLatestPrices && savedPrice !== undefined ? savedPrice : configuredPrice };
+  }
+  const coffeeCartAddon: QuotationAddon = {
+    ...fixedAddon(COFFEE_CART_ADDON_NAME, availability.coffee_cart)
+  };
+  const optionalAddons: QuotationAddon[] = [
+    fixedAddon(CUSTOM_BRANDED_CART_ADDON_NAME, availability.custom_branded_cart),
+    fixedAddon("Custom Menu", availability.custom_menu),
+    fixedAddon("Custom Latte Art Stencil", availability.custom_latte_art_stencil)
+  ];
+  const coffeeCartSelected = hasAddon(data, COFFEE_CART_ADDON_NAME);
+  const customBrandedCartSelected = hasAddon(data, CUSTOM_BRANDED_CART_ADDON_NAME);
   const hasCartConflict = hasCartAddonConflict(data.selectedAddons);
+  const activePricing = data.addonPricing ?? (useLatestPrices ? getConfiguredAddonPricing(availability) : DEFAULT_ADDON_PRICING);
 
   useEffect(() => {
     loadProductAvailability().then((groups) => setAvailability(flattenAvailability(groups))).catch(() => setAvailability({}));
   }, []);
 
   useEffect(() => {
+    if (!useLatestPrices || !Object.keys(availability).length) return;
+    const latestPricing = getConfiguredAddonPricing(availability);
+    const latestFixedPrices: Record<string, number> = {
+      [COFFEE_CART_ADDON_NAME]: getConfiguredFixedPrice(availability.coffee_cart, FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME]),
+      [CUSTOM_BRANDED_CART_ADDON_NAME]: getConfiguredFixedPrice(availability.custom_branded_cart, FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME]),
+      "Custom Menu": getConfiguredFixedPrice(availability.custom_menu, FIXED_ADDON_DEFAULTS["Custom Menu"]),
+      "Custom Latte Art Stencil": getConfiguredFixedPrice(availability.custom_latte_art_stencil, FIXED_ADDON_DEFAULTS["Custom Latte Art Stencil"])
+    };
+    const selectedAddons = data.selectedAddons.map((addon) => latestFixedPrices[addon.name] === undefined ? addon : { ...addon, price: latestFixedPrices[addon.name] });
+    const pricesChanged = selectedAddons.some((addon, index) => addon.price !== data.selectedAddons[index]?.price);
+    const pricingChanged = JSON.stringify(data.addonPricing) !== JSON.stringify(latestPricing);
+    if (pricesChanged || pricingChanged) setData({ ...data, selectedAddons, addonPricing: latestPricing });
+  }, [availability, data, setData, useLatestPrices]);
+
+  useEffect(() => {
     const needsLeadTimeRemoval = !enoughLeadTime && data.selectedAddons.some((addon) => leadTimeAddonNames.has(addon.name));
-    const normalizedAddons = normalizeCartAddonPrices(data.selectedAddons);
-    const needsCartPriceNormalization = normalizedAddons.some((addon, index) => addon.price !== data.selectedAddons[index]?.price);
     const normalizedOptions = {
       cart: normalizeDesignOption(customizationOptions.cart, data.serviceDates.length),
       sticker: normalizeDesignOption(customizationOptions.sticker, data.serviceDates.length),
@@ -125,10 +150,10 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       normalizedOptions.sleeve.mode !== customizationOptions.sleeve.mode ||
       normalizedOptions.sleeve.designCount !== customizationOptions.sleeve.designCount;
 
-    if (needsLeadTimeRemoval || needsCartPriceNormalization || optionsChanged) {
+    if (needsLeadTimeRemoval || optionsChanged) {
       setData({
         ...data,
-        selectedAddons: needsLeadTimeRemoval ? normalizedAddons.filter((addon) => !leadTimeAddonNames.has(addon.name)) : normalizedAddons,
+        selectedAddons: needsLeadTimeRemoval ? data.selectedAddons.filter((addon) => !leadTimeAddonNames.has(addon.name)) : data.selectedAddons,
         customizationOptions: normalizedOptions
       });
       if (needsLeadTimeRemoval) setAvailabilityWarning("This add-on requires at least 2 weeks lead time.");
@@ -163,26 +188,26 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       ? data.selectedAddons.filter((item) => item.name !== addon.name)
       : [...data.selectedAddons.filter((item) => item.name !== addon.name), addon];
 
-    if (!exists && addon.name === COFFEE_CART_ADDON.name) {
-      selectedAddons = selectedAddons.filter((item) => item.name !== CUSTOM_BRANDED_CART_ADDON.name);
+    if (!exists && addon.name === COFFEE_CART_ADDON_NAME) {
+      selectedAddons = selectedAddons.filter((item) => item.name !== CUSTOM_BRANDED_CART_ADDON_NAME);
     }
-    if (!exists && addon.name === CUSTOM_BRANDED_CART_ADDON.name) {
-      selectedAddons = selectedAddons.filter((item) => item.name !== COFFEE_CART_ADDON.name);
+    if (!exists && addon.name === CUSTOM_BRANDED_CART_ADDON_NAME) {
+      selectedAddons = selectedAddons.filter((item) => item.name !== COFFEE_CART_ADDON_NAME);
     }
     setAvailabilityWarning("");
     setData({
       ...data,
-      selectedAddons: normalizeCartAddonPrices(selectedAddons)
+      selectedAddons
     });
   }
 
   function setCoffeeCart() {
-    if (hasAddon(data, COFFEE_CART_ADDON.name)) {
-      toggleAddon(COFFEE_CART_ADDON);
+    if (hasAddon(data, COFFEE_CART_ADDON_NAME)) {
+      toggleAddon(coffeeCartAddon);
       return;
     }
-    if (!isAvailable(COFFEE_CART_ADDON.name)) return;
-    toggleAddon(COFFEE_CART_ADDON);
+    if (!isAvailable(COFFEE_CART_ADDON_NAME)) return;
+    toggleAddon(coffeeCartAddon);
   }
 
   function handleNext() {
@@ -214,8 +239,8 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
 
   const selectedTotal =
     calculateSelectedAddonTotal(data.selectedAddons) +
-    (data.hasCupSleeves ? getCupSleevePrice(totalCups) : 0) +
-    (data.hasCupStickers ? getCupStickerPrice(totalCups) : 0) +
+    (data.hasCupSleeves ? getCupSleevePrice(totalCups, activePricing.cupSleeve) : 0) +
+    (data.hasCupStickers ? getCupStickerPrice(totalCups, activePricing.cupSticker) : 0) +
     machineRentalFee;
 
   return (
@@ -252,19 +277,19 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
       ) : null}
 
       {data.serviceDates.length ? (
-        <button type="button" className={`addon-card ${coffeeCartSelected ? "active" : ""}`} disabled={(customBrandedCartSelected && !coffeeCartSelected) || (!isAvailable(COFFEE_CART_ADDON.name) && !coffeeCartSelected)} onClick={setCoffeeCart}>
+        <button type="button" className={`addon-card ${coffeeCartSelected ? "active" : ""}`} disabled={(customBrandedCartSelected && !coffeeCartSelected) || (!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected)} onClick={setCoffeeCart}>
           <div>
-            <strong>Coffee Cart {unavailableLabel(COFFEE_CART_ADDON.name)}</strong>
+            <strong>Coffee Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong>
             <p>Optional mobile coffee cart.</p>
             {customBrandedCartSelected && !coffeeCartSelected ? <p className="cart-lock-message">Custom Branded Cart is selected.</p> : null}
           </div>
-          <span className="addon-price">{formatMoney(COFFEE_CART_ADDON.price)}</span>
+          <span className="addon-price">{formatMoney(coffeeCartAddon.price)}</span>
         </button>
       ) : null}
 
       {optionalAddons.map((addon) => {
         const isSelected = hasAddon(data, addon.name);
-        const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON.name;
+        const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON_NAME;
         const isLockedByCoffeeCart = isCustomBrandedCart && coffeeCartSelected && !isSelected;
         return (
           <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
@@ -289,7 +314,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
             <strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
-          <span className="addon-price">{formatMoney(getCupStickerPrice(totalCups))}</span>
+          <span className="addon-price">{formatMoney(getCupStickerPrice(totalCups, activePricing.cupSticker))}</span>
         </button>
         {data.hasCupStickers ? (
           <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sticker", option)} />
@@ -302,7 +327,7 @@ export function AddOnsStep({ data, setData, onBack, onNext }: Props) {
             <strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
-          <span className="addon-price">{formatMoney(getCupSleevePrice(totalCups))}</span>
+          <span className="addon-price">{formatMoney(getCupSleevePrice(totalCups, activePricing.cupSleeve))}</span>
         </button>
         {data.hasCupSleeves ? (
           <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sleeve", option)} />

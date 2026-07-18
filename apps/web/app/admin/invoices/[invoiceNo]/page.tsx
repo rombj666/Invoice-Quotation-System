@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { apiBaseUrl } from "../../../../lib/api-client";
 import { calculatePricing } from "../../../../lib/pricing";
-import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict } from "../../../../lib/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { loadInvoiceByNo } from "../../../../lib/invoice-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { CustomizationByDate } from "../../../../types/customization";
@@ -157,6 +157,8 @@ export default function AdminInvoiceDetailPage() {
 
   const quotation = invoice.quotation;
   const pricing = calculatePricing(quotation);
+  const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
+  const hasOptionalAddons = quotation.selectedAddons.length > 0 || quotation.hasCupStickers || quotation.hasCupSleeves;
 
   return (
     <main className="hc-page admin-page">
@@ -212,17 +214,17 @@ export default function AdminInvoiceDetailPage() {
               </div>
             ))}
           </section>
-          <section>
+          {hasOptionalAddons ? <section>
             <h3>Add-ons</h3>
             {quotation.selectedAddons.map((addon) => (
               <p key={addon.name}>
-                {addon.name}: {formatMoney(getCanonicalAddonPrice(addon))}
+                {addon.name}: {addon.price > 0 ? formatMoney(addon.price) : "FREE"}
               </p>
             ))}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-            {quotation.hasCupStickers ? <p>Custom Cup Stickers</p> : null}
-            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves</p> : null}
-          </section>
+            {quotation.hasCupStickers ? <p>Custom Cup Stickers: {pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</p> : null}
+            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves: {pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</p> : null}
+          </section> : null}
           <section>
             <h3>Customization Options</h3>
             <p>Cart: {quotation.customizationOptions?.cart.mode ?? "same"} / {quotation.customizationOptions?.cart.designCount ?? 1} design(s)</p>
@@ -231,7 +233,14 @@ export default function AdminInvoiceDetailPage() {
           </section>
           <section>
             <h3>Final Total</h3>
-            <p>{formatMoney(pricing.total)}</p>
+            <p>Base: {formatMoney(pricing.baseAmount)}</p>
+            {pricing.setupFee > 0 ? <p>Setup fee: {formatMoney(pricing.setupFee)}</p> : null}
+            {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
+            {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
+            {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
+            <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
+            {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
+            <p>Total: {formatMoney(pricing.total)}</p>
             <p>Invoice PDF link: {invoice.invoicePdfUrl ? "Available" : "Not generated locally."}</p>
           </section>
           {invoice.invoicePdfUrl ? <GenericFilePreview title="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} mimeType="application/pdf" openLabel="Open Invoice PDF" downloadLabel="Download Invoice PDF" /> : null}

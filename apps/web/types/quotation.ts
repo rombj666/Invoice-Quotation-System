@@ -27,6 +27,24 @@ export type QuotationAddon = {
   isIncluded?: boolean;
 };
 
+export type CupStickerPricingConfig = {
+  baseCupLimit: number;
+  basePrice: number;
+  additionalTierCups: number;
+  additionalTierPrice: number;
+};
+
+export type CupSleevePricingConfig = {
+  threshold: number;
+  rateBelowThreshold: number;
+  rateAtOrAboveThreshold: number;
+};
+
+export type AddonPricingSnapshot = {
+  cupSticker: CupStickerPricingConfig;
+  cupSleeve: CupSleevePricingConfig;
+};
+
 export type CustomizationMode = "same" | "per-date";
 
 export type CustomizationOption = {
@@ -64,6 +82,7 @@ export type QuotationData = {
   letHourCoffeeDecideDrinks?: boolean;
   masterDrinkDate?: string;
   selectedAddons: QuotationAddon[];
+  addonPricing?: AddonPricingSnapshot;
   hasCupSleeves: boolean;
   hasCupStickers: boolean;
   customizationOptions: {

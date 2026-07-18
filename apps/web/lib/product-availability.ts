@@ -6,6 +6,9 @@ export type AvailabilityItem = {
   itemKey: string;
   itemName: string;
   isAvailable: boolean;
+  pricingType: "FREE" | "FIXED" | "STICKER_TIERS" | "SLEEVE_RATES" | null;
+  price: number | null;
+  pricingConfig: Record<string, number> | null;
 };
 
 export type AvailabilityGroups = Record<string, AvailabilityItem[]>;
@@ -36,7 +39,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers
     }
   });
-  if (!response.ok) throw new Error("Product availability request failed.");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error ?? "Product availability request failed.");
+  }
   return response.json() as Promise<T>;
 }
 
@@ -44,10 +50,10 @@ export function loadProductAvailability(): Promise<AvailabilityGroups> {
   return request<AvailabilityGroups>("/api/admin/product-availability");
 }
 
-export function updateProductAvailability(itemKey: string, isAvailable: boolean): Promise<AvailabilityItem> {
+export function updateProductAvailability(itemKey: string, update: { isAvailable?: boolean; price?: number; pricingConfig?: Record<string, number> }): Promise<AvailabilityItem> {
   return request<AvailabilityItem>(`/api/admin/product-availability/${encodeURIComponent(itemKey)}`, {
     method: "PATCH",
-    body: JSON.stringify({ isAvailable })
+    body: JSON.stringify(update)
   });
 }
 

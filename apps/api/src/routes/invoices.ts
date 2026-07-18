@@ -2,7 +2,7 @@ import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prism
 import { Request, Router } from "express";
 import { cloudinary, cloudinaryFolders } from "../services/cloudinary.service";
 import { calculatePricing } from "../utils/pricing";
-import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeQuotationCartPrices } from "../utils/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 
@@ -117,10 +117,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
     if (hasCartAddonConflict(incomingData.quotation?.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
-    const data = {
-      ...incomingData,
-      quotation: normalizeQuotationCartPrices(incomingData.quotation ?? {})
-    };
+    const data = incomingData;
     const filesByField = new Map((multipart?.files ?? []).map((file) => [file.fieldName, file]));
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: data.quotation.quotationNo },

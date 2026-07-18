@@ -202,14 +202,10 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
           <span>Subtotal</span>
           <strong>{formatMoney(pricing.subtotal)}</strong>
         </div>
-        <div>
+        {pricing.discountAmount > 0 ? <div>
           <span>Discount</span>
           <strong>{formatMoney(pricing.discountAmount)}</strong>
-        </div>
-        <div>
-          <span>Roundoff</span>
-          <strong>MYR 0.00</strong>
-        </div>
+        </div> : null}
         <div className="final">
           <span>Total MYR</span>
           <strong>{formatMoney(pricing.total)}</strong>

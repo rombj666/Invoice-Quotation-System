@@ -1784,6 +1784,63 @@ p {
   transform: translateY(-1px);
 }
 
+.availability-row-actions,
+.availability-price-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.availability-action-button.edit-price {
+  background: #2f241c;
+  border-color: #2f241c;
+  color: #fff;
+}
+
+.availability-action-button.cancel-price {
+  background: #fff;
+  border-color: #aaa;
+  color: #555;
+}
+
+.availability-price-cell > span {
+  display: block;
+  white-space: nowrap;
+}
+
+.availability-price-editor {
+  display: grid;
+  gap: 10px;
+  min-width: min(320px, 75vw);
+}
+
+.availability-price-field {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.availability-price-field > div {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.availability-price-field > div > span {
+  flex-shrink: 0;
+  min-width: 34px;
+  white-space: nowrap;
+}
+
+.availability-price-field input {
+  border: 1px solid #ccc;
+  border-radius: 7px;
+  min-width: 0;
+  padding: 8px;
+  width: 130px;
+}
+
 .availability-action-button.mark-unavailable {
   background: #fff;
   color: #7a1e1e;

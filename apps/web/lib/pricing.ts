@@ -1,5 +1,5 @@
-import type { DrinkOrderByDate, QuotationData, ServiceDate } from "../types/quotation";
-import { calculateSelectedAddonTotal } from "./addons";
+import type { CupSleevePricingConfig, CupStickerPricingConfig, DrinkOrderByDate, QuotationData, ServiceDate } from "../types/quotation";
+import { DEFAULT_ADDON_PRICING, calculateSelectedAddonTotal } from "./addons";
 
 export type PricingBreakdown = {
   totalCups: number;
@@ -38,12 +38,14 @@ export function getExtraBaristaFee(date: ServiceDate): number {
   return extraBaristas * getServiceHoursBilled(date) * 30;
 }
 
-export function getCupSleevePrice(totalCups: number): number {
-  return totalCups * (totalCups >= 150 ? 1.5 : 2);
+export function getCupSleevePrice(totalCups: number, config: CupSleevePricingConfig = DEFAULT_ADDON_PRICING.cupSleeve): number {
+  return totalCups * (totalCups >= config.threshold ? config.rateAtOrAboveThreshold : config.rateBelowThreshold);
 }
 
-export function getCupStickerPrice(totalCups: number): number {
-  return totalCups <= 100 ? 50 : 50 + Math.ceil((totalCups - 100) / 100) * 10;
+export function getCupStickerPrice(totalCups: number, config: CupStickerPricingConfig = DEFAULT_ADDON_PRICING.cupSticker): number {
+  return totalCups <= config.baseCupLimit
+    ? config.basePrice
+    : config.basePrice + Math.ceil((totalCups - config.baseCupLimit) / config.additionalTierCups) * config.additionalTierPrice;
 }
 
 export function getCaffeinatedCupsForDate(dateId: string, drinkOrders: DrinkOrderByDate): number {
@@ -73,8 +75,8 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
-  const cupSleeveFee = data.hasCupSleeves ? getCupSleevePrice(totalCups) : 0;
-  const cupStickerFee = data.hasCupStickers ? getCupStickerPrice(totalCups) : 0;
+  const cupSleeveFee = data.hasCupSleeves ? getCupSleevePrice(totalCups, data.addonPricing?.cupSleeve) : 0;
+  const cupStickerFee = data.hasCupStickers ? getCupStickerPrice(totalCups, data.addonPricing?.cupSticker) : 0;
   const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
   const total = subtotal - discountAmount;

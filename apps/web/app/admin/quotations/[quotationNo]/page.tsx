@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculatePricing } from "../../../../lib/pricing";
-import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict } from "../../../../lib/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
@@ -36,6 +36,8 @@ export default function AdminQuotationDetailPage() {
   }
 
   const pricing = calculatePricing(quotation);
+  const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
+  const hasOptionalAddons = quotation.selectedAddons.length > 0 || quotation.hasCupStickers || quotation.hasCupSleeves;
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
@@ -125,17 +127,17 @@ export default function AdminQuotationDetailPage() {
               </div>
             ))}
           </section>
-          <section>
+          {hasOptionalAddons ? <section>
             <h3>Add-ons</h3>
             {quotation.selectedAddons.map((addon) => (
               <p key={addon.name}>
-                {addon.name}: {formatMoney(getCanonicalAddonPrice(addon))}
+                {addon.name}: {addon.price > 0 ? formatMoney(addon.price) : "FREE"}
               </p>
             ))}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-            {quotation.hasCupStickers ? <p>Custom Cup Stickers</p> : null}
-            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves</p> : null}
-          </section>
+            {quotation.hasCupStickers ? <p>Custom Cup Stickers: {pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</p> : null}
+            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves: {pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</p> : null}
+          </section> : null}
           <section>
             <h3>Customization Options</h3>
             <p>Cart: {quotation.customizationOptions?.cart.mode ?? "same"} / {quotation.customizationOptions?.cart.designCount ?? 1} design(s)</p>
@@ -144,8 +146,13 @@ export default function AdminQuotationDetailPage() {
           </section>
           <section>
             <h3>Pricing</h3>
+            <p>Base: {formatMoney(pricing.baseAmount)}</p>
+            {pricing.setupFee > 0 ? <p>Setup fee: {formatMoney(pricing.setupFee)}</p> : null}
+            {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
+            {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
+            {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
             <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
-            <p>Discount: {formatMoney(pricing.discountAmount)}</p>
+            {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
             <p>Total: {formatMoney(pricing.total)}</p>
           </section>
         </div>

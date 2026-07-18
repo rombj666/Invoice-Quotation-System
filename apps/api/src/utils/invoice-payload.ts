@@ -1,10 +1,7 @@
-import { normalizeQuotationCartPrices } from "./addons";
-
 export function toInvoicePayload(record: any) {
   const metadata = record.metadata ?? {};
   return {
     ...metadata,
-    ...(metadata.quotation ? { quotation: normalizeQuotationCartPrices(metadata.quotation) } : {}),
     invoiceNo: record.invoiceNo,
     invoiceStatus: record.status,
     paymentStatus: record.paymentStatus,

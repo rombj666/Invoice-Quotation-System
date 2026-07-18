@@ -5,7 +5,7 @@ import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
 import type { CustomizationMode, DrinkId, QuotationData } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
-import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeCartAddonPrices } from "../../lib/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
 import { calculatePricing } from "../../lib/pricing";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
@@ -36,7 +36,6 @@ const submittedInvoiceIdentityKey = "hourCoffeeSubmittedInvoiceIdentity";
 function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   return {
     ...quotation,
-    selectedAddons: normalizeCartAddonPrices(quotation.selectedAddons),
     customizationOptions: quotation.customizationOptions ?? {
       cart: { mode: "same", designCount: 1 },
       sticker: { mode: "same", designCount: 1 },
@@ -490,6 +489,7 @@ export function InvoiceShell() {
               <AddOnsStep
                 data={quotation}
                 setData={setQuotation}
+                useLatestPrices={false}
                 onBack={() => setReviewEditStep("drinks")}
                 onNext={() => {
                   setReviewError("");

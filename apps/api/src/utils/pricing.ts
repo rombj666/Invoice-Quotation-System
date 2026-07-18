@@ -1,4 +1,4 @@
-import { calculateSelectedAddonTotal } from "./addons";
+import { DEFAULT_SLEEVE_PRICING, DEFAULT_STICKER_PRICING, calculateSelectedAddonTotal, type CupSleevePricingConfig, type CupStickerPricingConfig } from "./addons";
 
 type ServiceDate = {
   id: string;
@@ -19,6 +19,10 @@ type QuotationPayload = {
   hasCupSleeves: boolean;
   hasCupStickers: boolean;
   discountPercent: number;
+  addonPricing?: {
+    cupSticker?: CupStickerPricingConfig;
+    cupSleeve?: CupSleevePricingConfig;
+  };
 };
 
 function timeToMinutes(value: string): number {
@@ -66,8 +70,14 @@ export function calculatePricing(data: QuotationPayload) {
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
-  const cupSleeveFee = data.hasCupSleeves ? totalCups * (totalCups >= 150 ? 1.5 : 2) : 0;
-  const cupStickerFee = data.hasCupStickers ? (totalCups <= 100 ? 50 : 50 + Math.ceil((totalCups - 100) / 100) * 10) : 0;
+  const sleeve = data.addonPricing?.cupSleeve ?? DEFAULT_SLEEVE_PRICING;
+  const sticker = data.addonPricing?.cupSticker ?? DEFAULT_STICKER_PRICING;
+  const cupSleeveFee = data.hasCupSleeves ? totalCups * (totalCups >= sleeve.threshold ? sleeve.rateAtOrAboveThreshold : sleeve.rateBelowThreshold) : 0;
+  const cupStickerFee = data.hasCupStickers
+    ? totalCups <= sticker.baseCupLimit
+      ? sticker.basePrice
+      : sticker.basePrice + Math.ceil((totalCups - sticker.baseCupLimit) / sticker.additionalTierCups) * sticker.additionalTierPrice
+    : 0;
   const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
   return {

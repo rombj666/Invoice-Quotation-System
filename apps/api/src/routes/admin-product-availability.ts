@@ -1,41 +1,52 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../utils/prisma";
+import { ensureProductAvailabilityDefaults, serializeProductAvailability } from "../utils/product-availability";
 
 export const adminProductAvailabilityRoutes = Router();
 
-const defaultItems = [
-  { category: "Beverages", itemKey: "americano", itemName: "Americano" },
-  { category: "Beverages", itemKey: "cafe_latte", itemName: "Cafe Latte" },
-  { category: "Beverages", itemKey: "dark_chocolate", itemName: "Dark Chocolate" },
-  { category: "Beverages", itemKey: "lemonade", itemName: "Lemonade" },
-  { category: "Add-on Features", itemKey: "smart_qr_ordering_system", itemName: "Smart QR Ordering System" },
-  { category: "Add-on Features", itemKey: "premium_table_setup", itemName: "Premium Table Setup" },
-  { category: "Add-on Features", itemKey: "coffee_cart", itemName: "Coffee Cart" },
-  { category: "Add-on Features", itemKey: "custom_branded_cart", itemName: "Custom Branded Cart" },
-  { category: "Add-on Features", itemKey: "custom_cup_stickers", itemName: "Custom Cup Stickers" },
-  { category: "Add-on Features", itemKey: "custom_cup_sleeves", itemName: "Custom Cup Sleeves" },
-  { category: "Add-on Features", itemKey: "custom_menu", itemName: "Custom Menu" },
-  { category: "Add-on Features", itemKey: "custom_latte_art_stencil", itemName: "Custom Latte Art Stencil" }
-] as const;
-
-async function ensureDefaults() {
-  await Promise.all(defaultItems.map((item) => prisma.productAvailability.upsert({
-    where: { itemKey: item.itemKey },
-    update: { category: item.category, itemName: item.itemName },
-    create: { ...item, isAvailable: true }
-  })));
-}
-
-function groupItems(items: Array<{ category: string; itemKey: string; itemName: string; isAvailable: boolean }>) {
-  return items.reduce<Record<string, typeof items>>((groups, item) => {
-    groups[item.category] = [...(groups[item.category] ?? []), item];
+function groupItems(items: any[]) {
+  return items.reduce<Record<string, any[]>>((groups, item) => {
+    const serialized = serializeProductAvailability(item);
+    groups[item.category] = [...(groups[item.category] ?? []), serialized];
     return groups;
   }, {});
 }
 
+function validCurrency(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && Number(value.toFixed(2)) === value;
+}
+
+function validPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function validatePricingConfig(pricingType: string | null, value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const config = value as Record<string, unknown>;
+  if (pricingType === "STICKER_TIERS") {
+    if (!validPositiveInteger(config.baseCupLimit) || !validCurrency(config.basePrice) || !validPositiveInteger(config.additionalTierCups) || !validCurrency(config.additionalTierPrice)) return null;
+    return {
+      baseCupLimit: config.baseCupLimit,
+      basePrice: config.basePrice,
+      additionalTierCups: config.additionalTierCups,
+      additionalTierPrice: config.additionalTierPrice
+    };
+  }
+  if (pricingType === "SLEEVE_RATES") {
+    if (!validPositiveInteger(config.threshold) || !validCurrency(config.rateBelowThreshold) || !validCurrency(config.rateAtOrAboveThreshold)) return null;
+    return {
+      threshold: config.threshold,
+      rateBelowThreshold: config.rateBelowThreshold,
+      rateAtOrAboveThreshold: config.rateAtOrAboveThreshold
+    };
+  }
+  return null;
+}
+
 adminProductAvailabilityRoutes.get("/", async (_req, res, next) => {
   try {
-    await ensureDefaults();
+    await ensureProductAvailabilityDefaults();
     const items = await prisma.productAvailability.findMany({ orderBy: [{ category: "asc" }, { itemName: "asc" }] });
     res.json(groupItems(items));
   } catch (error) {
@@ -45,12 +56,33 @@ adminProductAvailabilityRoutes.get("/", async (_req, res, next) => {
 
 adminProductAvailabilityRoutes.patch("/:itemKey", async (req, res, next) => {
   try {
-    await ensureDefaults();
-    const item = await prisma.productAvailability.update({
-      where: { itemKey: req.params.itemKey },
-      data: { isAvailable: Boolean(req.body.isAvailable) }
-    });
-    res.json(item);
+    await ensureProductAvailabilityDefaults();
+    const current = await prisma.productAvailability.findUnique({ where: { itemKey: req.params.itemKey } });
+    if (!current) return res.status(404).json({ error: "Product item not found." });
+
+    const data: Prisma.ProductAvailabilityUpdateInput = {};
+    if ("isAvailable" in req.body) {
+      if (typeof req.body.isAvailable !== "boolean") return res.status(400).json({ error: "Availability must be true or false." });
+      data.isAvailable = req.body.isAvailable;
+    }
+
+    if ("price" in req.body || "pricingConfig" in req.body) {
+      if (current.category !== "Add-on Features" || current.pricingType === "FREE") {
+        return res.status(400).json({ error: "Pricing cannot be edited for this item." });
+      }
+      if (current.pricingType === "FIXED") {
+        if (!("price" in req.body) || !validCurrency(req.body.price)) return res.status(400).json({ error: "Enter a valid non-negative price with no more than 2 decimal places." });
+        data.price = req.body.price;
+      } else {
+        const config = validatePricingConfig(current.pricingType, req.body.pricingConfig);
+        if (!config) return res.status(400).json({ error: "Enter valid non-negative rates and positive whole-number thresholds." });
+        data.pricingConfig = config as Prisma.InputJsonValue;
+      }
+    }
+
+    if (!Object.keys(data).length) return res.status(400).json({ error: "No supported update was provided." });
+    const item = await prisma.productAvailability.update({ where: { itemKey: req.params.itemKey }, data });
+    res.json(serializeProductAvailability(item));
   } catch (error) {
     next(error);
   }

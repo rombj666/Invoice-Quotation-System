@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
-import { CART_SELECTION_ERROR, getCanonicalAddonPrice, hasCartAddonConflict, normalizeCartAddonPrices } from "../../lib/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
@@ -23,10 +23,11 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const pricing = calculatePricing(data);
+  const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
+  const hasOptionalAddons = data.selectedAddons.length > 0 || data.hasCupStickers || data.hasCupSleeves;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const quotationForInvoice = {
     ...data,
-    selectedAddons: normalizeCartAddonPrices(data.selectedAddons),
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: {
       subtotal: pricing.subtotal,
@@ -51,7 +52,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   function addOnNames() {
     return [
-      ...data.selectedAddons.map((addon) => `${addon.name} (${formatMoney(getCanonicalAddonPrice(addon))})`),
+      ...data.selectedAddons.map((addon) => `${addon.name} (${formatMoney(addon.price)})`),
       data.hasCupStickers ? `Custom Cup Stickers (${formatMoney(pricing.cupStickerFee)})` : "",
       data.hasCupSleeves ? `Custom Cup Sleeves (${formatMoney(pricing.cupSleeveFee)})` : ""
     ].filter(Boolean);
@@ -174,13 +175,13 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
               {pricing.setupFee > 0 ? <tr><td>Setup Fee</td><td>Small order setup fee</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.setupFee)}</td><td className="amount-cell">{formatMoney(pricing.setupFee)}</td></tr> : null}
               {pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Extra barista(s) required</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
               {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
-              {addOnNames().length ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td><td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td></tr> : null}
+              {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
             </tbody>
           </table>
 
           <div className="invoice-totals">
             <div><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div>
-            <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div>
+            {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div> : null}
             <div className="final"><span>Total MYR</span><strong>{formatMoney(pricing.total)}</strong></div>
           </div>
           <footer>Quotation preview only. Submission status is unchanged by download.</footer>
@@ -239,30 +240,29 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             </div>
           )}
         </div>
-        <div className="review-section">
+        {hasOptionalAddons ? <div className="review-section">
           <span>Add-ons</span>
           <div className="table-scroll">
             <table className="summary-table">
               <thead><tr><th>Add-on</th><th>Amount</th></tr></thead>
               <tbody>
-                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{formatMoney(getCanonicalAddonPrice(addon))}</td></tr>)}
-                {data.hasCupStickers ? <tr><td>Custom Cup Stickers ({data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupStickerFee)}</td></tr> : null}
-                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves ({data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s))</td><td className="amount-cell">{formatMoney(pricing.cupSleeveFee)}</td></tr> : null}
-                {!data.selectedAddons.length && !data.hasCupStickers && !data.hasCupSleeves ? <tr><td>None</td><td className="amount-cell">{formatMoney(0)}</td></tr> : null}
+                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{addon.price > 0 ? formatMoney(addon.price) : "FREE"}</td></tr>)}
+                {data.hasCupStickers ? <tr><td>Custom Cup Stickers ({data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s))</td><td className="amount-cell">{pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</td></tr> : null}
+                {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves ({data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s))</td><td className="amount-cell">{pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</td></tr> : null}
               </tbody>
             </table>
           </div>
           {cartSelectionConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-        </div>
+        </div> : null}
         <div className="review-section">
           <span>Pricing</span>
           <div className="total-box">
             <div><span>Base</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
-            <div><span>Setup fee</span><strong>{formatMoney(pricing.setupFee)}</strong></div>
-            <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
-            <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div>
-            <div><span>Add-ons</span><strong>{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</strong></div>
-            <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div>
+            {pricing.setupFee > 0 ? <div><span>Setup fee</span><strong>{formatMoney(pricing.setupFee)}</strong></div> : null}
+            {pricing.extraBaristaFee > 0 ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+            {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
+            {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}
+            {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div> : null}
             <div className="final"><span>Total</span><strong>{formatMoney(pricing.total)}</strong></div>
           </div>
         </div>

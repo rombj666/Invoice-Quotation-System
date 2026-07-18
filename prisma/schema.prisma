@@ -289,13 +289,16 @@ model AdminUser {
 }
 
 model ProductAvailability {
-  id          String   @id @default(cuid())
-  category    String
-  itemKey     String   @unique
-  itemName    String
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  category      String
+  itemKey       String   @unique
+  itemName      String
+  isAvailable   Boolean  @default(true)
+  pricingType   String?
+  price         Decimal? @db.Decimal(10, 2)
+  pricingConfig Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([category])
   @@index([isAvailable])

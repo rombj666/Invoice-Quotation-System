@@ -1,9 +1,10 @@
 import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
 import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact } from "../utils/pricing";
-import { CART_SELECTION_ERROR, hasCartAddonConflict, normalizeQuotationCartPrices } from "../utils/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
+import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 
 export const quotationRoutes = Router();
 
@@ -15,10 +16,10 @@ const drinkNames: Record<string, string> = {
 };
 
 function toQuotationPayload(record: any) {
-  return normalizeQuotationCartPrices({
+  return {
     ...record.metadata,
     status: record.status
-  });
+  };
 }
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
@@ -76,8 +77,18 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (hasCartAddonConflict(req.body.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
-    const data = normalizeQuotationCartPrices(req.body);
-    const pricing = calculatePricing(data);
+    await ensureProductAvailabilityDefaults();
+    const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
+    const pricedData = applyCurrentProductPricing(req.body, pricingItems);
+    const pricing = calculatePricing(pricedData);
+    const data = {
+      ...pricedData,
+      pricingSnapshot: {
+        subtotal: pricing.subtotal,
+        discountAmount: pricing.discountAmount,
+        total: pricing.total
+      }
+    };
 
     const matchingCustomers = await findMatchingCustomers(data.customer);
     const customerData = {
