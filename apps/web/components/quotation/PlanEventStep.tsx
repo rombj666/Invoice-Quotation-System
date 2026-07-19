@@ -38,7 +38,14 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
     return date;
   });
 
-  const [minimumSelectableIso] = useState(() => toLocalIsoDate(getMinimumSelectableDate()));
+  const [{ todayIso, minimumSelectableIso }] = useState(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return {
+      todayIso: toLocalIsoDate(today),
+      minimumSelectableIso: toLocalIsoDate(getMinimumSelectableDate(today))
+    };
+  });
 
   useEffect(() => {
     serviceDatesRef.current = serviceDates;
@@ -228,7 +235,9 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
         <div className="hc-cal-grid">
           {calendarCells.map((iso, index) => {
             if (!iso) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
-            const isUnavailable = iso < minimumSelectableIso;
+            const isPast = iso < todayIso;
+            const isFullyBooked = iso >= todayIso && iso < minimumSelectableIso;
+            const isUnavailable = isPast || isFullyBooked;
             const isSelected = selectedDateValues.includes(iso);
             const isPreview = !isUnavailable && Boolean(dragPreview?.dates.has(iso));
             return (
@@ -239,15 +248,21 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
                 data-calendar-date={iso}
                 disabled={isUnavailable}
                 aria-disabled={isUnavailable}
-                aria-label={isUnavailable ? `${Number(iso.slice(-2))}, fully booked` : String(Number(iso.slice(-2)))}
+                aria-label={isPast ? `${Number(iso.slice(-2))}, unavailable` : isFullyBooked ? `${Number(iso.slice(-2))}, fully booked` : String(Number(iso.slice(-2)))}
                 tabIndex={isUnavailable ? -1 : 0}
                 onPointerDown={(event) => startDrag(iso, event)}
                 onPointerMove={trackPointerMove}
                 onPointerUp={(event) => finishPointer(event)}
                 onPointerCancel={(event) => finishPointer(event, true)}
               >
-                <span className="hc-cal-day">{Number(iso.slice(-2))}</span>
-                {isUnavailable ? <span className="hc-cal-booked-stamp">FULLY<br />BOOKED</span> : null}
+                {isPast ? (
+                  <span className="hc-cal-day" aria-hidden="true">/</span>
+                ) : (
+                  <>
+                    <span className="hc-cal-day">{Number(iso.slice(-2))}</span>
+                    {isFullyBooked ? <span className="hc-cal-booked-stamp">FULLY<br />BOOKED</span> : null}
+                  </>
+                )}
               </button>
             );
           })}
