@@ -283,7 +283,7 @@ p {
   -webkit-user-select: none;
 }
 
-.hc-cal-cell:not(.hc-cal-empty):not(.hc-cal-past):hover {
+.hc-cal-cell:not(.hc-cal-empty):not(.hc-cal-unavailable):hover {
   border-color: #1a1a1a;
   transform: translateY(-1px);
 }
@@ -293,15 +293,33 @@ p {
   background: transparent;
 }
 
-.hc-cal-past {
+.hc-cal-unavailable {
   color: #bbb;
   cursor: not-allowed;
   background: #f5f5f3;
   border-color: #e3e3df;
   opacity: 0.7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px;
 }
 
-.hc-cal-selected {
+.hc-cal-day {
+  line-height: 1;
+}
+
+.hc-cal-booked-stamp {
+  color: #999;
+  font-size: 7px;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+}
+
+.hc-cal-selected:not(.hc-cal-unavailable) {
   background: #1a1a1a;
   border-color: #1a1a1a;
   color: #fff;

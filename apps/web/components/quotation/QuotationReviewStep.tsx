@@ -182,7 +182,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div className="invoice-totals">
             <div><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div>
             {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div> : null}
-            <div className="final"><span>Total MYR</span><strong>{formatMoney(pricing.total)}</strong></div>
+            <div className="final"><span>Total RM</span><strong>{formatMoney(pricing.total)}</strong></div>
           </div>
           <footer>Quotation preview only. Submission status is unchanged by download.</footer>
         </div>

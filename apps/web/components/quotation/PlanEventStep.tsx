@@ -4,6 +4,7 @@ import type { PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ServiceDate } from "../../types/quotation";
 import type { PricingBreakdown } from "../../lib/pricing";
+import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
 import { getBaristasNeeded } from "../../lib/pricing";
 import { Button } from "../common/Button";
@@ -37,9 +38,18 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
     return date;
   });
 
+  const [minimumSelectableIso] = useState(() => toLocalIsoDate(getMinimumSelectableDate()));
+
   useEffect(() => {
     serviceDatesRef.current = serviceDates;
   }, [serviceDates]);
+
+  useEffect(() => {
+    const validServiceDates = serviceDates.filter((date) => date.serviceDate >= minimumSelectableIso);
+    if (validServiceDates.length === serviceDates.length) return;
+    serviceDatesRef.current = validServiceDates;
+    setServiceDates(validServiceDates);
+  }, [minimumSelectableIso, serviceDates, setServiceDates]);
 
   const timeOptions = Array.from({ length: 30 }).map((_, index) => {
     const totalMinutes = 8 * 60 + index * 30;
@@ -83,25 +93,18 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
     return Boolean(date.startTime && date.endTime && date.endTime <= date.startTime);
   }
 
-  function dateToIso(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  }
-
   function moveMonth(amount: number) {
     const next = new Date(calendarMonth);
     next.setMonth(next.getMonth() + amount);
     setCalendarMonth(next);
   }
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayIso = dateToIso(todayStart);
   const selectedDateValues = serviceDates.map((date) => date.serviceDate);
   const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
   const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
   const calendarCells = [
     ...Array.from({ length: firstDay.getDay() }).map(() => ""),
-    ...Array.from({ length: daysInMonth }).map((_, index) => dateToIso(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1)))
+    ...Array.from({ length: daysInMonth }).map((_, index) => toLocalIsoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1)))
   ];
   function updateDate(id: string, patch: Partial<ServiceDate>) {
     setServiceDates(serviceDates.map((date) => (date.id === id ? { ...date, ...patch } : date)));
@@ -114,7 +117,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
   }
 
   function startDrag(iso: string, event: PointerEvent<HTMLButtonElement>) {
-    if (iso < todayIso || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (iso < minimumSelectableIso || (event.pointerType === "mouse" && event.button !== 0)) return;
     const mode = serviceDatesRef.current.some((date) => date.serviceDate === iso) ? "remove" : "select";
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerSessionRef.current = {
@@ -130,7 +133,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
   }
 
   function applyDragDate(iso: string, mode: "select" | "remove") {
-    if (iso < todayIso) return;
+    if (iso < minimumSelectableIso) return;
     const current = serviceDatesRef.current;
     const next = mode === "select"
       ? addDateWithList(iso, current)
@@ -143,11 +146,11 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
   function dateUnderPointer(clientX: number, clientY: number): string | null {
     const element = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-calendar-date]");
     const iso = element?.dataset.calendarDate ?? null;
-    return iso && iso >= todayIso ? iso : null;
+    return iso && iso >= minimumSelectableIso ? iso : null;
   }
 
   function handleCrossedDate(iso: string, session: NonNullable<typeof pointerSessionRef.current>) {
-    if (session.handled.has(iso) || iso < todayIso) return;
+    if (session.handled.has(iso) || iso < minimumSelectableIso) return;
     session.handled.add(iso);
     applyDragDate(iso, session.mode);
     setDragPreview({ mode: session.mode, dates: new Set(session.handled) });
@@ -184,7 +187,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
   }
 
   function toggleDate(value: string) {
-    if (value < todayIso) return;
+    if (value < minimumSelectableIso) return;
     const existing = serviceDatesRef.current.find((date) => date.serviceDate === value);
     if (existing) removeDate(existing.id);
     else addDate(value);
@@ -225,24 +228,26 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
         <div className="hc-cal-grid">
           {calendarCells.map((iso, index) => {
             if (!iso) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
-            const isPast = iso < todayIso;
+            const isUnavailable = iso < minimumSelectableIso;
             const isSelected = selectedDateValues.includes(iso);
-            const isPreview = !isPast && Boolean(dragPreview?.dates.has(iso));
+            const isPreview = !isUnavailable && Boolean(dragPreview?.dates.has(iso));
             return (
               <button
-                className={`hc-cal-cell ${isPast ? "hc-cal-past" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragPreview?.mode}` : ""}`}
+                className={`hc-cal-cell ${isUnavailable ? "hc-cal-unavailable" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragPreview?.mode}` : ""}`}
                 type="button"
                 key={iso}
                 data-calendar-date={iso}
-                disabled={isPast}
-                aria-disabled={isPast}
-                tabIndex={isPast ? -1 : 0}
+                disabled={isUnavailable}
+                aria-disabled={isUnavailable}
+                aria-label={isUnavailable ? `${Number(iso.slice(-2))}, fully booked` : String(Number(iso.slice(-2)))}
+                tabIndex={isUnavailable ? -1 : 0}
                 onPointerDown={(event) => startDrag(iso, event)}
                 onPointerMove={trackPointerMove}
                 onPointerUp={(event) => finishPointer(event)}
                 onPointerCancel={(event) => finishPointer(event, true)}
               >
-                {Number(iso.slice(-2))}
+                <span className="hc-cal-day">{Number(iso.slice(-2))}</span>
+                {isUnavailable ? <span className="hc-cal-booked-stamp">FULLY<br />BOOKED</span> : null}
               </button>
             );
           })}

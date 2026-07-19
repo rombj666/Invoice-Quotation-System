@@ -1,5 +1,16 @@
+const wholeRinggitFormatter = new Intl.NumberFormat("en-MY", {
+  style: "currency",
+  currency: "MYR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+  useGrouping: false
+});
+
 export function formatMoney(amount: number): string {
-  return `MYR ${amount.toFixed(2)}`;
+  return wholeRinggitFormatter
+    .format(amount)
+    .replace("MYR", "RM")
+    .replace(/\u00a0/g, " ");
 }
 
 export function formatDateLabel(value: string): string {

@@ -136,7 +136,7 @@ export default function ProductAvailabilityPage() {
     return (
       <label className="availability-price-field" key={key}>
         <span>{label}</span>
-        <div>{currency ? <span>MYR</span> : <span>Cups</span>}<input type="number" min={integer ? 1 : 0} step={integer ? 1 : 0.01} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></div>
+        <div>{currency ? <span>RM</span> : <span>Cups</span>}<input type="number" min={integer ? 1 : 0} step={integer ? 1 : 0.01} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></div>
       </label>
     );
   }

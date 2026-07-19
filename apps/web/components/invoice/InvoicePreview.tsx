@@ -207,7 +207,7 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
           <strong>{formatMoney(pricing.discountAmount)}</strong>
         </div> : null}
         <div className="final">
-          <span>Total MYR</span>
+          <span>Total RM</span>
           <strong>{formatMoney(pricing.total)}</strong>
         </div>
       </div>
