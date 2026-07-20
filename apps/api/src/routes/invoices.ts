@@ -1,7 +1,7 @@
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Request, Router } from "express";
 import { cloudinary, cloudinaryFolders } from "../services/cloudinary.service";
-import { calculatePricing } from "../utils/pricing";
+import { calculatePricing, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
@@ -114,9 +114,6 @@ invoiceRoutes.post("/", async (req, res, next) => {
     const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
     const multipart = isMultipart ? await parseMultipartRequest(req) : null;
     const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
-    if (hasCartAddonConflict(incomingData.quotation?.selectedAddons)) {
-      return res.status(400).json({ error: CART_SELECTION_ERROR });
-    }
     const data = incomingData;
     const filesByField = new Map((multipart?.files ?? []).map((file) => [file.fieldName, file]));
     const quotation = await prisma.quotation.findUnique({
@@ -125,6 +122,15 @@ invoiceRoutes.post("/", async (req, res, next) => {
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     if (quotation.status !== "APPROVED") return res.status(403).json({ error: "Quotation is still pending approval" });
+    const savedQuotation = quotation.metadata as any;
+    if (!savedQuotation) return res.status(409).json({ error: "The saved quotation data is unavailable." });
+    if (!hasValidServiceDates(savedQuotation.serviceDates)) {
+      return res.status(409).json({ error: "The saved quotation has invalid service-date cup quantities." });
+    }
+    if (hasCartAddonConflict(savedQuotation.selectedAddons)) {
+      return res.status(400).json({ error: CART_SELECTION_ERROR });
+    }
+    data.quotation = savedQuotation;
     const existingInvoice = await prisma.invoice.findFirst({ where: { quotationId: quotation.id }, select: { invoiceNo: true, status: true } });
     if (existingInvoice) {
       return res.status(409).json({

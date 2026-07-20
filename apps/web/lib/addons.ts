@@ -2,7 +2,7 @@ import type { AddonPricingSnapshot, QuotationAddon } from "../types/quotation";
 import type { AvailabilityItem } from "./product-availability";
 
 export const FIXED_ADDON_DEFAULTS = {
-  "Coffee Cart": 50,
+  "Coffee Cart": 150,
   "Custom Branded Cart": 200,
   "Custom Menu": 30,
   "Custom Latte Art Stencil": 100
@@ -24,7 +24,7 @@ export const DEFAULT_ADDON_PRICING: AddonPricingSnapshot = {
 
 export const COFFEE_CART_ADDON_NAME = "Coffee Cart";
 export const CUSTOM_BRANDED_CART_ADDON_NAME = "Custom Branded Cart";
-export const CART_SELECTION_ERROR = "Coffee Cart and Custom Branded Cart cannot be selected together. Please keep only one cart option.";
+export const CART_SELECTION_ERROR = "Standard Cart and Branded Cart cannot be selected together. Please keep only one cart option.";
 
 export function getConfiguredFixedPrice(item: AvailabilityItem | undefined, fallback: number): number {
   return item?.pricingType === "FIXED" && typeof item.price === "number" ? item.price : fallback;
@@ -60,6 +60,18 @@ export function hasCartAddonConflict(addons: QuotationAddon[]): boolean {
   return isCoffeeCartSelected(addons) && isCustomBrandedCartSelected(addons);
 }
 
+export function getAddonDisplayName(name: string): string {
+  if (name === COFFEE_CART_ADDON_NAME) return "Standard Cart (without customer logo)";
+  if (name === CUSTOM_BRANDED_CART_ADDON_NAME) return "Branded Cart (with customer logo)";
+  return name;
+}
+
+export function getAddonPrice(addon: QuotationAddon): number {
+  if (addon.name === COFFEE_CART_ADDON_NAME) return FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME];
+  if (addon.name === CUSTOM_BRANDED_CART_ADDON_NAME) return FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME];
+  return Number(addon.price) || 0;
+}
+
 export function calculateSelectedAddonTotal(addons: QuotationAddon[]): number {
   let nonCartTotal = 0;
   let coffeeCartPrice: number | null = null;
@@ -67,11 +79,11 @@ export function calculateSelectedAddonTotal(addons: QuotationAddon[]): number {
 
   for (const addon of addons) {
     if (addon.name === COFFEE_CART_ADDON_NAME) {
-      coffeeCartPrice = Number(addon.price) || 0;
+      coffeeCartPrice = getAddonPrice(addon);
     } else if (addon.name === CUSTOM_BRANDED_CART_ADDON_NAME) {
-      customBrandedCartPrice = Number(addon.price) || 0;
+      customBrandedCartPrice = getAddonPrice(addon);
     } else {
-      nonCartTotal += Number(addon.price) || 0;
+      nonCartTotal += getAddonPrice(addon);
     }
   }
 

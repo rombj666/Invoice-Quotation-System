@@ -30,7 +30,12 @@ export const DEFAULT_SLEEVE_PRICING: CupSleevePricingConfig = {
   rateAtOrAboveThreshold: 1.5
 };
 
-export const CART_SELECTION_ERROR = "Coffee Cart and Custom Branded Cart cannot be selected together. Please keep only one cart option.";
+export const FIXED_CART_PRICES = {
+  "Coffee Cart": 150,
+  "Custom Branded Cart": 200
+} as const;
+
+export const CART_SELECTION_ERROR = "Standard Cart and Branded Cart cannot be selected together. Please keep only one cart option.";
 
 export function hasCartAddonConflict(addons: Addon[] = []): boolean {
   const hasCoffeeCart = addons.some((addon) => addon.name === "Coffee Cart");
@@ -45,9 +50,9 @@ export function calculateSelectedAddonTotal(addons: Addon[] = []): number {
 
   for (const addon of addons) {
     if (addon.name === "Coffee Cart") {
-      coffeeCartPrice = Number(addon.price) || 0;
+      coffeeCartPrice = FIXED_CART_PRICES["Coffee Cart"];
     } else if (addon.name === "Custom Branded Cart") {
-      customBrandedCartPrice = Number(addon.price) || 0;
+      customBrandedCartPrice = FIXED_CART_PRICES["Custom Branded Cart"];
     } else {
       nonCartTotal += Number(addon.price) || 0;
     }

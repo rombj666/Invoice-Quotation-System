@@ -7,6 +7,14 @@ type ServiceDate = {
   endTime: string;
 };
 
+export function hasValidServiceDates(value: unknown): value is ServiceDate[] {
+  return Array.isArray(value) && value.length > 0 && value.every((date) => {
+    if (!date || typeof date !== "object") return false;
+    const candidate = date as Partial<ServiceDate>;
+    return typeof candidate.id === "string" && candidate.id.length > 0 && Number.isInteger(candidate.cups) && Number(candidate.cups) >= 50;
+  });
+}
+
 type DrinkQuantity = {
   ice: number;
   hot: number;
@@ -24,6 +32,14 @@ type QuotationPayload = {
     cupSleeve?: CupSleevePricingConfig;
   };
 };
+
+function getDrinkTierRate(totalCups: number): number {
+  if (totalCups >= 350) return 8;
+  if (totalCups >= 200) return 8.5;
+  if (totalCups >= 150) return 9;
+  if (totalCups >= 100) return 9.5;
+  return 10;
+}
 
 function timeToMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map(Number);
@@ -65,7 +81,7 @@ function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Record<st
 
 export function calculatePricing(data: QuotationPayload) {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const baseAmount = Math.max(totalCups * 10, 550);
+  const baseAmount = totalCups * getDrinkTierRate(totalCups);
   const setupFee = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100) ? 30 : 0;
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);

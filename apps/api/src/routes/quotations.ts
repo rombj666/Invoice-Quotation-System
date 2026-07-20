@@ -1,6 +1,6 @@
 import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
-import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact } from "../utils/pricing";
+import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
@@ -74,6 +74,9 @@ quotationRoutes.get("/next-number", async (_req, res, next) => {
 
 quotationRoutes.post("/", async (req, res, next) => {
   try {
+    if (!hasValidServiceDates(req.body.serviceDates)) {
+      return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
+    }
     if (hasCartAddonConflict(req.body.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }

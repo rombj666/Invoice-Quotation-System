@@ -168,6 +168,10 @@ export default function ProductAvailabilityPage() {
     );
   }
 
+  function canEditPrice(item: AvailabilityItem): boolean {
+    return item.pricingType !== "FREE" && item.itemKey !== "coffee_cart" && item.itemKey !== "custom_branded_cart";
+  }
+
   return (
     <main className="hc-page admin-page">
       <Card className="admin-card">
@@ -200,7 +204,7 @@ export default function ProductAvailabilityPage() {
                         <td><span className={`admin-status-badge ${item.isAvailable ? "approved" : "deleted"}`}>{item.isAvailable ? "Available" : "Unavailable"}</span></td>
                         <td>
                           <div className="availability-row-actions">
-                            {isAddonCategory && item.pricingType !== "FREE" ? (
+                            {isAddonCategory && canEditPrice(item) ? (
                               <button className="availability-action-button edit-price" type="button" onClick={() => beginEdit(item)} disabled={Boolean(editingKey)}>
                                 Edit Price
                               </button>

@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { DEFAULT_SLEEVE_PRICING, DEFAULT_STICKER_PRICING } from "./addons";
+import { DEFAULT_SLEEVE_PRICING, DEFAULT_STICKER_PRICING, FIXED_CART_PRICES } from "./addons";
 import { prisma } from "./prisma";
 
 export type ProductPricingType = "FREE" | "FIXED" | "STICKER_TIERS" | "SLEEVE_RATES";
@@ -20,8 +20,8 @@ export const defaultProductItems: DefaultProductItem[] = [
   { category: "Beverages", itemKey: "lemonade", itemName: "Lemonade", pricingType: null, price: null, pricingConfig: null },
   { category: "Add-on Features", itemKey: "smart_qr_ordering_system", itemName: "Smart QR Ordering System", pricingType: "FREE", price: 0, pricingConfig: null },
   { category: "Add-on Features", itemKey: "premium_table_setup", itemName: "Premium Table Setup", pricingType: "FREE", price: 0, pricingConfig: null },
-  { category: "Add-on Features", itemKey: "coffee_cart", itemName: "Coffee Cart", pricingType: "FIXED", price: 50, pricingConfig: null },
-  { category: "Add-on Features", itemKey: "custom_branded_cart", itemName: "Custom Branded Cart", pricingType: "FIXED", price: 200, pricingConfig: null },
+  { category: "Add-on Features", itemKey: "coffee_cart", itemName: "Standard Cart (without customer logo)", pricingType: "FIXED", price: FIXED_CART_PRICES["Coffee Cart"], pricingConfig: null },
+  { category: "Add-on Features", itemKey: "custom_branded_cart", itemName: "Branded Cart (with customer logo)", pricingType: "FIXED", price: FIXED_CART_PRICES["Custom Branded Cart"], pricingConfig: null },
   { category: "Add-on Features", itemKey: "custom_cup_stickers", itemName: "Custom Cup Stickers", pricingType: "STICKER_TIERS", price: null, pricingConfig: DEFAULT_STICKER_PRICING },
   { category: "Add-on Features", itemKey: "custom_cup_sleeves", itemName: "Custom Cup Sleeves", pricingType: "SLEEVE_RATES", price: null, pricingConfig: DEFAULT_SLEEVE_PRICING },
   { category: "Add-on Features", itemKey: "custom_menu", itemName: "Custom Menu", pricingType: "FIXED", price: 30, pricingConfig: null },
@@ -55,6 +55,17 @@ export async function ensureProductAvailabilityDefaults() {
       pricingConfig: jsonValue(item.pricingConfig)
     }
   })));
+
+  await Promise.all([
+    prisma.productAvailability.updateMany({
+      where: { itemKey: "coffee_cart", price: { not: FIXED_CART_PRICES["Coffee Cart"] } },
+      data: { price: FIXED_CART_PRICES["Coffee Cart"] }
+    }),
+    prisma.productAvailability.updateMany({
+      where: { itemKey: "custom_branded_cart", price: { not: FIXED_CART_PRICES["Custom Branded Cart"] } },
+      data: { price: FIXED_CART_PRICES["Custom Branded Cart"] }
+    })
+  ]);
 }
 
 export function serializeProductAvailability(item: any) {
@@ -74,6 +85,9 @@ export function applyCurrentProductPricing<T extends { selectedAddons?: Array<{ 
     "Custom Latte Art Stencil": "custom_latte_art_stencil"
   };
   const selectedAddons = (quotation.selectedAddons ?? []).map((addon) => {
+    if (addon.name === "Coffee Cart" || addon.name === "Custom Branded Cart") {
+      return { ...addon, price: FIXED_CART_PRICES[addon.name] };
+    }
     const configured = byKey[fixedKeys[addon.name]];
     return configured?.pricingType === "FIXED" && typeof configured.price === "number"
       ? { ...addon, price: configured.price }

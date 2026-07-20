@@ -3,6 +3,7 @@
 import type { QuotationData } from "../../types/quotation";
 import type { InvoiceDetails } from "../../types/invoice";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
+import { getAddonDisplayName } from "../../lib/addons";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 
 export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: string; quotation: QuotationData; invoice?: InvoiceDetails }) {
@@ -170,7 +171,7 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
               <td>
                 Add-ons
               </td>
-              <td>{[...quotation.selectedAddons.map((addon) => addon.name), quotation.hasCupSleeves ? "Custom Cup Sleeves" : "", quotation.hasCupStickers ? "Custom Cup Stickers" : ""].filter(Boolean).join(", ")}</td>
+              <td>{[...quotation.selectedAddons.map((addon) => getAddonDisplayName(addon.name)), quotation.hasCupSleeves ? "Custom Cup Sleeves" : "", quotation.hasCupStickers ? "Custom Cup Stickers" : ""].filter(Boolean).join(", ")}</td>
               <td className="number-cell">1</td>
               <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
               <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>

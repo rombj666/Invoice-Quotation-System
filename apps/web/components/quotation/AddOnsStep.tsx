@@ -104,10 +104,11 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     return { name, price: !useLatestPrices && savedPrice !== undefined ? savedPrice : configuredPrice };
   }
   const coffeeCartAddon: QuotationAddon = {
-    ...fixedAddon(COFFEE_CART_ADDON_NAME, availability.coffee_cart)
+    name: COFFEE_CART_ADDON_NAME,
+    price: FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME]
   };
   const optionalAddons: QuotationAddon[] = [
-    fixedAddon(CUSTOM_BRANDED_CART_ADDON_NAME, availability.custom_branded_cart),
+    { name: CUSTOM_BRANDED_CART_ADDON_NAME, price: FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME] },
     fixedAddon("Custom Menu", availability.custom_menu),
     fixedAddon("Custom Latte Art Stencil", availability.custom_latte_art_stencil)
   ];
@@ -124,8 +125,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     if (!useLatestPrices || !Object.keys(availability).length) return;
     const latestPricing = getConfiguredAddonPricing(availability);
     const latestFixedPrices: Record<string, number> = {
-      [COFFEE_CART_ADDON_NAME]: getConfiguredFixedPrice(availability.coffee_cart, FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME]),
-      [CUSTOM_BRANDED_CART_ADDON_NAME]: getConfiguredFixedPrice(availability.custom_branded_cart, FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME]),
+      [COFFEE_CART_ADDON_NAME]: FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME],
+      [CUSTOM_BRANDED_CART_ADDON_NAME]: FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME],
       "Custom Menu": getConfiguredFixedPrice(availability.custom_menu, FIXED_ADDON_DEFAULTS["Custom Menu"]),
       "Custom Latte Art Stencil": getConfiguredFixedPrice(availability.custom_latte_art_stencil, FIXED_ADDON_DEFAULTS["Custom Latte Art Stencil"])
     };
@@ -279,9 +280,9 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       {data.serviceDates.length ? (
         <button type="button" className={`addon-card ${coffeeCartSelected ? "active" : ""}`} disabled={(customBrandedCartSelected && !coffeeCartSelected) || (!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected)} onClick={setCoffeeCart}>
           <div>
-            <strong>Coffee Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong>
-            <p>Optional mobile coffee cart.</p>
-            {customBrandedCartSelected && !coffeeCartSelected ? <p className="cart-lock-message">Custom Branded Cart is selected.</p> : null}
+            <strong>Standard Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong>
+            <p>Cart without customer logo.</p>
+            {customBrandedCartSelected && !coffeeCartSelected ? <p className="cart-lock-message">Branded Cart is selected.</p> : null}
           </div>
           <span className="addon-price">{formatMoney(coffeeCartAddon.price)}</span>
         </button>
@@ -295,9 +296,9 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
           <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
             <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" disabled={isLockedByCoffeeCart || (((!isAvailable(addon.name) || (leadTimeAddonNames.has(addon.name) && !enoughLeadTime)) && !isSelected))} onClick={() => toggleAddon(addon)}>
               <div>
-                <strong>{addon.name} {unavailableLabel(addon.name)}</strong>
-                <p>{leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
-                {isLockedByCoffeeCart ? <p className="cart-lock-message">Standard Coffee Cart is selected.</p> : null}
+                <strong>{isCustomBrandedCart ? "Branded Cart" : addon.name} {unavailableLabel(addon.name)}</strong>
+                <p>{isCustomBrandedCart ? "Cart with customer logo. 2-week lead time." : leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
+                {isLockedByCoffeeCart ? <p className="cart-lock-message">Standard Cart is selected.</p> : null}
               </div>
               <span className="addon-price">{formatMoney(addon.price)}</span>
             </button>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
-import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
+import { CART_SELECTION_ERROR, getAddonDisplayName, getAddonPrice, hasCartAddonConflict } from "../../lib/addons";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
@@ -52,7 +52,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   function addOnNames() {
     return [
-      ...data.selectedAddons.map((addon) => `${addon.name} (${formatMoney(addon.price)})`),
+      ...data.selectedAddons.map((addon) => `${getAddonDisplayName(addon.name)} (${formatMoney(getAddonPrice(addon))})`),
       data.hasCupStickers ? `Custom Cup Stickers (${formatMoney(pricing.cupStickerFee)})` : "",
       data.hasCupSleeves ? `Custom Cup Sleeves (${formatMoney(pricing.cupSleeveFee)})` : ""
     ].filter(Boolean);
@@ -246,7 +246,10 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <table className="summary-table">
               <thead><tr><th>Add-on</th><th>Amount</th></tr></thead>
               <tbody>
-                {data.selectedAddons.map((addon) => <tr key={addon.name}><td>{addon.name}</td><td className="amount-cell">{addon.price > 0 ? formatMoney(addon.price) : "FREE"}</td></tr>)}
+                {data.selectedAddons.map((addon) => {
+                  const price = getAddonPrice(addon);
+                  return <tr key={addon.name}><td>{getAddonDisplayName(addon.name)}</td><td className="amount-cell">{price > 0 ? formatMoney(price) : "FREE"}</td></tr>;
+                })}
                 {data.hasCupStickers ? <tr><td>Custom Cup Stickers ({data.customizationOptions.sticker.mode}, {data.customizationOptions.sticker.designCount} design(s))</td><td className="amount-cell">{pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</td></tr> : null}
                 {data.hasCupSleeves ? <tr><td>Custom Cup Sleeves ({data.customizationOptions.sleeve.mode}, {data.customizationOptions.sleeve.designCount} design(s))</td><td className="amount-cell">{pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</td></tr> : null}
               </tbody>

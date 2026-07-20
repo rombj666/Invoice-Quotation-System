@@ -70,6 +70,9 @@ adminProductAvailabilityRoutes.patch("/:itemKey", async (req, res, next) => {
       if (current.category !== "Add-on Features" || current.pricingType === "FREE") {
         return res.status(400).json({ error: "Pricing cannot be edited for this item." });
       }
+      if (current.itemKey === "coffee_cart" || current.itemKey === "custom_branded_cart") {
+        return res.status(400).json({ error: "Cart pricing is fixed and cannot be edited." });
+      }
       if (current.pricingType === "FIXED") {
         if (!("price" in req.body) || !validCurrency(req.body.price)) return res.status(400).json({ error: "Enter a valid non-negative price with no more than 2 decimal places." });
         data.price = req.body.price;

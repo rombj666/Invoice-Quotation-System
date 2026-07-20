@@ -15,6 +15,14 @@ export type PricingBreakdown = {
   total: number;
 };
 
+function getDrinkTierRate(totalCups: number): number {
+  if (totalCups >= 350) return 8;
+  if (totalCups >= 200) return 8.5;
+  if (totalCups >= 150) return 9;
+  if (totalCups >= 100) return 9.5;
+  return 10;
+}
+
 function timeToMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -70,7 +78,7 @@ export function getSetupFee(serviceDates: ServiceDate[]): number {
 
 export function calculatePricing(data: QuotationData): PricingBreakdown {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const baseAmount = Math.max(totalCups * 10, 550);
+  const baseAmount = totalCups * getDrinkTierRate(totalCups);
   const setupFee = getSetupFee(data.serviceDates);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
