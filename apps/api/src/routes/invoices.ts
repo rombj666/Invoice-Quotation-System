@@ -182,16 +182,6 @@ invoiceRoutes.post("/", async (req, res, next) => {
               unitPrice: pricing.baseAmount,
               amount: pricing.baseAmount
             },
-            ...(pricing.setupFee > 0
-              ? [{
-                  itemType: "SETUP_FEE" as InvoiceItemType,
-                  name: "Setup Fee",
-                  description: "Service date setup fee",
-                  quantity: 1,
-                  unitPrice: pricing.setupFee,
-                  amount: pricing.setupFee
-                }]
-              : []),
             ...(pricing.extraBaristaFee > 0
               ? [{
                   itemType: "EXTRA_BARISTA" as InvoiceItemType,

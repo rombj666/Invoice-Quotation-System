@@ -172,7 +172,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
             <tbody>
               <tr><td>Coffee Catering</td><td>Americano, Cafe Latte, Dark Chocolate, Lemonade</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
-              {pricing.setupFee > 0 ? <tr><td>Setup Fee</td><td>Small order setup fee</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.setupFee)}</td><td className="amount-cell">{formatMoney(pricing.setupFee)}</td></tr> : null}
               {pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Extra barista(s) required</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
               {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
               {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
@@ -261,7 +260,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <span>Pricing</span>
           <div className="total-box">
             <div><span>Base</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
-            {pricing.setupFee > 0 ? <div><span>Setup fee</span><strong>{formatMoney(pricing.setupFee)}</strong></div> : null}
             {pricing.extraBaristaFee > 0 ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
             {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
             {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}

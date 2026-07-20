@@ -15,7 +15,7 @@ type Props = {
   setServiceDates: (dates: ServiceDate[]) => void;
   onNext: () => void;
   error: string;
-  pricing: Pick<PricingBreakdown, "baseAmount" | "setupFee" | "extraBaristaFee">;
+  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristaFee">;
 };
 
 export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pricing }: Props) {
@@ -337,7 +337,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
           <br />
           Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
           <br />
-          Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.setupFee + pricing.extraBaristaFee)}
+          Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}
         </div>
       ) : null}
       {serviceDates.length && hasInvalidTime ? <div className="warn-summary">Fix invalid service time before the order summary can be calculated.</div> : null}

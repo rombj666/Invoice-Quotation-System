@@ -234,7 +234,6 @@ export default function AdminInvoiceDetailPage() {
           <section>
             <h3>Final Total</h3>
             <p>Base: {formatMoney(pricing.baseAmount)}</p>
-            {pricing.setupFee > 0 ? <p>Setup fee: {formatMoney(pricing.setupFee)}</p> : null}
             {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
             {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}

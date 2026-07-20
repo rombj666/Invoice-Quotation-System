@@ -41,7 +41,6 @@ enum CustomizationType {
 
 enum InvoiceItemType {
   COFFEE_SERVICE
-  SETUP_FEE
   EXTRA_BARISTA
   MACHINE_RENTAL
   ADDON

@@ -4,7 +4,6 @@ import { DEFAULT_ADDON_PRICING, calculateSelectedAddonTotal } from "./addons";
 export type PricingBreakdown = {
   totalCups: number;
   baseAmount: number;
-  setupFee: number;
   extraBaristaFee: number;
   machineRentalFee: number;
   addonTotal: number;
@@ -72,27 +71,21 @@ export function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Dr
   return Math.max(0, machinesNeeded - 1) * 350;
 }
 
-export function getSetupFee(serviceDates: ServiceDate[]): number {
-  return serviceDates.length > 0 && serviceDates.every((date) => date.cups < 100) ? 30 : 0;
-}
-
 export function calculatePricing(data: QuotationData): PricingBreakdown {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getDrinkTierRate(totalCups);
-  const setupFee = getSetupFee(data.serviceDates);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const cupSleeveFee = data.hasCupSleeves ? getCupSleevePrice(totalCups, data.addonPricing?.cupSleeve) : 0;
   const cupStickerFee = data.hasCupStickers ? getCupStickerPrice(totalCups, data.addonPricing?.cupSticker) : 0;
-  const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
+  const subtotal = baseAmount + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
   const total = subtotal - discountAmount;
 
   return {
     totalCups,
     baseAmount,
-    setupFee,
     extraBaristaFee,
     machineRentalFee,
     addonTotal,

@@ -139,15 +139,6 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
             <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
             <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
           </tr>
-          {pricing.setupFee > 0 ? (
-            <tr>
-              <td>Setup Fee</td>
-              <td>Small order setup fee</td>
-              <td className="number-cell">1</td>
-              <td className="amount-cell">{formatMoney(pricing.setupFee)}</td>
-              <td className="amount-cell">{formatMoney(pricing.setupFee)}</td>
-            </tr>
-          ) : null}
           {pricing.extraBaristaFee > 0 ? (
             <tr>
               <td>Additional Barista Fee</td>

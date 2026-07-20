@@ -82,7 +82,6 @@ function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Record<st
 export function calculatePricing(data: QuotationPayload) {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getDrinkTierRate(totalCups);
-  const setupFee = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100) ? 30 : 0;
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
@@ -94,12 +93,11 @@ export function calculatePricing(data: QuotationPayload) {
       ? sticker.basePrice
       : sticker.basePrice + Math.ceil((totalCups - sticker.baseCupLimit) / sticker.additionalTierCups) * sticker.additionalTierPrice
     : 0;
-  const subtotal = baseAmount + setupFee + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
+  const subtotal = baseAmount + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
   return {
     totalCups,
     baseAmount,
-    setupFee,
     extraBaristaFee,
     machineRentalFee,
     addonTotal,
