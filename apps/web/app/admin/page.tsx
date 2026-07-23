@@ -6,13 +6,13 @@ export default function AdminHomePage() {
     <main className="hc-page landing-page">
       <Card>
         <h1>Hour Coffee Admin</h1>
-        <p className="step-copy">Local testing dashboard</p>
+        <p className="step-copy">Admin dashboard</p>
         <div className="landing-actions">
           <Link className="hc-button hc-button-primary" href="/admin/quotations">
-            View Quotation List
+            Quotation List
           </Link>
           <Link className="hc-button hc-button-secondary" href="/admin/invoices">
-            View Invoice List
+            Invoice List
           </Link>
           <Link className="hc-button hc-button-secondary" href="/admin/product-availability">
             Product Availability
