@@ -33,12 +33,17 @@ type QuotationPayload = {
   };
 };
 
-function getDrinkTierRate(totalCups: number): number {
-  if (totalCups >= 350) return 8;
-  if (totalCups >= 200) return 8.5;
-  if (totalCups >= 150) return 9;
-  if (totalCups >= 100) return 9.5;
-  return 10;
+const COFFEE_CATERING_TIERS = [
+  { minimumCups: 50, maximumCups: 99, rate: 10 },
+  { minimumCups: 100, maximumCups: 149, rate: 9.5 },
+  { minimumCups: 150, maximumCups: 199, rate: 9 },
+  { minimumCups: 200, maximumCups: 349, rate: 8.5 },
+  { minimumCups: 350, maximumCups: Number.POSITIVE_INFINITY, rate: 8 }
+] as const;
+
+export function getCoffeeCateringRate(totalCups: number): number {
+  return COFFEE_CATERING_TIERS.find((tier) => totalCups >= tier.minimumCups && totalCups <= tier.maximumCups)?.rate
+    ?? COFFEE_CATERING_TIERS[0].rate;
 }
 
 function timeToMinutes(value: string): number {
@@ -81,7 +86,7 @@ function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Record<st
 
 export function calculatePricing(data: QuotationPayload) {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const baseAmount = totalCups * getDrinkTierRate(totalCups);
+  const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);

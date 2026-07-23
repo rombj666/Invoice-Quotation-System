@@ -14,12 +14,21 @@ export type PricingBreakdown = {
   total: number;
 };
 
-function getDrinkTierRate(totalCups: number): number {
-  if (totalCups >= 350) return 8;
-  if (totalCups >= 200) return 8.5;
-  if (totalCups >= 150) return 9;
-  if (totalCups >= 100) return 9.5;
-  return 10;
+export const COFFEE_CATERING_TIERS = [
+  { minimumCups: 50, maximumCups: 99, cupsLabel: "50–99 cups", rate: 10, rateLabel: "RM10 per cup" },
+  { minimumCups: 100, maximumCups: 149, cupsLabel: "100–149 cups", rate: 9.5, rateLabel: "RM9.50 per cup" },
+  { minimumCups: 150, maximumCups: 199, cupsLabel: "150–199 cups", rate: 9, rateLabel: "RM9 per cup" },
+  { minimumCups: 200, maximumCups: 349, cupsLabel: "200–349 cups", rate: 8.5, rateLabel: "RM8.50 per cup" },
+  { minimumCups: 350, maximumCups: Number.POSITIVE_INFINITY, cupsLabel: "350 cups and above", rate: 8, rateLabel: "RM8 per cup" }
+] as const;
+
+export function getCoffeeCateringTier(totalCups: number) {
+  return COFFEE_CATERING_TIERS.find((tier) => totalCups >= tier.minimumCups && totalCups <= tier.maximumCups)
+    ?? COFFEE_CATERING_TIERS[0];
+}
+
+export function getCoffeeCateringRate(totalCups: number): number {
+  return getCoffeeCateringTier(totalCups).rate;
 }
 
 function timeToMinutes(value: string): number {
@@ -73,7 +82,7 @@ export function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Dr
 
 export function calculatePricing(data: QuotationData): PricingBreakdown {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const baseAmount = totalCups * getDrinkTierRate(totalCups);
+  const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);

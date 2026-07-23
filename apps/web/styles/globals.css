@@ -453,6 +453,58 @@ p {
   color: #fff;
 }
 
+.pricing-guide {
+  margin-top: 8px;
+}
+
+.pricing-guide summary {
+  display: inline-block;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #1a1a1a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.pricing-guide summary::-webkit-details-marker {
+  display: none;
+}
+
+.pricing-guide table {
+  width: 100%;
+  max-width: 420px;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pricing-guide caption {
+  padding: 8px 10px;
+  background: #1a1a1a;
+  color: #fff;
+  font-weight: 700;
+  text-align: left;
+}
+
+.pricing-guide th,
+.pricing-guide td {
+  border: 1px solid #ddd;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.pricing-guide th {
+  background: #f5f5f3;
+}
+
+.pricing-guide tr.active td {
+  background: #fff0c7;
+  font-weight: 700;
+}
+
 .ok-summary {
   background: #f0faf3;
   border: 1px solid #b8dfc8;

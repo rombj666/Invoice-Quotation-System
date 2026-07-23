@@ -6,7 +6,7 @@ import type { ServiceDate } from "../../types/quotation";
 import type { PricingBreakdown } from "../../lib/pricing";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
-import { getBaristasNeeded } from "../../lib/pricing";
+import { COFFEE_CATERING_TIERS, getBaristasNeeded, getCoffeeCateringTier } from "../../lib/pricing";
 import { Button } from "../common/Button";
 import { StepNavigation } from "../common/StepNavigation";
 
@@ -206,6 +206,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
   }
 
   const totalCups = serviceDates.reduce((sum, date) => sum + date.cups, 0);
+  const activeCoffeeTier = getCoffeeCateringTier(totalCups);
   const hasInvalidTime = serviceDates.some(isInvalidTime);
 
   return (
@@ -330,15 +331,40 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
       </div>
 
       {serviceDates.length && !hasInvalidTime ? (
-        <div className="dark-summary">
-          Total cups: {totalCups}
-          <br />
-          Service dates: {serviceDates.length}
-          <br />
-          Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
-          <br />
-          Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}
-        </div>
+        <>
+          <div className="dark-summary">
+            Total cups: {totalCups}
+            <br />
+            Service dates: {serviceDates.length}
+            <br />
+            Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
+            <br />
+            Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}
+          </div>
+          <details className="pricing-guide">
+            <summary>View Pricing Guide</summary>
+            <table>
+              <caption>COFFEE CATERING</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Total cups</th>
+                  <th scope="col">Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {COFFEE_CATERING_TIERS.map((tier) => {
+                  const isActive = tier.minimumCups === activeCoffeeTier.minimumCups;
+                  return (
+                    <tr className={isActive ? "active" : undefined} key={tier.minimumCups} aria-current={isActive ? "true" : undefined}>
+                      <td>{tier.cupsLabel}</td>
+                      <td>{tier.rateLabel}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </details>
+        </>
       ) : null}
       {serviceDates.length && hasInvalidTime ? <div className="warn-summary">Fix invalid service time before the order summary can be calculated.</div> : null}
       {copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
