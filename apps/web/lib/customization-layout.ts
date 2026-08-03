@@ -17,6 +17,8 @@ type LayoutConfig = {
 export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 70 };
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
 
+const CUP_DISPLAY_MAX_LOGO_SIZE_MM = 50;
+
 const CART_PHYSICAL_AREA_CM = { width: 90, height: 90 };
 const CUP_PRINTABLE_AREA_MM = { width: 30, height: 45 };
 
@@ -129,7 +131,8 @@ export function getCupLogoSizeMm(design: CustomizationDesign) {
   const hotRect = calculateContainedDesignRect("hotCup", commonDesign);
   const coldRect = calculateContainedDesignRect("coldCup", commonDesign);
   const resolvedWidthRatio = Math.min(hotRect.widthRatio, coldRect.widthRatio);
-  const width = resolvedWidthRatio * CUP_PRINTABLE_AREA_MM.width;
+  const widthAtMaximum = CUP_DISPLAY_MAX_LOGO_SIZE_MM / Math.max(1, aspectRatio);
+  const width = (resolvedWidthRatio / bounds.max) * widthAtMaximum;
 
   return { width, height: width * aspectRatio };
 }

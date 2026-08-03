@@ -24,6 +24,8 @@ type Props = {
   onDesigns: (designs: CustomizationByDate) => void;
 };
 
+const CART_DISPLAY_MAX_LOGO_SIZE_CM = 60;
+
 function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -58,8 +60,16 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
   const rect = active ? calculateContainedDesignRect("cart", active) : null;
   const cartLayout = CUSTOMIZATION_LAYOUT.cart;
   const area = cartLayout.designArea;
-  const widthCm = rect ? rect.widthRatio * (cartLayout.physicalAreaCm?.width ?? 0) : 0;
-  const heightCm = rect ? rect.heightRatio * (cartLayout.physicalAreaCm?.height ?? 0) : 0;
+  const physicalWidthCm = rect ? rect.widthRatio * (cartLayout.physicalAreaCm?.width ?? 0) : 0;
+  const physicalHeightCm = rect ? rect.heightRatio * (cartLayout.physicalAreaCm?.height ?? 0) : 0;
+  const maximumPhysicalSizeCm = rect
+    ? Math.max(physicalWidthCm, physicalHeightCm) * (bounds.max / rect.widthRatio)
+    : 0;
+  const displayScale = maximumPhysicalSizeCm > 0
+    ? CART_DISPLAY_MAX_LOGO_SIZE_CM / maximumPhysicalSizeCm
+    : 0;
+  const widthCm = physicalWidthCm * displayScale;
+  const heightCm = physicalHeightCm * displayScale;
 
   function updateWidth(widthRatio: number) {
     if (!active) return;
