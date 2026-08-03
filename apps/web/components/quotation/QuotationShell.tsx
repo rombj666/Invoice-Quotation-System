@@ -344,7 +344,7 @@ export function QuotationShell() {
   if (quotationView === "summary" && summaryQuotation) {
     return (
       <main className="hc-page">
-        <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
+        <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
         <Card><QuotationReviewStep data={summaryQuotation} readOnly onCreateAnother={createAnotherQuotation} /></Card>
       </main>
     );
@@ -353,7 +353,7 @@ export function QuotationShell() {
   if (quotationView === "history") {
     return (
       <main className="hc-page">
-        <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
+        <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
         <Card>
           <PreviousQuotationsPanel
             quotations={previousQuotations}
@@ -369,7 +369,7 @@ export function QuotationShell() {
 
   return (
     <main className="hc-page">
-      <div className="team-topbar">Hour Coffee - PIC Internal Tool</div>
+      <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
       <Card>
         <ProgressHeader currentStep={step} totalSteps={totalSteps} />
         {step === 0 ? <ContactDetailsStep data={data} setData={updateContactData} onNext={validateContact} isChecking={isCheckingHistory} error={error} /> : null}
