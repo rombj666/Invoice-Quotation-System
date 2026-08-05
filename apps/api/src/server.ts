@@ -8,6 +8,7 @@ import { quotationRoutes } from "./routes/quotations";
 import { quotationAnalyticsRoutes } from "./routes/quotation-analytics";
 import { adminDashboardRoutes } from "./routes/admin-dashboard";
 import { adminRecordRoutes } from "./routes/admin-records";
+import { adminQuotationExtraChargeRoutes } from "./routes/admin-quotation-extra-charges";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -26,6 +27,7 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
+app.use("/api/admin/quotations", adminQuotationExtraChargeRoutes);
 app.use("/api/admin", adminRecordRoutes);
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -27,6 +27,15 @@ export type QuotationAddon = {
   isIncluded?: boolean;
 };
 
+export type QuotationExtraCharge = {
+  id: string;
+  title: string;
+  description?: string;
+  amount: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type CupStickerPricingConfig = {
   baseCupLimit: number;
   basePrice: number;
@@ -62,6 +71,7 @@ export type CustomerDetails = {
 };
 
 export type QuotationData = {
+  id?: string;
   quotationNo: string;
   anonymousSessionId?: string;
   status?:
@@ -91,6 +101,7 @@ export type QuotationData = {
   letHourCoffeeDecideDrinks?: boolean;
   masterDrinkDate?: string;
   selectedAddons: QuotationAddon[];
+  extraCharges?: QuotationExtraCharge[];
   addonPricing?: AddonPricingSnapshot;
   hasCupSleeves: boolean;
   hasCupStickers: boolean;

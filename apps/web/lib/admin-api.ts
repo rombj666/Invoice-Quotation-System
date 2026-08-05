@@ -9,6 +9,7 @@ export type FunnelTotals = Pick<AnalyticsTotals, "visitors" | "started" | "submi
 export type TrendPoint = { label: string; visitors: number; started: number; submitted: number };
 export type TrendData = { grouping: "hour" | "day" | "month"; points: TrendPoint[] };
 export type FollowUpLead = { quotationNo: string; customer: string; phone: string; company?: string; submittedAt: string; followUpStatus: string; followUpNote?: string };
+export type ExtraChargeInput = { title: string; description?: string; amount: string };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -49,6 +50,34 @@ export function prepareAdminQuotationEdit(originalQuotationNo: string, data: Quo
   return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(originalQuotationNo)}/preview`, {
     method: "POST",
     body: JSON.stringify(data)
+  });
+}
+
+function extraChargeForm(pdf: Blob, quotationNo: string, payload: ExtraChargeInput | Record<string, never>) {
+  const form = new FormData();
+  form.append("payload", JSON.stringify(payload));
+  form.append("quotationPdf", pdf, `${quotationNo}.pdf`);
+  return form;
+}
+
+export function addQuotationExtraCharge(quotationId: string, quotationNo: string, input: ExtraChargeInput, pdf: Blob) {
+  return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationId)}/extra-charges`, {
+    method: "POST",
+    body: extraChargeForm(pdf, quotationNo, input)
+  });
+}
+
+export function updateQuotationExtraCharge(quotationId: string, quotationNo: string, chargeId: string, input: ExtraChargeInput, pdf: Blob) {
+  return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationId)}/extra-charges/${encodeURIComponent(chargeId)}`, {
+    method: "PATCH",
+    body: extraChargeForm(pdf, quotationNo, input)
+  });
+}
+
+export function deleteQuotationExtraCharge(quotationId: string, quotationNo: string, chargeId: string, pdf: Blob) {
+  return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationId)}/extra-charges/${encodeURIComponent(chargeId)}`, {
+    method: "DELETE",
+    body: extraChargeForm(pdf, quotationNo, {})
   });
 }
 

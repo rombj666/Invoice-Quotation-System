@@ -14,6 +14,10 @@ export type PricingBreakdown = {
   total: number;
 };
 
+export type QuotationPricingBreakdown = PricingBreakdown & {
+  manualExtraChargeTotal: number;
+};
+
 export const COFFEE_CATERING_TIERS = [
   { minimumCups: 50, maximumCups: 99, cupsLabel: "50–99 cups", rate: 10, rateLabel: "RM10 per cup" },
   { minimumCups: 100, maximumCups: 149, cupsLabel: "100–149 cups", rate: 9.5, rateLabel: "RM9.50 per cup" },
@@ -103,5 +107,20 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
     subtotal,
     discountAmount,
     total
+  };
+}
+
+export function calculateQuotationPricing(data: QuotationData): QuotationPricingBreakdown {
+  const pricing = calculatePricing(data);
+  const manualExtraChargeTotal = (data.extraCharges ?? []).reduce((sum, charge) => sum + Number(charge.amount), 0);
+  const subtotal = pricing.subtotal + manualExtraChargeTotal;
+  const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
+
+  return {
+    ...pricing,
+    manualExtraChargeTotal,
+    subtotal,
+    discountAmount,
+    total: subtotal - discountAmount
   };
 }

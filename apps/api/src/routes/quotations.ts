@@ -39,10 +39,19 @@ const drinkNames: Record<string, string> = {
 export function toQuotationPayload(record: any) {
   return {
     ...record.metadata,
+    id: record.id,
     quotationNo: record.quotationNo,
     status: record.status,
     quotationPdfUrl: record.quotationPdfUrl,
     quotationPdfPublicId: record.quotationPdfPublicId,
+    extraCharges: record.extraCharges?.map((charge: any) => ({
+      id: charge.id,
+      title: charge.title,
+      description: charge.description ?? undefined,
+      amount: Number(charge.amount),
+      createdAt: charge.createdAt?.toISOString?.() ?? charge.createdAt,
+      updatedAt: charge.updatedAt?.toISOString?.() ?? charge.updatedAt
+    })) ?? [],
     followUpStatus: record.followUpStatus,
     lastFollowedUpAt: record.lastFollowedUpAt?.toISOString?.() ?? record.lastFollowedUpAt,
     followUpNote: record.followUpNote,
@@ -151,7 +160,7 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (incomingData.anonymousSessionId) {
       const trackedSubmission = await prisma.quotationAnalyticsSession.findUnique({
         where: { anonymousSessionId: incomingData.anonymousSessionId },
-        include: { quotation: { include: { invoices: { select: { id: true } } } } }
+        include: { quotation: { include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } } } }
       });
       if (trackedSubmission?.quotation) {
         const storedPdf = Boolean(trackedSubmission.quotation.quotationPdfUrl && trackedSubmission.quotation.quotationPdfPublicId);
@@ -241,7 +250,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         quotationPdfUrl: quotationPdfUpload?.fileUrl ?? null,
         quotationPdfPublicId: quotationPdfUpload?.cloudinaryPublicId ?? null,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        metadata: toJsonValue({ ...data, anonymousSessionId: undefined, quotationNo }),
+        metadata: toJsonValue({ ...data, anonymousSessionId: undefined, extraCharges: undefined, quotationNo }),
         dates: {
           create: data.serviceDates.map((date: any) => ({
             serviceDate: new Date(`${date.serviceDate}T12:00:00`),
@@ -275,7 +284,7 @@ quotationRoutes.post("/", async (req, res, next) => {
           ]
         }
           },
-          include: { customer: true }
+          include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }
         });
         logQuotationPdf("database_save", {
           quotationId: quotation.id,
@@ -346,7 +355,7 @@ quotationRoutes.get("/", async (_req, res, next) => {
   try {
     const quotations = await prisma.quotation.findMany({
       orderBy: { createdAt: "desc" },
-      include: { invoices: { select: { id: true } } }
+      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     res.json(quotations.map(toQuotationPayload));
   } catch (error) {
@@ -358,7 +367,7 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { invoices: { select: { id: true } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     res.json(toQuotationPayload(quotation));
@@ -375,6 +384,7 @@ quotationRoutes.post("/find", async (req, res, next) => {
       where: { quotationNo: normalizedQuotationNo },
       include: {
         customer: true,
+        extraCharges: { orderBy: { createdAt: "asc" } },
         invoices: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -442,7 +452,7 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
-      include: { customer: true, invoices: { select: { id: true }, take: 1 } }
+      include: { customer: true, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     if (!quotation || !customerIdentityMatches(quotation.customer, req.body, true)) {
       return res.status(404).json({ access: "NOT_FOUND" });
@@ -463,7 +473,8 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.update({
       where: { quotationNo: req.params.quotationNo },
-      data: { status: "APPROVED" }
+      data: { status: "APPROVED" },
+      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     res.json(toQuotationPayload(quotation));
   } catch (error) {

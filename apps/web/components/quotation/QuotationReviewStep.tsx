@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
 import { CART_SELECTION_ERROR, getAddonDisplayName, getAddonPrice, hasCartAddonConflict } from "../../lib/addons";
-import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
+import { calculateQuotationPricing, getBaristasNeeded } from "../../lib/pricing";
 import { saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { useState } from "react";
@@ -23,7 +23,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const router = useRouter();
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const pricing = calculatePricing(data);
+  const pricing = calculateQuotationPricing(data);
   const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
   const hasOptionalAddons = data.selectedAddons.length > 0 || data.hasCupStickers || data.hasCupSleeves;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
@@ -200,6 +200,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
               {pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Extra barista(s) required</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
               {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
               {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
+              {(data.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description || "Manual quotation charge"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
             </tbody>
           </table>
 
@@ -288,6 +289,8 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             {pricing.extraBaristaFee > 0 ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
             {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
             {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}
+            {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}</span><strong>{formatMoney(charge.amount)}</strong></div>)}
+            <div><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div>
             {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>{formatMoney(pricing.discountAmount)}</strong></div> : null}
             <div className="final"><span>Total</span><strong>{formatMoney(pricing.total)}</strong></div>
           </div>

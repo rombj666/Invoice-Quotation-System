@@ -4,7 +4,7 @@ import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
-import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
+import { calculatePricing, calculateQuotationPricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
 import { prisma } from "../utils/prisma";
 import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 import { toQuotationPayload } from "./quotations";
@@ -83,7 +83,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     await ensureProductAvailabilityDefaults();
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(data, pricingItems);
-    const pricing = calculatePricing(pricedData);
+    const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
     res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total } });
   } catch (error) {
     next(error);
@@ -112,7 +112,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo/follow-up", async (req, res, n
           }
         }
       },
-      include: { invoices: { select: { id: true } } }
+      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     res.json(toQuotationPayload(updated));
   } catch (error) {
@@ -138,21 +138,21 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
 
     const current = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { customer: true, dates: true, invoices: { select: { id: true } } }
+      include: { customer: true, dates: true, invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     if (!current) return res.status(404).json({ error: "Quotation not found" });
 
     await ensureProductAvailabilityDefaults();
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(data, pricingItems);
-    const pricing = calculatePricing(pricedData);
+    const pricing = calculateQuotationPricing(pricedData, current.extraCharges);
     const quotationNo = String(data.quotationNo ?? "").trim().toUpperCase();
     if (!/^Q\d{5}$/.test(quotationNo)) return res.status(400).json({ error: "Quotation number must use the format Q00001." });
     const pdfUpload = await uploadCloudinaryBuffer(pdfFile, cloudinaryFolders.quotationPdfs, `${quotationNo}-${Date.now()}.pdf`);
     if (!pdfUpload) throw new Error("Unable to upload quotation PDF.");
     newPdfPublicId = pdfUpload.cloudinaryPublicId;
     const summaryFields = changedFields(current.metadata, data, ["quotationNo", "customer", "location", "fullAddress", "eventType", "customEventType", "serviceDates", "drinkOrders", "selectedAddons", "hasCupStickers", "hasCupSleeves", "discountPercent", "status", "followUpStatus", "followUpNote"]);
-    const metadata = { ...pricedData, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total } };
+    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total } };
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.customizationFile.updateMany({ where: { quotationDateId: { in: current.dates.map((date) => date.id) } }, data: { quotationDateId: null } });
@@ -195,7 +195,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
           ] },
           statusHistory: { create: { fromStatus: current.status, toStatus: data.status, changedBy: "admin", changeSummary: `Edited: ${summaryFields.join(", ") || "quotation details"}.` } }
         },
-        include: { invoices: { select: { id: true } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+        include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
       });
     });
     void deleteCloudinaryPdf(current.quotationPdfPublicId).catch(() => undefined);

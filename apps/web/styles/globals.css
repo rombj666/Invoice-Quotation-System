@@ -2169,6 +2169,30 @@ p {
   margin-bottom: 16px;
 }
 
+.admin-extra-charge-modal {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 480px);
+}
+
+.admin-extra-charge-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-extra-charge-row {
+  align-items: flex-start;
+  border-bottom: 1px solid #e7e1d8;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.admin-extra-charge-row p {
+  margin: 4px 0;
+}
+
 .admin-status-badge {
   display: inline-flex;
   align-items: center;

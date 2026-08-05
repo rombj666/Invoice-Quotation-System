@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../lib/contact";
-import { calculatePricing } from "../../../lib/pricing";
+import { calculateQuotationPricing } from "../../../lib/pricing";
 import { approveQuotation, deleteQuotation, loadAllQuotations } from "../../../lib/quotation-storage";
 import { formatDateLabel, formatMalaysiaDateInput, formatMoney } from "../../../lib/formatters";
 import type { QuotationData } from "../../../types/quotation";
@@ -86,7 +86,7 @@ export default function AdminQuotationListPage() {
             </thead>
             <tbody>
               {filtered.map((quotation) => {
-                const pricing = calculatePricing(quotation);
+                const pricing = calculateQuotationPricing(quotation);
                 const status = quotation.status ?? "PENDING_APPROVAL";
                 const isApproved = status === "APPROVED";
                 return (

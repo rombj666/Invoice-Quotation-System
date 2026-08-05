@@ -33,6 +33,10 @@ type QuotationPayload = {
   };
 };
 
+type ManualExtraCharge = {
+  amount: number | string | { toString(): string };
+};
+
 const COFFEE_CATERING_TIERS = [
   { minimumCups: 50, maximumCups: 99, rate: 10 },
   { minimumCups: 100, maximumCups: 149, rate: 9.5 },
@@ -108,6 +112,21 @@ export function calculatePricing(data: QuotationPayload) {
     addonTotal,
     cupSleeveFee,
     cupStickerFee,
+    subtotal,
+    discountAmount,
+    total: subtotal - discountAmount
+  };
+}
+
+export function calculateQuotationPricing(data: QuotationPayload, extraCharges: ManualExtraCharge[] = []) {
+  const pricing = calculatePricing(data);
+  const manualExtraChargeTotal = extraCharges.reduce((sum, charge) => sum + Number(charge.amount), 0);
+  const subtotal = pricing.subtotal + manualExtraChargeTotal;
+  const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
+
+  return {
+    ...pricing,
+    manualExtraChargeTotal,
     subtotal,
     discountAmount,
     total: subtotal - discountAmount
