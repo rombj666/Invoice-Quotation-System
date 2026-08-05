@@ -2,13 +2,32 @@ import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
 import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
-import { cloudinaryFolders, uploadCloudinaryBuffer } from "../services/cloudinary.service";
+import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
 import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 
 export const quotationRoutes = Router();
+
+type QuotationPdfLogDetails = {
+  quotationId: string | null;
+  quotationNo: string | null;
+  success: boolean;
+  secureUrl?: string | null;
+  publicId?: string | null;
+  error?: string;
+  bytes?: number;
+};
+
+function logQuotationPdf(stage: "pdf_generation" | "cloudinary_upload" | "database_save", details: QuotationPdfLogDetails): void {
+  const log = details.success ? console.info : console.error;
+  log(`[quotation-pdf] ${stage}`, details);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 const drinkNames: Record<string, string> = {
   americano: "Americano",
@@ -93,13 +112,36 @@ quotationRoutes.post("/", async (req, res, next) => {
     const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
     const multipart = isMultipart ? await parseMultipartRequest(req, 30 * 1024 * 1024) : null;
     const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
+    const submittedQuotationNo = String(incomingData.quotationNo ?? "").trim().toUpperCase() || null;
     if (incomingData.anonymousSessionId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingData.anonymousSessionId)) {
       return res.status(400).json({ error: "Invalid anonymous quotation session." });
     }
     const quotationPdfFile = multipart?.files.find((file) => file.fieldName === "quotationPdf");
-    if (quotationPdfFile && quotationPdfFile.mimeType !== "application/pdf") {
+    if (!quotationPdfFile) {
+      logQuotationPdf("pdf_generation", {
+        quotationId: null,
+        quotationNo: submittedQuotationNo,
+        success: false,
+        error: "Generated quotation PDF was missing from the submission."
+      });
+      return res.status(400).json({ error: "Quotation submission failed because the generated PDF was not received. Please try again." });
+    }
+    if (quotationPdfFile.mimeType !== "application/pdf" || quotationPdfFile.buffer.length === 0) {
+      logQuotationPdf("pdf_generation", {
+        quotationId: null,
+        quotationNo: submittedQuotationNo,
+        success: false,
+        error: quotationPdfFile.buffer.length === 0 ? "Generated quotation PDF was empty." : `Unexpected PDF MIME type: ${quotationPdfFile.mimeType}`,
+        bytes: quotationPdfFile.buffer.length
+      });
       return res.status(400).json({ error: "The submitted quotation document must be a PDF." });
     }
+    logQuotationPdf("pdf_generation", {
+      quotationId: null,
+      quotationNo: submittedQuotationNo,
+      success: true,
+      bytes: quotationPdfFile.buffer.length
+    });
     if (!hasValidServiceDates(incomingData.serviceDates)) {
       return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
     }
@@ -111,7 +153,21 @@ quotationRoutes.post("/", async (req, res, next) => {
         where: { anonymousSessionId: incomingData.anonymousSessionId },
         include: { quotation: { include: { invoices: { select: { id: true } } } } }
       });
-      if (trackedSubmission?.quotation) return res.json(toQuotationPayload(trackedSubmission.quotation));
+      if (trackedSubmission?.quotation) {
+        const storedPdf = Boolean(trackedSubmission.quotation.quotationPdfUrl && trackedSubmission.quotation.quotationPdfPublicId);
+        logQuotationPdf("database_save", {
+          quotationId: trackedSubmission.quotation.id,
+          quotationNo: trackedSubmission.quotation.quotationNo,
+          success: storedPdf,
+          secureUrl: trackedSubmission.quotation.quotationPdfUrl,
+          publicId: trackedSubmission.quotation.quotationPdfPublicId,
+          ...(!storedPdf ? { error: "Existing submission has no stored quotation PDF." } : {})
+        });
+        if (!storedPdf) {
+          return res.status(409).json({ error: "This quotation exists without a stored PDF and cannot be reported as fully submitted." });
+        }
+        return res.json(toQuotationPayload(trackedSubmission.quotation));
+      }
     }
     await ensureProductAvailabilityDefaults();
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
@@ -145,12 +201,32 @@ quotationRoutes.post("/", async (req, res, next) => {
       const quotationNo = attempt === 0 && /^Q\d{5}$/.test(requestedQuotationNo)
         ? requestedQuotationNo
         : await getNextQuotationNo();
+      let quotationPdfUpload: Awaited<ReturnType<typeof uploadCloudinaryBuffer>> = null;
       try {
-        const quotationPdfUpload = await uploadCloudinaryBuffer(
-          quotationPdfFile,
-          cloudinaryFolders.quotationPdfs,
-          `${quotationNo}-${Date.now()}.pdf`
-        );
+        try {
+          quotationPdfUpload = await uploadCloudinaryBuffer(
+            quotationPdfFile,
+            cloudinaryFolders.quotationPdfs,
+            `${quotationNo}-${Date.now()}.pdf`
+          );
+          if (!quotationPdfUpload) throw new Error("Cloudinary returned no quotation PDF upload result.");
+          logQuotationPdf("cloudinary_upload", {
+            quotationId: null,
+            quotationNo,
+            success: true,
+            secureUrl: quotationPdfUpload.fileUrl,
+            publicId: quotationPdfUpload.cloudinaryPublicId
+          });
+        } catch (error) {
+          logQuotationPdf("cloudinary_upload", {
+            quotationId: null,
+            quotationNo,
+            success: false,
+            error: errorMessage(error)
+          });
+          return res.status(502).json({ error: "Quotation submission failed while uploading the PDF. Please try again." });
+        }
+
         quotation = await prisma.quotation.create({
           data: {
         quotationNo,
@@ -201,15 +277,37 @@ quotationRoutes.post("/", async (req, res, next) => {
           },
           include: { customer: true }
         });
+        logQuotationPdf("database_save", {
+          quotationId: quotation.id,
+          quotationNo: quotation.quotationNo,
+          success: true,
+          secureUrl: quotation.quotationPdfUrl,
+          publicId: quotation.quotationPdfPublicId
+        });
         break;
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          if (quotationPdfFile) {
-            return res.status(409).json({ error: "The quotation number was just used. Please refresh and submit again so the PDF matches the quotation." });
-          }
-          continue;
+        logQuotationPdf("database_save", {
+          quotationId: null,
+          quotationNo,
+          success: false,
+          secureUrl: quotationPdfUpload?.fileUrl,
+          publicId: quotationPdfUpload?.cloudinaryPublicId,
+          error: errorMessage(error)
+        });
+        if (quotationPdfUpload?.cloudinaryPublicId) {
+          await deleteCloudinaryPdf(quotationPdfUpload.cloudinaryPublicId).catch((cleanupError) => {
+            console.error("[quotation-pdf] failed_upload_cleanup", {
+              quotationId: null,
+              quotationNo,
+              publicId: quotationPdfUpload?.cloudinaryPublicId,
+              error: errorMessage(cleanupError)
+            });
+          });
         }
-        throw error;
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          return res.status(409).json({ error: "The quotation number was just used. Please refresh and submit again so the PDF matches the quotation." });
+        }
+        return res.status(500).json({ error: "Quotation submission failed while saving the PDF. No successful submission was recorded. Please try again." });
       }
     }
 

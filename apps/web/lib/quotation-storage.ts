@@ -53,23 +53,17 @@ export function loadAllQuotations(): Promise<QuotationData[]> {
   return request<QuotationData[]>("/api/quotations");
 }
 
-export function saveQuotationLocally(data: QuotationData, quotationPdf?: Blob): Promise<QuotationData> {
+export function saveQuotationLocally(data: QuotationData, quotationPdf: Blob): Promise<QuotationData> {
   const trackedData = { ...data, anonymousSessionId: getQuotationAnalyticsSessionId() };
-  if (quotationPdf) {
-    const formData = new FormData();
-    formData.append("payload", JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" }));
-    formData.append("quotationPdf", quotationPdf, `${data.quotationNo}.pdf`);
-    return fetch(`${apiBaseUrl}/api/quotations`, { method: "POST", body: formData }).then(async (response) => {
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
-      }
-      return response.json() as Promise<QuotationData>;
-    });
-  }
-  return request<QuotationData>("/api/quotations", {
-    method: "POST",
-    body: JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" })
+  const formData = new FormData();
+  formData.append("payload", JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" }));
+  formData.append("quotationPdf", quotationPdf, `${data.quotationNo}.pdf`);
+  return fetch(`${apiBaseUrl}/api/quotations`, { method: "POST", body: formData }).then(async (response) => {
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
+    }
+    return response.json() as Promise<QuotationData>;
   });
 }
 

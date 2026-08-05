@@ -5,7 +5,30 @@ import { prisma } from "../utils/prisma";
 export const adminDashboardRoutes = Router();
 
 type Period = "today" | "week" | "month" | "all";
+type DatabaseDiagnosticRow = {
+  database_name: string;
+  current_schema: string;
+  search_path: string;
+  analytics_table: string | null;
+};
+
 const MALAYSIA_OFFSET_MS = 8 * 60 * 60 * 1000;
+let databaseDiagnosticLogged = false;
+
+async function logDatabaseDiagnosticOnce(): Promise<void> {
+  if ((process.env.NODE_ENV ?? "development") !== "development" || databaseDiagnosticLogged) return;
+  databaseDiagnosticLogged = true;
+
+  const [diagnostic] = await prisma.$queryRaw<DatabaseDiagnosticRow[]>(Prisma.sql`
+    SELECT
+      current_database() AS database_name,
+      current_schema() AS current_schema,
+      current_setting('search_path') AS search_path,
+      to_regclass('public."QuotationAnalyticsSession"')::text AS analytics_table
+  `);
+
+  console.info("[admin-dashboard] Database diagnostic", diagnostic ?? null);
+}
 
 function parsePeriod(value: unknown): Period {
   return value === "today" || value === "week" || value === "month" ? value : "all";
@@ -86,6 +109,7 @@ adminDashboardRoutes.get("/follow-up-totals", async (req, res, next) => {
 
 adminDashboardRoutes.get("/analytics-totals", async (req, res, next) => {
   try {
+    await logDatabaseDiagnosticOnce();
     const range = periodRange(parsePeriod(req.query.period));
     const firstVisitedAt = dateWhere(range);
     const startedAt = dateWhere(range);
@@ -143,7 +167,7 @@ async function trendFor(field: "firstVisitedAt" | "startedAt" | "submittedAt", p
   return prisma.$queryRaw<TrendRow[]>(Prisma.sql`
     SELECT to_char(date_trunc(${unit}, ${column} + interval '8 hours'), ${format}) AS label,
            COUNT(*)::int AS total
-    FROM "QuotationAnalyticsSession"
+    FROM "public"."QuotationAnalyticsSession"
     ${where}
     GROUP BY 1
     ORDER BY 1
@@ -152,6 +176,7 @@ async function trendFor(field: "firstVisitedAt" | "startedAt" | "submittedAt", p
 
 adminDashboardRoutes.get("/trend", async (req, res, next) => {
   try {
+    await logDatabaseDiagnosticOnce();
     const period = parsePeriod(req.query.period);
     const [visitors, started, submitted] = await Promise.all([
       trendFor("firstVisitedAt", period),

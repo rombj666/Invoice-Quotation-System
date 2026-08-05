@@ -79,8 +79,28 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     setIsSubmitting(true);
     try {
       const filename = `Hour-Coffee-Quotation-${data.quotationNo}.pdf`;
-      const quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+      let quotationPdf: Blob;
+      try {
+        quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+        console.info("[quotation-pdf] pdf_generation", { quotationNo: data.quotationNo, success: true, bytes: quotationPdf.size });
+      } catch (error) {
+        console.error("[quotation-pdf] pdf_generation", {
+          quotationNo: data.quotationNo,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+        throw new Error("Quotation submission failed because the PDF could not be generated. Please try again.");
+      }
       const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" }, quotationPdf);
+      if (!saved.quotationPdfUrl || !saved.quotationPdfPublicId) {
+        console.error("[quotation-pdf] submission_verification", {
+          quotationNo: saved.quotationNo,
+          success: false,
+          quotationPdfUrl: saved.quotationPdfUrl ?? null,
+          quotationPdfPublicId: saved.quotationPdfPublicId ?? null
+        });
+        throw new Error("Quotation submission was not completed because PDF storage could not be verified. Please try again.");
+      }
       window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({
         quotationNo: saved.quotationNo,
         status: "submitted",
