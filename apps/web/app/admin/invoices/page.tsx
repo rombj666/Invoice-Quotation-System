@@ -5,12 +5,16 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
 import { calculatePricing } from "../../../lib/pricing";
 import { loadAllInvoices } from "../../../lib/invoice-storage";
-import { formatDateLabel, formatMoney } from "../../../lib/formatters";
+import { formatDateLabel, formatMalaysiaDateInput, formatMoney } from "../../../lib/formatters";
 import type { InvoiceDetails } from "../../../types/invoice";
 
 export default function AdminInvoiceListPage() {
   const [invoices, setInvoices] = useState<InvoiceDetails[]>([]);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [invoiceStatus, setInvoiceStatus] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
 
   useEffect(() => {
     loadAllInvoices()
@@ -18,16 +22,24 @@ export default function AdminInvoiceListPage() {
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load invoices."));
   }, []);
 
+  const filtered = invoices.filter((invoice) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [invoice.invoiceNo, invoice.quotation.quotationNo, invoice.quotation.customer.name, invoice.quotation.customer.companyName].some((value) => value?.toLowerCase().includes(query));
+    const malaysiaDate = invoice.createdAt ? formatMalaysiaDateInput(invoice.createdAt) : "";
+    return matchesSearch && (!invoiceStatus || invoice.invoiceStatus === invoiceStatus) && (!paymentStatus || invoice.paymentStatus === paymentStatus) && (!dateFilter || malaysiaDate === dateFilter);
+  });
+
   return (
-    <main className="hc-page admin-page">
+    <main className="admin-page">
       <Card className="admin-card">
-        <div className="admin-nav">
-          <Link href="/admin">Admin Home</Link>
-          <Link href="/admin/quotations">Quotation List</Link>
-          <Link href="/admin/product-availability">Product Availability</Link>
-        </div>
-        <h1>Invoice List</h1>
+        <div className="admin-page-header"><div><p className="admin-eyebrow">Billing</p><h1>Invoice List</h1><p>Search and manage submitted invoices.</p></div></div>
         {error ? <p className="error">{error}</p> : null}
+        <div className="admin-list-filters">
+          <input aria-label="Search invoices" placeholder="Search invoice, quotation, customer or company" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <select aria-label="Invoice status" value={invoiceStatus} onChange={(event) => setInvoiceStatus(event.target.value)}><option value="">All invoice statuses</option>{["DRAFT","SUBMITTED","PENDING_PAYMENT_REVIEW","PAID","CONFIRMED","CANCELLED"].map((value)=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
+          <select aria-label="Payment status" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value)}><option value="">All payment statuses</option>{["UNPAID","RECEIPT_UPLOADED","VERIFIED","REJECTED"].map((value)=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
+          <input aria-label="Submitted date" type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
+        </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -35,36 +47,34 @@ export default function AdminInvoiceListPage() {
                 <th>Invoice No.</th>
                 <th>Quotation No.</th>
                 <th>Customer</th>
-                <th>Phone</th>
                 <th>Event date</th>
-                <th>Total amount</th>
-                <th>Payment status</th>
-                <th>Invoice status</th>
+                <th>Total</th>
+                <th>Payment/status</th>
+                <th>Submitted date</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {invoices.map((invoice) => {
+              {filtered.map((invoice) => {
                 const pricing = calculatePricing(invoice.quotation);
                 return (
                   <tr key={invoice.invoiceNo}>
                     <td>{invoice.invoiceNo}</td>
                     <td>{invoice.quotation.quotationNo}</td>
                     <td>{invoice.quotation.customer.name}</td>
-                    <td>{invoice.quotation.customer.phone}</td>
                     <td>{invoice.quotation.serviceDates[0] ? formatDateLabel(invoice.quotation.serviceDates[0].serviceDate) : "-"}</td>
                     <td>{formatMoney(pricing.total)}</td>
-                    <td>{invoice.paymentStatus ?? "RECEIPT_UPLOADED"}</td>
-                    <td>{invoice.invoiceStatus ?? "SUBMITTED"}</td>
+                    <td>{invoice.paymentStatus ?? "RECEIPT_UPLOADED"}<br /><small>{invoice.invoiceStatus ?? "SUBMITTED"}</small></td>
+                    <td>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }) : "-"}</td>
                     <td>
-                      <Link className="admin-invoice-view-button" href={`/admin/invoices/${invoice.invoiceNo}`}>View Details</Link>
+                      <div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}`}>View</Link><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit</Link></div>
                     </td>
                   </tr>
                 );
               })}
-              {!invoices.length ? (
+              {!filtered.length ? (
                 <tr>
-                  <td colSpan={9}>No invoices saved yet.</td>
+                  <td colSpan={8}>No invoices match the selected filters.</td>
                 </tr>
               ) : null}
             </tbody>

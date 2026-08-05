@@ -63,6 +63,7 @@ export type CustomerDetails = {
 
 export type QuotationData = {
   quotationNo: string;
+  anonymousSessionId?: string;
   status?:
     | "DRAFT"
     | "PENDING_APPROVAL"
@@ -72,6 +73,14 @@ export type QuotationData = {
     | "CONVERTED_TO_INVOICE"
     | "CANCELLED";
   createdAt?: string;
+  quotationPdfUrl?: string;
+  quotationPdfPublicId?: string;
+  followUpStatus?: "NEW" | "CONTACTED" | "FOLLOW_UP" | "WON" | "LOST";
+  lastFollowedUpAt?: string;
+  followUpNote?: string;
+  updatedAt?: string;
+  hasInvoice?: boolean;
+  editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
   serviceDates: ServiceDate[];
   location: string;
   fullAddress: string;

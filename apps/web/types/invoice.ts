@@ -22,6 +22,7 @@ export type InvoiceDetails = {
   receiptDataUrl?: string;
   customMenuFile?: InvoiceUploadFile;
   invoicePdfUrl?: string;
+  invoicePdfPublicId?: string;
   receiptUrl?: string;
   receiptMimeType?: string;
   invoiceFiles?: Array<{
@@ -41,4 +42,10 @@ export type InvoiceDetails = {
     metadata?: unknown;
   }>;
   submittedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  invoiceReference?: string;
+  internalNote?: string;
+  internalNotes?: Array<{ note: string; createdBy: string; createdAt: string }>;
+  editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
 };

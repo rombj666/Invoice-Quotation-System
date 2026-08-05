@@ -1,8 +1,9 @@
 import type { InvoiceDetails } from "../types/invoice";
 import type { QuotationData } from "../types/quotation";
 import { formatCompactDate } from "./formatters";
+import { HOUR_COFFEE_CONTACT_URL, HOUR_COFFEE_WHATSAPP_NUMBER } from "./contact-config";
 
-export const PARTNER_WHATSAPP_NUMBER = "60125689129";
+export const PARTNER_WHATSAPP_NUMBER = HOUR_COFFEE_WHATSAPP_NUMBER;
 
 type PartnerContactData = QuotationData | InvoiceDetails;
 
@@ -80,7 +81,7 @@ Please help me check and confirm the details. Thank you.`;
 export function openPartnerWhatsApp(quotationOrInvoiceData: PartnerContactData) {
   const message = buildPartnerWhatsAppMessage(quotationOrInvoiceData);
   const encodedMessage = encodeURIComponent(message);
-  const url = `https://wa.me/${PARTNER_WHATSAPP_NUMBER}?text=${encodedMessage}`;
+  const url = `${HOUR_COFFEE_CONTACT_URL}?text=${encodedMessage}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
 

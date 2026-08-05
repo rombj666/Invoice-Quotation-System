@@ -48,3 +48,9 @@ export function formatTime(value: string): string {
   const displayHour = hour % 12 || 12;
   return `${displayHour}:${minuteText} ${suffix}`;
 }
+
+export function formatMalaysiaDateInput(value: string | Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}

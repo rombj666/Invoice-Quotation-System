@@ -1,100 +1,13 @@
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
-import { Request, Router } from "express";
-import { cloudinary, cloudinaryFolders } from "../services/cloudinary.service";
+import { Router } from "express";
+import { cloudinaryFolders, uploadCloudinaryBuffer, uploadCloudinaryDataUrl } from "../services/cloudinary.service";
 import { calculatePricing, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
+import { parseMultipartRequest } from "../utils/multipart";
 
 export const invoiceRoutes = Router();
-
-async function uploadDataUrl(dataUrl: string | undefined, folder: string, fileName: string) {
-  if (!dataUrl) return null;
-  const mimeType = dataUrl.slice(5, dataUrl.indexOf(";")) || "application/octet-stream";
-  const result = await cloudinary.uploader.upload(dataUrl, {
-    folder,
-    resource_type: mimeType === "application/pdf" ? "raw" : "auto",
-    public_id: fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9-_]/g, "-")
-  });
-  return {
-    fileUrl: result.secure_url,
-    cloudinaryPublicId: result.public_id,
-    mimeType
-  };
-}
-
-type MultipartFile = {
-  fieldName: string;
-  fileName: string;
-  mimeType: string;
-  buffer: Buffer;
-};
-
-function uploadBuffer(file: MultipartFile | undefined, folder: string, fileName: string) {
-  if (!file) return Promise.resolve(null);
-  return new Promise<{ fileUrl: string; cloudinaryPublicId: string; mimeType: string }>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: file.mimeType === "application/pdf" ? "raw" : "auto",
-        public_id: fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9-_]/g, "-")
-      },
-      (error, result) => {
-        if (error || !result) return reject(error ?? new Error("Unable to upload file."));
-        resolve({
-          fileUrl: result.secure_url,
-          cloudinaryPublicId: result.public_id,
-          mimeType: file.mimeType
-        });
-      }
-    );
-    stream.end(file.buffer);
-  });
-}
-
-async function readRequestBody(req: Request, limitBytes: number): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buffer.length;
-    if (total > limitBytes) throw Object.assign(new Error("Upload is too large. Please use smaller image files and try again."), { statusCode: 413 });
-    chunks.push(buffer);
-  }
-  return Buffer.concat(chunks);
-}
-
-async function parseMultipartRequest(req: Request) {
-  const contentType = req.headers["content-type"] ?? "";
-  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
-  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2];
-  if (!boundary) throw new Error("Invalid multipart upload.");
-
-  const body = (await readRequestBody(req, 40 * 1024 * 1024)).toString("latin1");
-  const fields: Record<string, string> = {};
-  const files: MultipartFile[] = [];
-
-  for (const rawPart of body.split(`--${boundary}`)) {
-    if (!rawPart || rawPart === "--\r\n" || rawPart === "--") continue;
-    const part = rawPart.replace(/^\r\n/, "").replace(/\r\n$/, "");
-    const headerEnd = part.indexOf("\r\n\r\n");
-    if (headerEnd < 0) continue;
-    const headerText = part.slice(0, headerEnd);
-    const content = part.slice(headerEnd + 4).replace(/\r\n--$/, "");
-    const disposition = /content-disposition:\s*form-data;\s*([^\r\n]+)/i.exec(headerText)?.[1] ?? "";
-    const fieldName = /name="([^"]+)"/i.exec(disposition)?.[1];
-    if (!fieldName) continue;
-    const fileName = /filename="([^"]*)"/i.exec(disposition)?.[1];
-    const mimeType = /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? "application/octet-stream";
-    if (fileName) {
-      files.push({ fieldName, fileName, mimeType, buffer: Buffer.from(content, "latin1") });
-    } else {
-      fields[fieldName] = Buffer.from(content, "latin1").toString("utf8");
-    }
-  }
-
-  return { fields, files };
-}
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -142,10 +55,17 @@ invoiceRoutes.post("/", async (req, res, next) => {
 
     const pricing = calculatePricing(data.quotation);
     const invoiceNo = data.invoiceNo || `A${String((await prisma.invoice.count()) + 1).padStart(5, "0")}`;
+    const invoicePdfFile = filesByField.get("invoicePdf");
+    if (invoicePdfFile && invoicePdfFile.mimeType !== "application/pdf") {
+      return res.status(400).json({ error: "The submitted invoice document must be a PDF." });
+    }
     const receiptUpload = filesByField.has("receipt")
-      ? await uploadBuffer(filesByField.get("receipt"), cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || filesByField.get("receipt")?.fileName || "receipt"}`)
-      : await uploadDataUrl(data.receiptDataUrl, cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || "receipt"}`);
-    const customMenuUpload = await uploadBuffer(filesByField.get("customMenuFile"), cloudinaryFolders.invoices, `${invoiceNo}-custom-menu-${data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu"}`);
+      ? await uploadCloudinaryBuffer(filesByField.get("receipt"), cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || filesByField.get("receipt")?.fileName || "receipt"}`)
+      : await uploadCloudinaryDataUrl(data.receiptDataUrl, cloudinaryFolders.receipts, `${invoiceNo}-${data.receiptName || "receipt"}`);
+    const customMenuUpload = await uploadCloudinaryBuffer(filesByField.get("customMenuFile"), cloudinaryFolders.invoices, `${invoiceNo}-custom-menu-${data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu"}`);
+    const invoicePdfUpload = filesByField.has("invoicePdf")
+      ? await uploadCloudinaryBuffer(invoicePdfFile, cloudinaryFolders.invoicePdfs, `${invoiceNo}-${Date.now()}.pdf`)
+      : await uploadCloudinaryDataUrl(data.invoicePdfDataUrl, cloudinaryFolders.invoicePdfs, `${invoiceNo}-${Date.now()}.pdf`);
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -160,6 +80,8 @@ invoiceRoutes.post("/", async (req, res, next) => {
         finalSubtotalAmount: pricing.subtotal,
         finalDiscountAmount: pricing.discountAmount,
         finalTotalAmount: pricing.total,
+        invoicePdfUrl: invoicePdfUpload?.fileUrl ?? null,
+        invoicePdfPublicId: invoicePdfUpload?.cloudinaryPublicId ?? null,
         metadata: toJsonValue({
           ...data,
           invoiceNo,
@@ -226,7 +148,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
             }
           : undefined
       },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
 
     if (customMenuUpload) {
@@ -256,8 +178,8 @@ invoiceRoutes.post("/", async (req, res, next) => {
               ? `stickerDesigns:${designKey}`
               : `sleeveDesigns:${designKey}`;
         const upload = filesByField.has(formField)
-          ? await uploadBuffer(filesByField.get(formField), group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || filesByField.get(formField)?.fileName || "design"}`)
-          : await uploadDataUrl(design?.dataUrl, group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || "design"}`);
+          ? await uploadCloudinaryBuffer(filesByField.get(formField), group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || filesByField.get(formField)?.fileName || "design"}`)
+          : await uploadCloudinaryDataUrl(design?.dataUrl, group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || "design"}`);
         if (!upload) continue;
         await prisma.customizationFile.create({
           data: {
@@ -300,7 +222,7 @@ invoiceRoutes.get("/:invoiceNo", async (req, res, next) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { invoiceNo: req.params.invoiceNo },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
     res.json(toInvoicePayload(invoice));

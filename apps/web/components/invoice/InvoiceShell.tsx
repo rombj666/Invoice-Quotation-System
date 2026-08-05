@@ -25,6 +25,7 @@ import { InvoicePreview } from "./InvoicePreview";
 import { InvoiceSuccess } from "./InvoiceSuccess";
 import { ReceiptUpload } from "./ReceiptUpload";
 import { SubmittedInvoiceView } from "./SubmittedInvoiceView";
+import { generatePdfBlob } from "../../lib/pdf-document";
 
 type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "preview" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
@@ -387,7 +388,8 @@ export function InvoiceShell() {
         sleeveDesigns: finalSleeveDesigns,
         submittedAt: new Date().toISOString()
       };
-      await saveInvoiceLocally(invoice);
+      const invoicePdf = await generatePdfBlob("invoiceSubmissionPreview", { filename: `Hour-Coffee-Invoice-${invoiceNo}.pdf` });
+      await saveInvoiceLocally(invoice, invoicePdf);
       setStepIndex(steps.length - 1);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to submit invoice. Please try again.");
@@ -535,6 +537,28 @@ export function InvoiceShell() {
           <CupStickerCustomizer mode={quotation.customizationOptions.sticker.mode} serviceDates={quotation.serviceDates} designs={stickerDesigns} activeDate={activeDesignDate} onActiveDate={setActiveDesignDate} onDesigns={setStickerDesigns} />
         ) : null}
         {currentStep === "success" ? <InvoiceSuccess invoiceNo={invoiceNo} /> : null}
+
+        {currentStep !== "preview" && currentStep !== "success" ? (
+          <div className="print-document" aria-hidden="true">
+            <InvoicePreview
+              invoiceNo={invoiceNo}
+              quotation={quotation}
+              invoice={{
+                invoiceNo,
+                quotation,
+                eventAddress,
+                dressCode,
+                customDressCode,
+                environment,
+                environmentNotes,
+                receiptName,
+                submittedAt: new Date().toISOString()
+              }}
+              documentId="invoiceSubmissionPreview"
+              showDownloadButton={false}
+            />
+          </div>
+        ) : null}
 
         {error ? <p className="error">{error}</p> : null}
         {currentStep !== "success" && currentStep !== "review" ? (

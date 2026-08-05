@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { submittedQuotationStorageKey } from "../../../components/quotation/QuotationShell";
+import { resetQuotationAnalyticsSession } from "../../../lib/quotation-analytics";
 
 function QuotationSubmittedContent() {
   const searchParams = useSearchParams();
@@ -12,6 +13,7 @@ function QuotationSubmittedContent() {
   function createAnotherQuotation() {
     window.localStorage.removeItem(submittedQuotationStorageKey);
     window.localStorage.removeItem("hourCoffeeQuotationDraft");
+    resetQuotationAnalyticsSession();
   }
 
   return (

@@ -10,6 +10,9 @@ import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addo
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
+import { getAdminAddonRows } from "../../../../lib/admin-addons";
+import { DocumentCard } from "../../../../components/admin/DocumentCard";
+import { updateQuotationFollowUp } from "../../../../lib/admin-api";
 
 export default function AdminQuotationDetailPage() {
   const params = useParams<{ quotationNo: string }>();
@@ -17,9 +20,11 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [followUpStatus, setFollowUpStatus] = useState("NEW");
+  const [followUpNote, setFollowUpNote] = useState("");
 
   useEffect(() => {
-    loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
+    loadQuotationByNo(params.quotationNo).then((loaded) => { setQuotation(loaded); setFollowUpStatus(loaded?.followUpStatus ?? "NEW"); setFollowUpNote(loaded?.followUpNote ?? ""); }).catch(() => setError("Unable to load quotation."));
   }, [params.quotationNo]);
 
   if (!quotation) {
@@ -37,7 +42,7 @@ export default function AdminQuotationDetailPage() {
 
   const pricing = calculatePricing(quotation);
   const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
-  const hasOptionalAddons = quotation.selectedAddons.length > 0 || quotation.hasCupStickers || quotation.hasCupSleeves;
+  const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
@@ -64,21 +69,22 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
+  async function saveFollowUp() {
+    setError(""); setSuccess("");
+    try { const updated = await updateQuotationFollowUp(currentQuotation.quotationNo, followUpStatus, followUpNote); setQuotation(updated); setSuccess("Follow-up updated successfully."); }
+    catch (updateError) { setError(updateError instanceof Error ? updateError.message : "Unable to update follow-up."); }
+  }
+
   return (
-    <main className="hc-page admin-page">
+    <main className="admin-page">
       <Card className="admin-card">
-        <div className="admin-nav">
-          <Link href="/admin">Admin Home</Link>
-          <Link href="/admin/quotations">Quotation List</Link>
-          <Link href="/admin/invoices">Invoice List</Link>
-          <Link href="/admin/product-availability">Product Availability</Link>
-        </div>
         <div className="admin-detail-header">
           <div>
             <h1>{quotation.quotationNo}</h1>
             <span className={`admin-status-badge large ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span>
           </div>
           <div className="admin-actions">
+            <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link>
             {!isApproved ? (
               <button className="admin-approve-button large" type="button" onClick={approve}>
                 Approve Quotation
@@ -127,22 +133,15 @@ export default function AdminQuotationDetailPage() {
               </div>
             ))}
           </section>
-          {hasOptionalAddons ? <section>
+          <section>
             <h3>Add-ons</h3>
-            {quotation.selectedAddons.map((addon) => (
+            {addonRows.map((addon) => (
               <p key={addon.name}>
                 {addon.name}: {addon.price > 0 ? formatMoney(addon.price) : "FREE"}
               </p>
             ))}
+            {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-            {quotation.hasCupStickers ? <p>Custom Cup Stickers: {pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</p> : null}
-            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves: {pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</p> : null}
-          </section> : null}
-          <section>
-            <h3>Customization Options</h3>
-            <p>Cart: {quotation.customizationOptions?.cart.mode ?? "same"} / {quotation.customizationOptions?.cart.designCount ?? 1} design(s)</p>
-            <p>Sticker: {quotation.customizationOptions?.sticker.mode ?? "same"} / {quotation.customizationOptions?.sticker.designCount ?? 1} design(s)</p>
-            <p>Sleeve: {quotation.customizationOptions?.sleeve.mode ?? "same"} / {quotation.customizationOptions?.sleeve.designCount ?? 1} design(s)</p>
           </section>
           <section>
             <h3>Pricing</h3>
@@ -154,6 +153,15 @@ export default function AdminQuotationDetailPage() {
             {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
             <p>Total: {formatMoney(pricing.total)}</p>
           </section>
+          <DocumentCard documentLabel="Quotation PDF" fileUrl={quotation.quotationPdfUrl} fileName={`${quotation.quotationNo}.pdf`} />
+          <section>
+            <h3>Lead Follow-up</h3>
+            <label className="admin-field"><span>Status</span><select value={followUpStatus} onChange={(event) => setFollowUpStatus(event.target.value)}>{["NEW","CONTACTED","FOLLOW_UP","WON","LOST"].map((value)=><option value={value} key={value}>{value.replaceAll("_"," ")}</option>)}</select></label>
+            <label className="admin-field"><span>Note</span><textarea value={followUpNote} onChange={(event) => setFollowUpNote(event.target.value)} rows={4} /></label>
+            <button className="hc-button hc-button-primary" type="button" onClick={saveFollowUp}>Save Follow-up</button>
+            <p>Last followed up: {quotation.lastFollowedUpAt ? new Date(quotation.lastFollowedUpAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }) : "Not yet"}</p>
+          </section>
+          {quotation.editHistory?.length ? <section><h3>Edit History</h3>{quotation.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}
         </div>
       </Card>
     </main>

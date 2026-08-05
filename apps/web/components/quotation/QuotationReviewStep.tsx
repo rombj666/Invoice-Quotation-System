@@ -9,6 +9,7 @@ import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters
 import { useState } from "react";
 import { Button } from "../common/Button";
 import { submittedQuotationStorageKey } from "./QuotationShell";
+import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
 
 type Props = {
   data: QuotationData;
@@ -58,13 +59,15 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     ].filter(Boolean);
   }
 
-  function downloadQuotation() {
-    const previousTitle = document.title;
-    document.title = `Hour-Coffee-Quotation-${data.quotationNo || "Preview"}`;
-    window.print();
-    window.setTimeout(() => {
-      document.title = previousTitle;
-    }, 500);
+  async function downloadQuotation() {
+    setSubmitError("");
+    try {
+      const filename = `Hour-Coffee-Quotation-${data.quotationNo || "Preview"}.pdf`;
+      const pdf = await generatePdfBlob("quotationPreview", { filename });
+      downloadPdfBlob(pdf, filename);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to generate the quotation PDF.");
+    }
   }
 
   async function submitQuotation() {
@@ -75,7 +78,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     }
     setIsSubmitting(true);
     try {
-      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" });
+      const filename = `Hour-Coffee-Quotation-${data.quotationNo}.pdf`;
+      const quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" }, quotationPdf);
       window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({
         quotationNo: saved.quotationNo,
         status: "submitted",

@@ -38,7 +38,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-export function saveInvoiceLocally(data: InvoiceDetails): Promise<InvoiceDetails> {
+export function saveInvoiceLocally(data: InvoiceDetails, invoicePdf?: Blob): Promise<InvoiceDetails> {
   const formData = new FormData();
 
   function stripDesignDataUrls(designs: CustomizationByDate = {}) {
@@ -61,6 +61,7 @@ export function saveInvoiceLocally(data: InvoiceDetails): Promise<InvoiceDetails
   };
 
   formData.append("payload", JSON.stringify(payload));
+  if (invoicePdf) formData.append("invoicePdf", invoicePdf, `${data.invoiceNo}.pdf`);
   if (data.receiptDataUrl) {
     formData.append("receipt", dataUrlToBlob(data.receiptDataUrl), data.receiptName || "receipt");
   }

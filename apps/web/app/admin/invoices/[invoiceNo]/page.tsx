@@ -11,6 +11,8 @@ import { loadInvoiceByNo } from "../../../../lib/invoice-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { CustomizationByDate } from "../../../../types/customization";
 import type { InvoiceDetails } from "../../../../types/invoice";
+import { getAdminAddonRows } from "../../../../lib/admin-addons";
+import { DocumentCard } from "../../../../components/admin/DocumentCard";
 
 function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Image" | "File" {
   if (mimeType === "application/pdf") return "PDF";
@@ -158,18 +160,12 @@ export default function AdminInvoiceDetailPage() {
   const quotation = invoice.quotation;
   const pricing = calculatePricing(quotation);
   const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
-  const hasOptionalAddons = quotation.selectedAddons.length > 0 || quotation.hasCupStickers || quotation.hasCupSleeves;
+  const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
 
   return (
-    <main className="hc-page admin-page">
+    <main className="admin-page">
       <Card className="admin-card">
-        <div className="admin-nav">
-          <Link href="/admin">Admin Home</Link>
-          <Link href="/admin/quotations">Quotation List</Link>
-          <Link href="/admin/invoices">Invoice List</Link>
-          <Link href="/admin/product-availability">Product Availability</Link>
-        </div>
-        <h1>{invoice.invoiceNo}</h1>
+        <div className="admin-detail-header"><div><p className="admin-eyebrow">Invoice</p><h1>{invoice.invoiceNo}</h1></div><div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link></div></div>
         <div className="detail-grid">
           <section>
             <h3>Invoice</h3>
@@ -214,22 +210,15 @@ export default function AdminInvoiceDetailPage() {
               </div>
             ))}
           </section>
-          {hasOptionalAddons ? <section>
+          <section>
             <h3>Add-ons</h3>
-            {quotation.selectedAddons.map((addon) => (
+            {addonRows.map((addon) => (
               <p key={addon.name}>
                 {addon.name}: {addon.price > 0 ? formatMoney(addon.price) : "FREE"}
               </p>
             ))}
+            {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-            {quotation.hasCupStickers ? <p>Custom Cup Stickers: {pricing.cupStickerFee > 0 ? formatMoney(pricing.cupStickerFee) : "FREE"}</p> : null}
-            {quotation.hasCupSleeves ? <p>Custom Cup Sleeves: {pricing.cupSleeveFee > 0 ? formatMoney(pricing.cupSleeveFee) : "FREE"}</p> : null}
-          </section> : null}
-          <section>
-            <h3>Customization Options</h3>
-            <p>Cart: {quotation.customizationOptions?.cart.mode ?? "same"} / {quotation.customizationOptions?.cart.designCount ?? 1} design(s)</p>
-            <p>Sticker: {quotation.customizationOptions?.sticker.mode ?? "same"} / {quotation.customizationOptions?.sticker.designCount ?? 1} design(s)</p>
-            <p>Sleeve: {quotation.customizationOptions?.sleeve.mode ?? "same"} / {quotation.customizationOptions?.sleeve.designCount ?? 1} design(s)</p>
           </section>
           <section>
             <h3>Final Total</h3>
@@ -240,9 +229,10 @@ export default function AdminInvoiceDetailPage() {
             <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
             {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
             <p>Total: {formatMoney(pricing.total)}</p>
-            <p>Invoice PDF link: {invoice.invoicePdfUrl ? "Available" : "Not generated locally."}</p>
           </section>
-          {invoice.invoicePdfUrl ? <GenericFilePreview title="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} mimeType="application/pdf" openLabel="Open Invoice PDF" downloadLabel="Download Invoice PDF" /> : null}
+          <DocumentCard documentLabel="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} />
+          {invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
+          {invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}
           <ReceiptPreview fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} mimeType={invoice.receiptMimeType} />
           {invoice.customMenuFile?.fileUrl ? (
             <GenericFilePreview title="Custom Menu File" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />

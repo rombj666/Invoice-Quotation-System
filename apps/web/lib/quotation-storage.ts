@@ -1,6 +1,7 @@
 import type { InvoiceDetails } from "../types/invoice";
 import type { PreviousQuotationSummary, QuotationData } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
+import { getQuotationAnalyticsSessionId } from "./quotation-analytics";
 
 type FindQuotationInput = {
   name: string;
@@ -52,10 +53,23 @@ export function loadAllQuotations(): Promise<QuotationData[]> {
   return request<QuotationData[]>("/api/quotations");
 }
 
-export function saveQuotationLocally(data: QuotationData): Promise<QuotationData> {
+export function saveQuotationLocally(data: QuotationData, quotationPdf?: Blob): Promise<QuotationData> {
+  const trackedData = { ...data, anonymousSessionId: getQuotationAnalyticsSessionId() };
+  if (quotationPdf) {
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" }));
+    formData.append("quotationPdf", quotationPdf, `${data.quotationNo}.pdf`);
+    return fetch(`${apiBaseUrl}/api/quotations`, { method: "POST", body: formData }).then(async (response) => {
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
+      }
+      return response.json() as Promise<QuotationData>;
+    });
+  }
   return request<QuotationData>("/api/quotations", {
     method: "POST",
-    body: JSON.stringify({ ...data, status: data.status ?? "PENDING_APPROVAL" })
+    body: JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" })
   });
 }
 

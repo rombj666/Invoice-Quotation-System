@@ -5,8 +5,21 @@ import type { InvoiceDetails } from "../../types/invoice";
 import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { getAddonDisplayName } from "../../lib/addons";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
+import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
 
-export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: string; quotation: QuotationData; invoice?: InvoiceDetails }) {
+export function InvoicePreview({
+  invoiceNo,
+  quotation,
+  invoice,
+  documentId = "invoicePreview",
+  showDownloadButton = true
+}: {
+  invoiceNo: string;
+  quotation: QuotationData;
+  invoice?: InvoiceDetails;
+  documentId?: string;
+  showDownloadButton?: boolean;
+}) {
   const pricing = calculatePricing(quotation);
   const firstDate = quotation.serviceDates[0];
   const drinkColumns = [
@@ -26,7 +39,7 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
 
   return (
     <div className="invoice-preview-wrap">
-    <div className="invoice-card" id="invoicePreview">
+    <div className="invoice-card" id={documentId}>
       <div className="invoice-header">
         <div>
           <div className="invoice-title">INVOICE</div>
@@ -212,9 +225,13 @@ export function InvoicePreview({ invoiceNo, quotation, invoice }: { invoiceNo: s
       </div>
       <footer>contact@hourcoffee.com.my | WhatsApp +6012-5689129</footer>
     </div>
-    <button className="pdf-btn" type="button" onClick={() => window.print()}>
+    {showDownloadButton ? <button className="pdf-btn" type="button" onClick={async () => {
+      const filename = `Hour-Coffee-Invoice-${invoiceNo}.pdf`;
+      const pdf = await generatePdfBlob(documentId, { filename });
+      downloadPdfBlob(pdf, filename);
+    }}>
       Download Invoice PDF
-    </button>
+    </button> : null}
     </div>
   );
 }

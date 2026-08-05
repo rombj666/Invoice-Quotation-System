@@ -2,8 +2,10 @@ import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
 import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
+import { cloudinaryFolders, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
+import { parseMultipartRequest } from "../utils/multipart";
 import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 
 export const quotationRoutes = Router();
@@ -15,10 +17,24 @@ const drinkNames: Record<string, string> = {
   lemonade: "Lemonade"
 };
 
-function toQuotationPayload(record: any) {
+export function toQuotationPayload(record: any) {
   return {
     ...record.metadata,
-    status: record.status
+    quotationNo: record.quotationNo,
+    status: record.status,
+    quotationPdfUrl: record.quotationPdfUrl,
+    quotationPdfPublicId: record.quotationPdfPublicId,
+    followUpStatus: record.followUpStatus,
+    lastFollowedUpAt: record.lastFollowedUpAt?.toISOString?.() ?? record.lastFollowedUpAt,
+    followUpNote: record.followUpNote,
+    createdAt: record.createdAt?.toISOString?.() ?? record.createdAt,
+    updatedAt: record.updatedAt?.toISOString?.() ?? record.updatedAt,
+    hasInvoice: Array.isArray(record.invoices) ? record.invoices.length > 0 : undefined,
+    editHistory: record.statusHistory?.map((entry: any) => ({
+      changedAt: entry.createdAt?.toISOString?.() ?? entry.createdAt,
+      changedBy: entry.changedBy,
+      summary: entry.changeSummary
+    })) ?? []
   };
 }
 
@@ -74,15 +90,32 @@ quotationRoutes.get("/next-number", async (_req, res, next) => {
 
 quotationRoutes.post("/", async (req, res, next) => {
   try {
-    if (!hasValidServiceDates(req.body.serviceDates)) {
+    const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
+    const multipart = isMultipart ? await parseMultipartRequest(req, 30 * 1024 * 1024) : null;
+    const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
+    if (incomingData.anonymousSessionId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingData.anonymousSessionId)) {
+      return res.status(400).json({ error: "Invalid anonymous quotation session." });
+    }
+    const quotationPdfFile = multipart?.files.find((file) => file.fieldName === "quotationPdf");
+    if (quotationPdfFile && quotationPdfFile.mimeType !== "application/pdf") {
+      return res.status(400).json({ error: "The submitted quotation document must be a PDF." });
+    }
+    if (!hasValidServiceDates(incomingData.serviceDates)) {
       return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
     }
-    if (hasCartAddonConflict(req.body.selectedAddons)) {
+    if (hasCartAddonConflict(incomingData.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
+    }
+    if (incomingData.anonymousSessionId) {
+      const trackedSubmission = await prisma.quotationAnalyticsSession.findUnique({
+        where: { anonymousSessionId: incomingData.anonymousSessionId },
+        include: { quotation: { include: { invoices: { select: { id: true } } } } }
+      });
+      if (trackedSubmission?.quotation) return res.json(toQuotationPayload(trackedSubmission.quotation));
     }
     await ensureProductAvailabilityDefaults();
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-    const pricedData = applyCurrentProductPricing(req.body, pricingItems);
+    const pricedData = applyCurrentProductPricing(incomingData, pricingItems);
     const pricing = calculatePricing(pricedData);
     const data = {
       ...pricedData,
@@ -108,8 +141,16 @@ quotationRoutes.post("/", async (req, res, next) => {
 
     let quotation = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const quotationNo = await getNextQuotationNo();
+      const requestedQuotationNo = String(data.quotationNo ?? "").trim().toUpperCase();
+      const quotationNo = attempt === 0 && /^Q\d{5}$/.test(requestedQuotationNo)
+        ? requestedQuotationNo
+        : await getNextQuotationNo();
       try {
+        const quotationPdfUpload = await uploadCloudinaryBuffer(
+          quotationPdfFile,
+          cloudinaryFolders.quotationPdfs,
+          `${quotationNo}-${Date.now()}.pdf`
+        );
         quotation = await prisma.quotation.create({
           data: {
         quotationNo,
@@ -121,8 +162,10 @@ quotationRoutes.post("/", async (req, res, next) => {
         discountPercent: data.discountPercent || 0,
         discountAmount: pricing.discountAmount,
         totalAmount: pricing.total,
+        quotationPdfUrl: quotationPdfUpload?.fileUrl ?? null,
+        quotationPdfPublicId: quotationPdfUpload?.cloudinaryPublicId ?? null,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        metadata: toJsonValue({ ...data, quotationNo }),
+        metadata: toJsonValue({ ...data, anonymousSessionId: undefined, quotationNo }),
         dates: {
           create: data.serviceDates.map((date: any) => ({
             serviceDate: new Date(`${date.serviceDate}T12:00:00`),
@@ -160,13 +203,39 @@ quotationRoutes.post("/", async (req, res, next) => {
         });
         break;
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          if (quotationPdfFile) {
+            return res.status(409).json({ error: "The quotation number was just used. Please refresh and submit again so the PDF matches the quotation." });
+          }
+          continue;
+        }
         throw error;
       }
     }
 
     if (!quotation) {
       return res.status(409).json({ error: "Unable to generate a unique quotation number. Please try again." });
+    }
+
+    if (data.anonymousSessionId) {
+      const submittedAt = new Date();
+      await prisma.quotationAnalyticsSession.upsert({
+        where: { anonymousSessionId: data.anonymousSessionId },
+        create: {
+          anonymousSessionId: data.anonymousSessionId,
+          firstVisitedAt: submittedAt,
+          lastActivityAt: submittedAt,
+          startedAt: submittedAt,
+          submittedAt,
+          lastStep: 7,
+          quotationId: quotation.id
+        },
+        update: { submittedAt, lastActivityAt: submittedAt, quotationId: quotation.id }
+      });
+      await prisma.quotationAnalyticsSession.updateMany({
+        where: { anonymousSessionId: data.anonymousSessionId, startedAt: null },
+        data: { startedAt: submittedAt }
+      });
     }
 
     res.status(201).json(toQuotationPayload(quotation));
@@ -177,7 +246,10 @@ quotationRoutes.post("/", async (req, res, next) => {
 
 quotationRoutes.get("/", async (_req, res, next) => {
   try {
-    const quotations = await prisma.quotation.findMany({ orderBy: { createdAt: "desc" } });
+    const quotations = await prisma.quotation.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { invoices: { select: { id: true } } }
+    });
     res.json(quotations.map(toQuotationPayload));
   } catch (error) {
     next(error);
@@ -186,7 +258,10 @@ quotationRoutes.get("/", async (_req, res, next) => {
 
 quotationRoutes.get("/:quotationNo", async (req, res, next) => {
   try {
-    const quotation = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo } });
+    const quotation = await prisma.quotation.findUnique({
+      where: { quotationNo: req.params.quotationNo },
+      include: { invoices: { select: { id: true } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+    });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     res.json(toQuotationPayload(quotation));
   } catch (error) {

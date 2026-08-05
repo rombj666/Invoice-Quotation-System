@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
 import { formatMoney } from "../../../lib/formatters";
@@ -173,15 +172,9 @@ export default function ProductAvailabilityPage() {
   }
 
   return (
-    <main className="hc-page admin-page">
+    <main className="admin-page">
       <Card className="admin-card">
-        <div className="admin-nav">
-          <Link href="/admin">Admin Home</Link>
-          <Link href="/admin/quotations">Quotation List</Link>
-          <Link href="/admin/invoices">Invoice List</Link>
-          <Link href="/admin/product-availability">Product Availability</Link>
-        </div>
-        <h1>Product Availability</h1>
+        <div className="admin-page-header"><div><p className="admin-eyebrow">Catalog</p><h1>Product Availability</h1><p>Manage customer-facing product availability and existing pricing settings.</p></div></div>
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
         {["Beverages", "Add-on Features"].map((category) => {

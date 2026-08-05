@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CustomerDetails, DrinkId, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
@@ -17,6 +17,7 @@ import { ProgressHeader } from "./ProgressHeader";
 import { QuotationReferenceStep } from "./QuotationReferenceStep";
 import { QuotationReviewStep } from "./QuotationReviewStep";
 import { PreviousQuotationsPanel } from "./PreviousQuotationsPanel";
+import { resetQuotationAnalyticsSession, trackQuotationAnalytics } from "../../lib/quotation-analytics";
 
 const totalSteps = 8;
 const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
@@ -95,6 +96,34 @@ export function QuotationShell() {
   const [historyError, setHistoryError] = useState("");
   const [isCheckingHistory, setIsCheckingHistory] = useState(false);
   const [lookedUpIdentity, setLookedUpIdentity] = useState("");
+  const analyticsStarted = useRef(false);
+  const analyticsLastTrackedAt = useRef(0);
+
+  useEffect(() => {
+    trackQuotationAnalytics("OPEN", 0);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (step > 0) analyticsStarted.current = true;
+    if (!analyticsStarted.current) return;
+    trackQuotationAnalytics("ACTIVITY", step);
+    analyticsLastTrackedAt.current = Date.now();
+  }, [draftReady, step]);
+
+  function markAnalyticsStarted() {
+    const now = Date.now();
+    if (!analyticsStarted.current) {
+      analyticsStarted.current = true;
+      analyticsLastTrackedAt.current = now;
+      trackQuotationAnalytics("START", step);
+      return;
+    }
+    if (now - analyticsLastTrackedAt.current >= 30_000) {
+      analyticsLastTrackedAt.current = now;
+      trackQuotationAnalytics("ACTIVITY", step);
+    }
+  }
 
   useEffect(() => {
     const summaryQuotationNo = new URLSearchParams(window.location.search).get("summary");
@@ -166,6 +195,7 @@ export function QuotationShell() {
 
   function next() {
     setError("");
+    markAnalyticsStarted();
     setStep((current) => Math.min(totalSteps - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -301,6 +331,9 @@ export function QuotationShell() {
     };
     window.localStorage.removeItem(submittedQuotationStorageKey);
     window.sessionStorage.removeItem(quotationSummaryIdentityKey);
+    resetQuotationAnalyticsSession();
+    trackQuotationAnalytics("START", 1);
+    analyticsStarted.current = true;
     setData({ ...emptyQuotation, customer: preservedContact });
     setPreviousQuotations([]);
     setSummaryQuotation(null);
@@ -368,7 +401,7 @@ export function QuotationShell() {
   }
 
   return (
-    <main className="hc-page">
+    <main className="hc-page" onInputCapture={markAnalyticsStarted} onChangeCapture={markAnalyticsStarted}>
       <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
       <Card>
         <ProgressHeader currentStep={step} totalSteps={totalSteps} />
