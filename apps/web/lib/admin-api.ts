@@ -3,7 +3,20 @@ import type { QuotationData } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
 
 export type DashboardPeriod = "today" | "week" | "month" | "all";
-export type DashboardMetrics = { totalLeads: number; convertedLeads: number; pageVisitors: number; conversionRate: number };
+export type DashboardPoint = { label: string; value: number };
+export type DashboardMetrics = {
+  totalLeads: number;
+  convertedLeads: number;
+  pageVisitors: number;
+  conversionRate: number;
+  quotationStats: { submitted: number; pendingApproval: number; approved: number; completedConverted: number };
+  graphs: {
+    grouping: "hour" | "day" | "month";
+    submissions: DashboardPoint[];
+    submittedVsConverted: { submitted: number; converted: number };
+    statusBreakdown: DashboardPoint[];
+  };
+};
 export type ExtraChargeInput = { title: string; description?: string; amount: string };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

@@ -2649,3 +2649,123 @@ p {
   .beverage-card-grid,
   .beverage-admin-grid { grid-template-columns: 1fr; }
 }
+
+/* Operational dashboard analytics */
+.admin-section-title {
+  font-size: 19px;
+  margin: 0 0 12px;
+}
+
+.admin-dashboard-chart-panel {
+  background: #fff;
+  border: 1px solid #e7e1db;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgb(47 36 28 / 5%);
+  min-width: 0;
+  padding: 20px;
+}
+
+.admin-dashboard-chart-panel h2 {
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+.admin-quotation-trend svg {
+  background: linear-gradient(#f1ece7 1px, transparent 1px);
+  background-size: 100% 25%;
+  display: block;
+  height: clamp(180px, 28vw, 240px);
+  width: 100%;
+}
+
+.admin-quotation-trend svg > line { stroke: #d8d0c8; stroke-width: 1; }
+.admin-quotation-trend path { fill: none; stroke: #8c6b4a; stroke-linecap: round; stroke-linejoin: round; stroke-width: 4; }
+.admin-quotation-trend circle { fill: #fff; stroke: #8c6b4a; stroke-width: 3; }
+.admin-quotation-trend text { fill: #493b31; font-size: 12px; font-weight: 800; }
+
+.admin-comparison-chart,
+.admin-status-chart {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-comparison-chart > div,
+.admin-status-chart > div {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(145px, .6fr) minmax(160px, 2fr) 42px;
+}
+
+.admin-comparison-chart span,
+.admin-status-chart span { color: #5f554d; font-size: 13px; font-weight: 800; }
+.admin-comparison-chart strong,
+.admin-status-chart strong { text-align: right; }
+.admin-comparison-chart > div > div,
+.admin-status-chart > div > div { background: #eee9e4; border-radius: 999px; height: 18px; overflow: hidden; }
+.admin-comparison-chart i,
+.admin-status-chart i { border-radius: 999px; display: block; height: 100%; min-width: 3px; }
+.admin-comparison-chart i.submitted { background: #8c6b4a; }
+.admin-comparison-chart i.converted { background: #2d7a4f; }
+.admin-status-chart i[data-color="0"] { background: #c5843e; }
+.admin-status-chart i[data-color="1"] { background: #2d7a4f; }
+.admin-status-chart i[data-color="2"] { background: #8c6b4a; }
+.admin-status-chart i[data-color="3"] { background: #71818c; }
+
+/* Compact Product Availability cards */
+.beverage-admin-grid { gap: 12px; }
+.beverage-admin-card { border-radius: 12px; display: flex; flex-direction: column; padding: 11px; }
+.beverage-admin-card > img,
+.beverage-admin-card > .beverage-image-placeholder { aspect-ratio: 16 / 9; border-radius: 9px; height: auto; min-height: 0; }
+.beverage-admin-content { padding: 9px 1px 7px; }
+.beverage-admin-content h2 { font-size: 18px; margin: 0 0 4px; }
+.beverage-admin-content p { font-size: 12px; line-height: 1.35; margin: 3px 0; }
+.beverage-admin-actions { gap: 5px; margin-top: auto; }
+.beverage-admin-actions button,
+.addon-availability-table button { font-size: 11px; min-height: 34px; padding: 7px 9px; }
+
+.availability-status {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .4px;
+  padding: 5px 8px;
+}
+.availability-status.available { background: #e5f5ea; color: #1e6b42; }
+.availability-status.unavailable { background: #f8e7e4; color: #7a1e1e; }
+.availability-status.archived { background: #ece8e4; color: #625950; }
+.addon-availability-section { border-top: 1px solid #e7e1db; margin-top: 24px; padding-top: 22px; }
+.addon-availability-section h2 { font-size: 21px; }
+.addon-availability-table td:last-child { width: 180px; }
+
+@media (min-width: 1280px) {
+  .beverage-admin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .admin-page-header { flex-wrap: wrap; }
+  .admin-period-filter { max-width: 100%; overflow-x: auto; }
+  .admin-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .admin-dashboard-page { gap: 18px; }
+  .admin-metric-grid { grid-template-columns: 1fr; }
+  .admin-dashboard-chart-panel { padding: 15px; }
+  .admin-comparison-chart > div,
+  .admin-status-chart > div { gap: 7px; grid-template-columns: 1fr 38px; }
+  .admin-comparison-chart > div > div,
+  .admin-status-chart > div > div { grid-column: 1 / -1; grid-row: 2; }
+  .admin-comparison-chart strong,
+  .admin-status-chart strong { grid-column: 2; grid-row: 1; }
+
+  .addon-availability-table thead { display: none; }
+  .addon-availability-table,
+  .addon-availability-table tbody,
+  .addon-availability-table tr,
+  .addon-availability-table td { display: block; width: 100% !important; }
+  .addon-availability-table tr { border: 1px solid #e7e1db; border-radius: 10px; margin-bottom: 10px; padding: 6px 10px; }
+  .addon-availability-table td { align-items: center; border: 0; display: grid; gap: 10px; grid-template-columns: 84px 1fr; padding: 7px 0; }
+  .addon-availability-table td::before { color: #6b625b; content: attr(data-label); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+}

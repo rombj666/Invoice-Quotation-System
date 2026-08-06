@@ -259,15 +259,15 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         </div>
       ) : null}
 
-      <div className="addon-card active">
+      {isAvailable("Smart QR Ordering System") ? <div className="addon-card active">
         <div>
           <strong>Smart QR Ordering System {unavailableLabel("Smart QR Ordering System")}</strong>
           <p>Included with every service.</p>
         </div>
         <span className="addon-price">FREE</span>
-      </div>
+      </div> : null}
 
-      {allSmallDates ? (
+      {allSmallDates && isAvailable("Premium Table Setup") ? (
         <div className="addon-card active">
           <div>
             <strong>Premium Table Setup {unavailableLabel("Premium Table Setup")}</strong>
@@ -277,7 +277,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         </div>
       ) : null}
 
-      {data.serviceDates.length ? (
+      {data.serviceDates.length && (isAvailable(COFFEE_CART_ADDON_NAME) || coffeeCartSelected) ? (
         <button type="button" className={`addon-card ${coffeeCartSelected ? "active" : ""}`} disabled={(customBrandedCartSelected && !coffeeCartSelected) || (!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected)} onClick={setCoffeeCart}>
           <div>
             <strong>Standard Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong>
@@ -288,7 +288,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         </button>
       ) : null}
 
-      {optionalAddons.map((addon) => {
+      {optionalAddons.filter((addon) => isAvailable(addon.name) || hasAddon(data, addon.name)).map((addon) => {
         const isSelected = hasAddon(data, addon.name);
         const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON_NAME;
         const isLockedByCoffeeCart = isCustomBrandedCart && coffeeCartSelected && !isSelected;
@@ -309,7 +309,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         );
       })}
 
-      <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
+      {isAvailable("Custom Cup Stickers") || data.hasCupStickers ? <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
         <button type="button" className={`addon-card ${data.hasCupStickers ? "active" : ""}`} disabled={!isAvailable("Custom Cup Stickers") && !data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
           <div>
             <strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong>
@@ -320,9 +320,9 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         {data.hasCupStickers ? (
           <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sticker", option)} />
         ) : null}
-      </div>
+      </div> : null}
 
-      <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
+      {isAvailable("Custom Cup Sleeves") || data.hasCupSleeves ? <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
         <button type="button" className={`addon-card ${data.hasCupSleeves ? "active" : ""}`} disabled={!isAvailable("Custom Cup Sleeves") && !data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
           <div>
             <strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong>
@@ -333,7 +333,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         {data.hasCupSleeves ? (
           <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sleeve", option)} />
         ) : null}
-      </div>
+      </div> : null}
 
       <div className="addon-total">Add-on Total: {formatMoney(selectedTotal)}</div>
       {hasCartConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
