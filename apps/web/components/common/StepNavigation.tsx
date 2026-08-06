@@ -6,6 +6,7 @@ type StepNavigationProps = {
   nextLabel?: string;
   backLabel?: string;
   canGoBack?: boolean;
+  nextDisabled?: boolean;
 };
 
 export function StepNavigation({
@@ -13,7 +14,8 @@ export function StepNavigation({
   onNext,
   nextLabel = "CONTINUE",
   backLabel = "BACK",
-  canGoBack = true
+  canGoBack = true,
+  nextDisabled = false
 }: StepNavigationProps) {
   return (
     <div className="hc-nav-row">
@@ -23,7 +25,7 @@ export function StepNavigation({
         </Button>
       ) : null}
       {onNext ? (
-        <Button type="button" onClick={onNext}>
+        <Button type="button" onClick={onNext} disabled={nextDisabled}>
           {nextLabel}
         </Button>
       ) : null}

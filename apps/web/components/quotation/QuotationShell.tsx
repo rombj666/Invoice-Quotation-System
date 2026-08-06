@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CustomerDetails, DrinkId, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate } from "../../types/quotation";
+import type { CustomerDetails, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
 import { calculatePricing } from "../../lib/pricing";
 import { findPreviousQuotations, getNextQuotationNo, loadPreviousQuotationSummary } from "../../lib/quotation-storage";
@@ -20,7 +20,6 @@ import { PreviousQuotationsPanel } from "./PreviousQuotationsPanel";
 import { resetQuotationAnalyticsSession, trackQuotationAnalytics } from "../../lib/quotation-analytics";
 
 const totalSteps = 8;
-const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 const quotationDraftStorageKey = "hourCoffeeQuotationDraft";
 const quotationSummaryIdentityKey = "hourCoffeeQuotationSummaryIdentity";
@@ -37,6 +36,9 @@ const emptyQuotation: QuotationData = {
   eventType: "",
   customEventType: "",
   drinkOrders: {},
+  drinkDistributionModeByDate: {},
+  excludedBeverageIdsByDate: {},
+  beverageSnapshots: {},
   sameDrinkDistribution: false,
   letHourCoffeeDecideDrinks: false,
   masterDrinkDate: undefined,
@@ -65,23 +67,10 @@ function ensureDrinkOrders(data: QuotationData): QuotationData {
   const nextOrders: DrinkOrderByDate = { ...data.drinkOrders };
   data.serviceDates.forEach((date) => {
     if (!nextOrders[date.id]) {
-      nextOrders[date.id] = {
-        americano: { ice: 0, hot: 0 },
-        latte: { ice: 0, hot: 0 },
-        chocolate: { ice: 0, hot: 0 },
-        lemonade: { ice: 0, hot: 0 }
-      };
+      nextOrders[date.id] = {};
     }
   });
-  return { ...data, drinkOrders: nextOrders };
-}
-
-function drinkTotalForDate(data: QuotationData, dateId: string): number {
-  const order = data.drinkOrders[dateId] ?? {};
-  return drinkIds.reduce((sum, drinkId) => {
-    const quantity = order[drinkId] ?? { ice: 0, hot: 0 };
-    return sum + quantity.ice + quantity.hot;
-  }, 0);
+  return { ...data, drinkOrders: nextOrders, drinkDistributionModeByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, data.drinkDistributionModeByDate?.[date.id] ?? "MANUAL"])), excludedBeverageIdsByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, data.excludedBeverageIdsByDate?.[date.id] ?? []])) };
 }
 
 export function QuotationShell() {
@@ -221,7 +210,9 @@ export function QuotationShell() {
     const selectedIds = new Set(serviceDates.map((date) => date.id));
     setData((current) => {
       const drinkOrders = Object.fromEntries(Object.entries(current.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as DrinkOrderByDate;
-      return { ...current, serviceDates, drinkOrders };
+      const drinkDistributionModeByDate = Object.fromEntries(Object.entries(current.drinkDistributionModeByDate ?? {}).filter(([dateId]) => selectedIds.has(dateId)));
+      const excludedBeverageIdsByDate = Object.fromEntries(Object.entries(current.excludedBeverageIdsByDate ?? {}).filter(([dateId]) => selectedIds.has(dateId)));
+      return { ...current, serviceDates, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
     });
   }
 
@@ -233,12 +224,13 @@ export function QuotationShell() {
   }
 
   function validateDrinks() {
-    if (data.letHourCoffeeDecideDrinks) {
-      next();
-      return;
-    }
     for (const date of data.serviceDates) {
-      const total = drinkTotalForDate(data, date.id);
+      const excluded = new Set(data.excludedBeverageIdsByDate?.[date.id] ?? []);
+      const availableIds = Object.keys(data.beverageSnapshots ?? {});
+      if (availableIds.length && availableIds.every((id) => excluded.has(id))) return setError(`At least one beverage must remain allowed for ${date.serviceDate}.`);
+      const mode = data.drinkDistributionModeByDate?.[date.id] ?? (data.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
+      if (mode === "HOUR_COFFEE_DECIDES") continue;
+      const total = Object.entries(data.drinkOrders[date.id] ?? {}).reduce((sum, [id, quantity]) => excluded.has(id) ? sum : sum + quantity.ice + quantity.hot, 0);
       if (total !== date.cups) return setError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);
     }
     next();

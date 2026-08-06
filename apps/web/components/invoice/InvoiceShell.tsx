@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CustomizationByDate } from "../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../types/invoice";
-import type { CustomizationMode, DrinkId, QuotationData } from "../../types/quotation";
+import type { CustomizationMode, QuotationData } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
@@ -30,7 +30,6 @@ import { generatePdfBlob } from "../../lib/pdf-document";
 type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "preview" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
-const drinkIds: DrinkId[] = ["americano", "latte", "chocolate", "lemonade"];
 type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
 const submittedInvoiceIdentityKey = "hourCoffeeSubmittedInvoiceIdentity";
 
@@ -47,10 +46,8 @@ function withCustomizationDefaults(quotation: QuotationData): QuotationData {
 
 function drinkTotalForDate(data: QuotationData, dateId: string): number {
   const order = data.drinkOrders[dateId] ?? {};
-  return drinkIds.reduce((sum, drinkId) => {
-    const quantity = order[drinkId] ?? { ice: 0, hot: 0 };
-    return sum + quantity.ice + quantity.hot;
-  }, 0);
+  const excluded = new Set(data.excludedBeverageIdsByDate?.[dateId] ?? []);
+  return Object.entries(order).reduce((sum, [drinkId, quantity]) => excluded.has(drinkId) ? sum : sum + quantity.ice + quantity.hot, 0);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -304,11 +301,9 @@ export function InvoiceShell() {
 
   function validateEditedDrinks(): boolean {
     if (!quotation) return false;
-    if (quotation.letHourCoffeeDecideDrinks) {
-      setReviewError("");
-      return true;
-    }
     for (const date of quotation.serviceDates) {
+      const mode = quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
+      if (mode === "HOUR_COFFEE_DECIDES") continue;
       if (drinkTotalForDate(quotation, date.id) !== date.cups) {
         setReviewError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);
         return false;

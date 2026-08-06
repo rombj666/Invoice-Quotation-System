@@ -7,6 +7,7 @@ import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
 import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
+import { validateAndNormalizeDrinkSelections } from "../utils/drink-selection";
 
 export const quotationRoutes = Router();
 
@@ -29,22 +30,38 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-const drinkNames: Record<string, string> = {
-  americano: "Americano",
-  latte: "Cafe Latte",
-  chocolate: "Dark Chocolate",
-  lemonade: "Lemonade"
-};
-
 export function toQuotationPayload(record: any) {
+  const metadata = record.metadata ?? {};
+  const storedDates = Array.isArray(record.dates) ? record.dates : [];
+  const needsHydration = storedDates.length > 0 && (!metadata.beverageSnapshots || !metadata.drinkDistributionModeByDate);
+  const hydrated = needsHydration ? (() => {
+    const beverageSnapshots: Record<string, any> = { ...(metadata.beverageSnapshots ?? {}) };
+    const drinkOrders: Record<string, any> = {};
+    const drinkDistributionModeByDate: Record<string, string> = {};
+    const excludedBeverageIdsByDate: Record<string, string[]> = {};
+    (metadata.serviceDates ?? []).forEach((serviceDate: any, index: number) => {
+      const storedDate = storedDates[index];
+      if (!storedDate) return;
+      drinkDistributionModeByDate[serviceDate.id] = storedDate.distributionMode ?? (metadata.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
+      excludedBeverageIdsByDate[serviceDate.id] = [];
+      drinkOrders[serviceDate.id] = {};
+      for (const drink of storedDate.drinks ?? []) {
+        const id = drink.beverageId ?? drink.drinkId;
+        beverageSnapshots[id] = { id, name: drink.drinkName, imageUrl: drink.imageUrlSnapshot ?? undefined, icedAvailable: drink.icedAvailableSnapshot, hotAvailable: drink.hotAvailableSnapshot };
+        drinkOrders[serviceDate.id][id] = { ice: drink.iceCups, hot: drink.hotCups };
+        if (drink.isExcluded) excludedBeverageIdsByDate[serviceDate.id].push(id);
+      }
+    });
+    return { ...metadata, beverageSnapshots, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
+  })() : metadata;
   return {
-    ...record.metadata,
+    ...hydrated,
     id: record.id,
     quotationNo: record.quotationNo,
     status: record.status,
     quotationPdfUrl: record.quotationPdfUrl,
     quotationPdfPublicId: record.quotationPdfPublicId,
-    extraCharges: record.extraCharges?.map((charge: any) => ({
+    extraCharges: record.extraCharges?.filter((charge: any) => String(charge.title).trim().toLowerCase() !== "extra serving hour").map((charge: any) => ({
       id: charge.id,
       title: charge.title,
       description: charge.description ?? undefined,
@@ -52,13 +69,10 @@ export function toQuotationPayload(record: any) {
       createdAt: charge.createdAt?.toISOString?.() ?? charge.createdAt,
       updatedAt: charge.updatedAt?.toISOString?.() ?? charge.updatedAt
     })) ?? [],
-    followUpStatus: record.followUpStatus,
-    lastFollowedUpAt: record.lastFollowedUpAt?.toISOString?.() ?? record.lastFollowedUpAt,
-    followUpNote: record.followUpNote,
     createdAt: record.createdAt?.toISOString?.() ?? record.createdAt,
     updatedAt: record.updatedAt?.toISOString?.() ?? record.updatedAt,
     hasInvoice: Array.isArray(record.invoices) ? record.invoices.length > 0 : undefined,
-    editHistory: record.statusHistory?.map((entry: any) => ({
+    editHistory: record.statusHistory?.filter((entry: any) => !/follow[ -]?up/i.test(String(entry.changeSummary ?? ""))).map((entry: any) => ({
       changedAt: entry.createdAt?.toISOString?.() ?? entry.createdAt,
       changedBy: entry.changedBy,
       summary: entry.changeSummary
@@ -157,6 +171,8 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (hasCartAddonConflict(incomingData.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
+    const normalizedDrinks = await validateAndNormalizeDrinkSelections(incomingData);
+    if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
     if (incomingData.anonymousSessionId) {
       const trackedSubmission = await prisma.quotationAnalyticsSession.findUnique({
         where: { anonymousSessionId: incomingData.anonymousSessionId },
@@ -180,7 +196,7 @@ quotationRoutes.post("/", async (req, res, next) => {
     }
     await ensureProductAvailabilityDefaults();
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-    const pricedData = applyCurrentProductPricing(incomingData, pricingItems);
+    const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
     const pricing = calculatePricing(pricedData);
     const data = {
       ...pricedData,
@@ -188,6 +204,12 @@ quotationRoutes.post("/", async (req, res, next) => {
         subtotal: pricing.subtotal,
         discountAmount: pricing.discountAmount,
         total: pricing.total
+      },
+      pricingBreakdown: {
+        extraServingHoursByDate: pricing.extraServingHoursByDate,
+        extraServingHourRate: pricing.extraServingHourRate,
+        extraServingHourFeeByDate: pricing.extraServingHourFeeByDate,
+        totalExtraServingHourFee: pricing.totalExtraServingHourFee
       }
     };
 
@@ -260,10 +282,16 @@ quotationRoutes.post("/", async (req, res, next) => {
             serviceHours: getServiceHoursExact(date),
             baristaCount: getBaristasNeeded(date),
             extraBaristaFee: getExtraBaristaFee(date),
+            distributionMode: data.drinkDistributionModeByDate[date.id],
             drinks: {
               create: Object.entries(data.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({
                 drinkId,
-                drinkName: drinkNames[drinkId] ?? drinkId,
+                beverageId: drinkId,
+                drinkName: data.beverageSnapshots[drinkId]?.name ?? drinkId,
+                imageUrlSnapshot: data.beverageSnapshots[drinkId]?.imageUrl ?? null,
+                icedAvailableSnapshot: data.beverageSnapshots[drinkId]?.icedAvailable ?? true,
+                hotAvailableSnapshot: data.beverageSnapshots[drinkId]?.hotAvailable ?? false,
+                isExcluded: data.excludedBeverageIdsByDate[date.id]?.includes(drinkId) ?? false,
                 iceCups: quantity.ice || 0,
                 hotCups: quantity.hot || 0,
                 totalCups: (quantity.ice || 0) + (quantity.hot || 0)
@@ -355,7 +383,7 @@ quotationRoutes.get("/", async (_req, res, next) => {
   try {
     const quotations = await prisma.quotation.findMany({
       orderBy: { createdAt: "desc" },
-      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     res.json(quotations.map(toQuotationPayload));
   } catch (error) {
@@ -367,7 +395,7 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     res.json(toQuotationPayload(quotation));
@@ -384,11 +412,12 @@ quotationRoutes.post("/find", async (req, res, next) => {
       where: { quotationNo: normalizedQuotationNo },
       include: {
         customer: true,
+        dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } },
         extraCharges: { orderBy: { createdAt: "asc" } },
         invoices: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
+          include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
         }
       }
     });
@@ -452,7 +481,7 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
-      include: { customer: true, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { customer: true, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     if (!quotation || !customerIdentityMatches(quotation.customer, req.body, true)) {
       return res.status(404).json({ access: "NOT_FOUND" });
@@ -474,7 +503,7 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
     const quotation = await prisma.quotation.update({
       where: { quotationNo: req.params.quotationNo },
       data: { status: "APPROVED" },
-      include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
     });
     res.json(toQuotationPayload(quotation));
   } catch (error) {

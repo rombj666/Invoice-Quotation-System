@@ -1,9 +1,12 @@
-export type DrinkId = "americano" | "latte" | "chocolate" | "lemonade";
+export type DrinkId = string;
 
 export type DrinkOption = {
   id: DrinkId;
   name: string;
-  hasHot: boolean;
+  description?: string;
+  imageUrl?: string;
+  icedAvailable: boolean;
+  hotAvailable: boolean;
 };
 
 export type ServiceDate = {
@@ -20,6 +23,17 @@ export type DrinkQuantity = {
 };
 
 export type DrinkOrderByDate = Record<string, Record<DrinkId, DrinkQuantity>>;
+export type DrinkDistributionMode = "MANUAL" | "HOUR_COFFEE_DECIDES";
+export type DrinkDistributionModeByDate = Record<string, DrinkDistributionMode>;
+export type ExcludedBeveragesByDate = Record<string, string[]>;
+
+export type BeverageSnapshot = {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  icedAvailable: boolean;
+  hotAvailable: boolean;
+};
 
 export type QuotationAddon = {
   name: string;
@@ -85,9 +99,6 @@ export type QuotationData = {
   createdAt?: string;
   quotationPdfUrl?: string;
   quotationPdfPublicId?: string;
-  followUpStatus?: "NEW" | "CONTACTED" | "FOLLOW_UP" | "WON" | "LOST";
-  lastFollowedUpAt?: string;
-  followUpNote?: string;
   updatedAt?: string;
   hasInvoice?: boolean;
   editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
@@ -97,6 +108,9 @@ export type QuotationData = {
   eventType: string;
   customEventType: string;
   drinkOrders: DrinkOrderByDate;
+  drinkDistributionModeByDate?: DrinkDistributionModeByDate;
+  excludedBeverageIdsByDate?: ExcludedBeveragesByDate;
+  beverageSnapshots?: Record<string, BeverageSnapshot>;
   sameDrinkDistribution: boolean;
   letHourCoffeeDecideDrinks?: boolean;
   masterDrinkDate?: string;
@@ -120,6 +134,22 @@ export type QuotationData = {
     discountAmount: number;
     total: number;
   };
+  pricingBreakdown?: {
+    extraServingHoursByDate: ExtraServingHourBreakdown[];
+    extraServingHourRate: number;
+    extraServingHourFeeByDate: ExtraServingHourBreakdown[];
+    totalExtraServingHourFee: number;
+  };
+};
+
+export type ExtraServingHourBreakdown = {
+  serviceDateId: string;
+  date: string;
+  cups: number;
+  exactServiceHours: number;
+  extraServingHours: number;
+  rate: number;
+  fee: number;
 };
 
 export type PreviousQuotationSummary = {

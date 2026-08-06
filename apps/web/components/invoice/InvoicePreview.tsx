@@ -22,20 +22,7 @@ export function InvoicePreview({
 }) {
   const pricing = calculatePricing(quotation);
   const firstDate = quotation.serviceDates[0];
-  const drinkColumns = [
-    ["americano", "ice", "Americano Ice"],
-    ["americano", "hot", "Americano Hot"],
-    ["latte", "ice", "Cafe Latte Ice"],
-    ["latte", "hot", "Cafe Latte Hot"],
-    ["chocolate", "ice", "Dark Chocolate Ice"],
-    ["chocolate", "hot", "Dark Chocolate Hot"],
-    ["lemonade", "ice", "Lemonade"]
-  ] as const;
-
-  function drinkQuantity(dateId: string, drinkId: (typeof drinkColumns)[number][0], type: (typeof drinkColumns)[number][1]) {
-    const qty = quotation.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return qty[type];
-  }
+  const beverageNames = [...new Set(Object.values(quotation.beverageSnapshots ?? {}).map((item) => item.name))].join(", ");
 
   return (
     <div className="invoice-preview-wrap">
@@ -146,7 +133,7 @@ export function InvoicePreview({
           <tr>
             <td>Coffee Catering</td>
             <td>
-              Americano, Cafe Latte, Dark Chocolate, Lemonade
+              {beverageNames || "Beverages saved with quotation"}
             </td>
             <td className="number-cell">1</td>
             <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
@@ -161,6 +148,7 @@ export function InvoicePreview({
               <td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td>
             </tr>
           ) : null}
+          {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <tr key={`extra-hours-${entry.serviceDateId}`}><td>Extra Serving Hour</td><td>{formatCompactDate(entry.date)} · {entry.cups} cups served for {entry.exactServiceHours} hours · {entry.extraServingHours} additional hour(s) × RM{entry.rate}</td><td className="number-cell">{entry.extraServingHours}</td><td className="amount-cell">{formatMoney(entry.rate)}</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
           {pricing.machineRentalFee > 0 ? (
             <tr>
               <td>Machine Rental</td>
@@ -186,20 +174,7 @@ export function InvoicePreview({
 
       <div className="invoice-section">
         <h3>Drink Breakdown</h3>
-        {quotation.letHourCoffeeDecideDrinks ? (
-          <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
-        ) : (
-          <div className="table-scroll">
-            <table className="invoice-table compact drink-summary-table">
-              <thead><tr><th>Date</th>{drinkColumns.map(([id, type, label]) => <th key={`${id}-${type}`}>{label}</th>)}</tr></thead>
-              <tbody>
-                {quotation.serviceDates.map((date) => (
-                  <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkColumns.map(([id, type]) => <td className="number-cell" key={`${id}-${type}`}>{drinkQuantity(date.id, id, type)}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div className="drink-distribution-summary">{quotation.serviceDates.map((date) => { const mode = quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL"); const excluded = quotation.excludedBeverageIdsByDate?.[date.id] ?? []; return <div key={date.id}><strong>{formatCompactDate(date.serviceDate)}</strong>{mode === "HOUR_COFFEE_DECIDES" ? <><p>Distribution: Hour Coffee decides</p><p>Do not include: {excluded.map((id) => quotation.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p></> : <>{Object.entries(quotation.drinkOrders[date.id] ?? {}).filter(([id, qty]) => !excluded.includes(id) && qty.ice + qty.hot > 0).map(([id, qty]) => <p key={id}>{quotation.beverageSnapshots?.[id]?.name ?? id}: Iced {qty.ice}{quotation.beverageSnapshots?.[id]?.hotAvailable ? `, Hot ${qty.hot}` : ""}</p>)}<p>Total assigned: {Object.values(quotation.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</p></>}</div>; })}</div>
       </div>
 
       <div className="invoice-totals">

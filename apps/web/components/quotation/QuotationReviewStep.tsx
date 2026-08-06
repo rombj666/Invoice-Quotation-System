@@ -34,22 +34,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
       subtotal: pricing.subtotal,
       discountAmount: pricing.discountAmount,
       total: pricing.total
-    }
+    },
+    pricingBreakdown: { extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee }
   };
-  const drinkColumns = [
-    ["americano", "ice", "Americano Ice"],
-    ["americano", "hot", "Americano Hot"],
-    ["latte", "ice", "Cafe Latte Ice"],
-    ["latte", "hot", "Cafe Latte Hot"],
-    ["chocolate", "ice", "Dark Chocolate Ice"],
-    ["chocolate", "hot", "Dark Chocolate Hot"],
-    ["lemonade", "ice", "Lemonade"]
-  ] as const;
-
-  function drinkQuantity(dateId: string, drinkId: (typeof drinkColumns)[number][0], type: (typeof drinkColumns)[number][1]) {
-    const qty = data.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 };
-    return qty[type];
-  }
 
   function addOnNames() {
     return [
@@ -57,6 +44,14 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
       data.hasCupStickers ? `Custom Cup Stickers (${formatMoney(pricing.cupStickerFee)})` : "",
       data.hasCupSleeves ? `Custom Cup Sleeves (${formatMoney(pricing.cupSleeveFee)})` : ""
     ].filter(Boolean);
+  }
+
+  function drinkDistribution() {
+    return <div className="drink-distribution-summary">{data.serviceDates.map((date) => {
+      const mode = data.drinkDistributionModeByDate?.[date.id] ?? (data.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
+      const excluded = data.excludedBeverageIdsByDate?.[date.id] ?? [];
+      return <div key={date.id}><strong>{formatCompactDate(date.serviceDate)}</strong>{mode === "HOUR_COFFEE_DECIDES" ? <><p>Distribution: Hour Coffee decides</p><p>Do not include: {excluded.map((id) => data.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p></> : <>{Object.entries(data.drinkOrders[date.id] ?? {}).filter(([id, qty]) => !excluded.includes(id) && qty.ice + qty.hot > 0).map(([id, qty]) => <p key={id}>{data.beverageSnapshots?.[id]?.name ?? id}: Iced {qty.ice}{data.beverageSnapshots?.[id]?.hotAvailable ? `, Hot ${qty.hot}` : ""}</p>)}<p>Total assigned: {Object.values(data.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</p></>}</div>;
+    })}</div>;
   }
 
   async function downloadQuotation() {
@@ -177,20 +172,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
           <div className="invoice-section">
             <h3>Drink Distribution</h3>
-            {data.letHourCoffeeDecideDrinks ? (
-              <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
-            ) : (
-              <div className="table-scroll">
-                <table className="invoice-table compact drink-summary-table">
-                  <thead><tr><th>Date</th>{drinkColumns.map(([id, type, label]) => <th key={`${id}-${type}`}>{label}</th>)}</tr></thead>
-                  <tbody>
-                    {data.serviceDates.map((date) => (
-                      <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkColumns.map(([id, type]) => <td className="number-cell" key={`${id}-${type}`}>{drinkQuantity(date.id, id, type)}</td>)}</tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {drinkDistribution()}
           </div>
 
           <table className="invoice-table invoice-item-table">
@@ -198,6 +180,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <tbody>
               <tr><td>Coffee Catering</td><td>Americano, Cafe Latte, Dark Chocolate, Lemonade</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
               {pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Extra barista(s) required</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
+              {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <tr key={`extra-hours-${entry.serviceDateId}`}><td>Extra Serving Hour</td><td>{formatCompactDate(entry.date)} · {entry.cups} cups served for {entry.exactServiceHours} hours · {entry.extraServingHours} additional hour(s) × RM{entry.rate}</td><td className="number-cell">{entry.extraServingHours}</td><td className="amount-cell">{formatMoney(entry.rate)}</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
               {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
               {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
               {(data.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description || "Manual quotation charge"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
@@ -250,20 +233,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         </div>
         <div className="review-section">
           <span>Drink distribution</span>
-          {data.letHourCoffeeDecideDrinks ? (
-            <div className="ok-summary">Hour Coffee will decide the final drink ratio and distribution for this event.</div>
-          ) : (
-            <div className="table-scroll">
-              <table className="summary-table drink-summary-table">
-                <thead><tr><th>Date</th>{drinkColumns.map(([id, type, label]) => <th key={`${id}-${type}`}>{label}</th>)}</tr></thead>
-                <tbody>
-                  {data.serviceDates.map((date) => (
-                    <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td>{drinkColumns.map(([id, type]) => <td className="number-cell" key={`${id}-${type}`}>{drinkQuantity(date.id, id, type)}</td>)}</tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {drinkDistribution()}
         </div>
         {hasOptionalAddons ? <div className="review-section">
           <span>Add-ons</span>
@@ -287,6 +257,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div className="total-box">
             <div><span>Base</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
             {pricing.extraBaristaFee > 0 ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+            {pricing.totalExtraServingHourFee > 0 ? <div><span>Extra Serving Hour</span><strong>{formatMoney(pricing.totalExtraServingHourFee)}</strong></div> : null}
             {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
             {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}
             {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}</span><strong>{formatMoney(charge.amount)}</strong></div>)}

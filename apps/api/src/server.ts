@@ -9,6 +9,7 @@ import { quotationAnalyticsRoutes } from "./routes/quotation-analytics";
 import { adminDashboardRoutes } from "./routes/admin-dashboard";
 import { adminRecordRoutes } from "./routes/admin-records";
 import { adminQuotationExtraChargeRoutes } from "./routes/admin-quotation-extra-charges";
+import { adminBeverageRoutes, beverageRoutes } from "./routes/beverages";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -23,9 +24,11 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/quotations", quotationRoutes);
 app.use("/api/quotation-analytics", quotationAnalyticsRoutes);
+app.use("/api/beverages", beverageRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
+app.use("/api/admin/beverages", adminBeverageRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/quotations", adminQuotationExtraChargeRoutes);
 app.use("/api/admin", adminRecordRoutes);

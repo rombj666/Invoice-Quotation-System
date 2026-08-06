@@ -15,7 +15,7 @@ type Props = {
   setServiceDates: (dates: ServiceDate[]) => void;
   onNext: () => void;
   error: string;
-  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristaFee">;
+  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
 };
 
 export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pricing }: Props) {
@@ -339,7 +339,8 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
             <br />
             Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
             <br />
-            Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}
+            {pricing.totalExtraServingHourFee > 0 ? <>Extra Serving Hour: {formatMoney(pricing.totalExtraServingHourFee)}<br /></> : null}
+            Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee + pricing.totalExtraServingHourFee)}
           </div>
           <details className="pricing-guide">
             <summary>View Pricing Guide</summary>

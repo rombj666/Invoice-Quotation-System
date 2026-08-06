@@ -13,7 +13,7 @@ import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { DocumentCard } from "../../../../components/admin/DocumentCard";
 import { QuotationReviewStep } from "../../../../components/quotation/QuotationReviewStep";
-import { addQuotationExtraCharge, deleteQuotationExtraCharge, updateQuotationExtraCharge, updateQuotationFollowUp, type ExtraChargeInput } from "../../../../lib/admin-api";
+import { addQuotationExtraCharge, deleteQuotationExtraCharge, updateQuotationExtraCharge, type ExtraChargeInput } from "../../../../lib/admin-api";
 import { generatePdfBlob } from "../../../../lib/pdf-document";
 import type { QuotationExtraCharge } from "../../../../types/quotation";
 
@@ -25,8 +25,6 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [followUpStatus, setFollowUpStatus] = useState("NEW");
-  const [followUpNote, setFollowUpNote] = useState("");
   const [chargeModalOpen, setChargeModalOpen] = useState(false);
   const [editingCharge, setEditingCharge] = useState<QuotationExtraCharge | null>(null);
   const [chargeDraft, setChargeDraft] = useState<ExtraChargeInput>(emptyCharge);
@@ -34,7 +32,7 @@ export default function AdminQuotationDetailPage() {
   const [pdfPreviewData, setPdfPreviewData] = useState<QuotationData | null>(null);
 
   useEffect(() => {
-    loadQuotationByNo(params.quotationNo).then((loaded) => { setQuotation(loaded); setFollowUpStatus(loaded?.followUpStatus ?? "NEW"); setFollowUpNote(loaded?.followUpNote ?? ""); }).catch(() => setError("Unable to load quotation."));
+    loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
   }, [params.quotationNo]);
 
   if (!quotation) {
@@ -79,12 +77,6 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
-  async function saveFollowUp() {
-    setError(""); setSuccess("");
-    try { const updated = await updateQuotationFollowUp(currentQuotation.quotationNo, followUpStatus, followUpNote); setQuotation(updated); setSuccess("Follow-up updated successfully."); }
-    catch (updateError) { setError(updateError instanceof Error ? updateError.message : "Unable to update follow-up."); }
-  }
-
   function openAddCharge() {
     setEditingCharge(null);
     setChargeDraft(emptyCharge);
@@ -105,6 +97,7 @@ export default function AdminQuotationDetailPage() {
     const title = chargeDraft.title.trim();
     const amount = chargeDraft.amount.trim();
     if (!title) { setError("Charge title is required."); return null; }
+    if (title.toLowerCase() === "extra serving hour") { setError("Extra Serving Hour is calculated automatically and cannot be added manually."); return null; }
     if (!amount) { setError("Charge amount is required."); return null; }
     if (!/^\d+(?:\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
       setError("Charge amount must be greater than RM0 and use no more than two decimal places.");
@@ -231,11 +224,13 @@ export default function AdminQuotationDetailPage() {
             {quotation.serviceDates.map((date) => (
               <div key={date.id}>
                 <strong>{formatDateLabel(date.serviceDate)}</strong>
-                {Object.entries(quotation.drinkOrders[date.id] ?? {}).map(([drink, qty]) => (
-                  <p key={drink}>
-                    {drink}: ice {qty.ice}, hot {qty.hot}
-                  </p>
-                ))}
+                {(quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL")) === "HOUR_COFFEE_DECIDES" ? <>
+                  <p>Distribution: Hour Coffee decides</p>
+                  <p>Excluded drinks: {(quotation.excludedBeverageIdsByDate?.[date.id] ?? []).map((id) => quotation.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p>
+                </> : <>
+                  {Object.entries(quotation.drinkOrders[date.id] ?? {}).filter(([id, qty]) => qty.ice + qty.hot > 0 && !quotation.excludedBeverageIdsByDate?.[date.id]?.includes(id)).map(([drink, qty]) => <p key={drink}>{quotation.beverageSnapshots?.[drink]?.name ?? drink}: Iced {qty.ice}, Hot {qty.hot}</p>)}
+                  <p><strong>Total assigned: {Object.values(quotation.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</strong></p>
+                </>}
               </div>
             ))}
           </section>
@@ -253,6 +248,7 @@ export default function AdminQuotationDetailPage() {
             <h3>Pricing</h3>
             <p>Base: {formatMoney(pricing.baseAmount)}</p>
             {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
+            {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
             {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
             {(quotation.extraCharges ?? []).map((charge) => <p key={charge.id}>{charge.title}: {formatMoney(charge.amount)}</p>)}
@@ -271,13 +267,6 @@ export default function AdminQuotationDetailPage() {
             <p><strong>Total extra charges: {formatMoney(pricing.manualExtraChargeTotal)}</strong></p>
           </section> : null}
           <DocumentCard documentLabel="Quotation PDF" fileUrl={quotation.quotationPdfUrl} fileName={`${quotation.quotationNo}.pdf`} />
-          <section>
-            <h3>Lead Follow-up</h3>
-            <label className="admin-field"><span>Status</span><select value={followUpStatus} onChange={(event) => setFollowUpStatus(event.target.value)}>{["NEW","CONTACTED","FOLLOW_UP","WON","LOST"].map((value)=><option value={value} key={value}>{value.replaceAll("_"," ")}</option>)}</select></label>
-            <label className="admin-field"><span>Note</span><textarea value={followUpNote} onChange={(event) => setFollowUpNote(event.target.value)} rows={4} /></label>
-            <button className="hc-button hc-button-primary" type="button" onClick={saveFollowUp}>Save Follow-up</button>
-            <p>Last followed up: {quotation.lastFollowedUpAt ? new Date(quotation.lastFollowedUpAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }) : "Not yet"}</p>
-          </section>
           {quotation.editHistory?.length ? <section><h3>Edit History</h3>{quotation.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}
         </div>
       </Card>

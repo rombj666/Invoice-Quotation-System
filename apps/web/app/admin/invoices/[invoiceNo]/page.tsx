@@ -202,11 +202,7 @@ export default function AdminInvoiceDetailPage() {
             {quotation.serviceDates.map((date) => (
               <div key={date.id}>
                 <strong>{formatDateLabel(date.serviceDate)}</strong>
-                {Object.entries(quotation.drinkOrders[date.id] ?? {}).map(([drink, qty]) => (
-                  <p key={drink}>
-                    {drink}: ice {qty.ice}, hot {qty.hot}
-                  </p>
-                ))}
+                {(quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL")) === "HOUR_COFFEE_DECIDES" ? <><p>Distribution: Hour Coffee decides</p><p>Excluded drinks: {(quotation.excludedBeverageIdsByDate?.[date.id] ?? []).map((id) => quotation.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p></> : <>{Object.entries(quotation.drinkOrders[date.id] ?? {}).filter(([id, qty]) => qty.ice + qty.hot > 0 && !quotation.excludedBeverageIdsByDate?.[date.id]?.includes(id)).map(([drink, qty]) => <p key={drink}>{quotation.beverageSnapshots?.[drink]?.name ?? drink}: Iced {qty.ice}, Hot {qty.hot}</p>)}<p><strong>Total assigned: {Object.values(quotation.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</strong></p></>}
               </div>
             ))}
           </section>
@@ -224,6 +220,7 @@ export default function AdminInvoiceDetailPage() {
             <h3>Final Total</h3>
             <p>Base: {formatMoney(pricing.baseAmount)}</p>
             {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
+            {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
             {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
             <p>Subtotal: {formatMoney(pricing.subtotal)}</p>

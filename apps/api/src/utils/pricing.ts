@@ -34,8 +34,37 @@ type QuotationPayload = {
 };
 
 type ManualExtraCharge = {
+  title?: string;
   amount: number | string | { toString(): string };
 };
+
+export const EXTRA_SERVING_HOUR_RATE = 50;
+
+export type ExtraServingHourBreakdown = {
+  serviceDateId: string;
+  date: string;
+  cups: number;
+  exactServiceHours: number;
+  extraServingHours: number;
+  rate: number;
+  fee: number;
+};
+
+export function getExtraServingHourBreakdown(serviceDates: ServiceDate[]): ExtraServingHourBreakdown[] {
+  return serviceDates.map((date: ServiceDate & { serviceDate?: string }) => {
+    const exactServiceHours = getServiceHoursExact(date);
+    const extraServingHours = date.cups < 100 ? Math.max(0, Math.ceil(exactServiceHours - 4)) : 0;
+    return {
+      serviceDateId: date.id,
+      date: date.serviceDate ?? "",
+      cups: date.cups,
+      exactServiceHours,
+      extraServingHours,
+      rate: EXTRA_SERVING_HOUR_RATE,
+      fee: extraServingHours * EXTRA_SERVING_HOUR_RATE
+    };
+  });
+}
 
 const COFFEE_CATERING_TIERS = [
   { minimumCups: 50, maximumCups: 99, rate: 10 },
@@ -74,8 +103,8 @@ export function getExtraBaristaFee(date: ServiceDate): number {
 
 function getCaffeinatedCupsForDate(dateId: string, drinkOrders: Record<string, Record<string, DrinkQuantity>>): number {
   const order = drinkOrders[dateId] ?? {};
-  const americano = order.americano ?? { ice: 0, hot: 0 };
-  const latte = order.latte ?? { ice: 0, hot: 0 };
+  const americano = order.bev_americano ?? order.americano ?? { ice: 0, hot: 0 };
+  const latte = order.bev_cafe_latte ?? order.latte ?? { ice: 0, hot: 0 };
   return americano.ice + americano.hot + latte.ice + latte.hot;
 }
 
@@ -102,7 +131,9 @@ export function calculatePricing(data: QuotationPayload) {
       ? sticker.basePrice
       : sticker.basePrice + Math.ceil((totalCups - sticker.baseCupLimit) / sticker.additionalTierCups) * sticker.additionalTierPrice
     : 0;
-  const subtotal = baseAmount + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee;
+  const extraServingHoursByDate = getExtraServingHourBreakdown(data.serviceDates);
+  const totalExtraServingHourFee = extraServingHoursByDate.reduce((sum, entry) => sum + entry.fee, 0);
+  const subtotal = baseAmount + extraBaristaFee + machineRentalFee + addonTotal + cupSleeveFee + cupStickerFee + totalExtraServingHourFee;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
   return {
     totalCups,
@@ -112,6 +143,10 @@ export function calculatePricing(data: QuotationPayload) {
     addonTotal,
     cupSleeveFee,
     cupStickerFee,
+    extraServingHoursByDate,
+    extraServingHourRate: EXTRA_SERVING_HOUR_RATE,
+    extraServingHourFeeByDate: extraServingHoursByDate,
+    totalExtraServingHourFee,
     subtotal,
     discountAmount,
     total: subtotal - discountAmount
@@ -120,7 +155,9 @@ export function calculatePricing(data: QuotationPayload) {
 
 export function calculateQuotationPricing(data: QuotationPayload, extraCharges: ManualExtraCharge[] = []) {
   const pricing = calculatePricing(data);
-  const manualExtraChargeTotal = extraCharges.reduce((sum, charge) => sum + Number(charge.amount), 0);
+  const manualExtraChargeTotal = extraCharges
+    .filter((charge) => String(charge.title ?? "").trim().toLowerCase() !== "extra serving hour")
+    .reduce((sum, charge) => sum + Number(charge.amount), 0);
   const subtotal = pricing.subtotal + manualExtraChargeTotal;
   const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
 

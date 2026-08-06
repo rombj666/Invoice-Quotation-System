@@ -2092,7 +2092,6 @@ p {
 .admin-edit-actions { display:flex; gap:10px; margin-top:20px; }
 .admin-link-button,.admin-section-heading a,.admin-section-heading button { background:#fff; border:1px solid #c9beb5; border-radius:8px; color:#2f241c; cursor:pointer; padding:9px 12px; text-decoration:none; }
 .admin-status-badge.follow-new { background:#fff3d6; color:#785700; }
-.admin-status-badge.follow-contacted,.admin-status-badge.follow-follow_up { background:#e8f2ff; color:#1d568f; }
 .admin-status-badge.follow-won { background:#e5f5ea; color:#1e6b42; }
 .admin-status-badge.follow-lost { background:#f8e7e4; color:#7a1e1e; }
 
@@ -2605,4 +2604,48 @@ p {
     margin-top: 8px;
     font-size: 10px;
   }
+}
+.beverage-card-grid,
+.beverage-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.beverage-choice-card,
+.beverage-admin-card {
+  border: 1px solid #ded4c8;
+  border-radius: 16px;
+  background: #fffdf9;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.beverage-choice-card.excluded,
+.beverage-admin-card.archived { opacity: .65; }
+
+.beverage-choice-card > img,
+.beverage-admin-card > img,
+.beverage-image-placeholder {
+  width: 100%;
+  height: 190px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #eee8df;
+  display: grid;
+  place-items: center;
+  color: #705d48;
+}
+
+.beverage-quantity { margin: .75rem 0; }
+.beverage-quantity .stepper-row { margin-top: .35rem; }
+.beverage-quantity input { width: 5rem; text-align: center; }
+.exclude-drink { display: flex; gap: .5rem; align-items: center; margin-top: 1rem; }
+.drink-distribution-summary > div { padding: .65rem 0; border-bottom: 1px solid #eee3d6; }
+.drink-distribution-summary p { margin: .25rem 0; }
+
+@media (max-width: 720px) {
+  .beverage-card-grid,
+  .beverage-admin-grid { grid-template-columns: 1fr; }
 }

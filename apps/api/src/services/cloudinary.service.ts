@@ -12,6 +12,7 @@ export const cloudinaryFolders = {
   invoices: "hour-coffee/invoices",
   quotationPdfs: "hour-coffee/quotation-pdfs",
   invoicePdfs: "hour-coffee/invoice-pdfs",
+  beverages: "hour-coffee/beverages",
   cartDesigns: "hour-coffee/cart-designs",
   cupStickers: "hour-coffee/cup-stickers",
   cupSleeves: "hour-coffee/cup-sleeves"
@@ -62,6 +63,11 @@ export function uploadCloudinaryBuffer(file: MultipartFile | undefined, folder: 
 export async function deleteCloudinaryPdf(publicId: string | null | undefined): Promise<void> {
   if (!publicId) return;
   await cloudinary.uploader.destroy(publicId, { resource_type: "raw", invalidate: true });
+}
+
+export async function deleteCloudinaryImage(publicId: string | null | undefined): Promise<void> {
+  if (!publicId) return;
+  await cloudinary.uploader.destroy(publicId, { resource_type: "image", invalidate: true });
 }
 
 export { cloudinary };

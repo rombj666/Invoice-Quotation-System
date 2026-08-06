@@ -2,220 +2,80 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
-import { formatMoney } from "../../../lib/formatters";
-import { loadProductAvailability, updateProductAvailability, type AvailabilityGroups, type AvailabilityItem } from "../../../lib/product-availability";
+import { createBeverage, deleteBeverage, loadAdminBeverages, removeBeverageImage, updateBeverage, type Beverage } from "../../../lib/beverages";
 
-type PriceDraft = Record<string, string>;
+const emptyDraft: Partial<Beverage> = { name: "", description: "", icedAvailable: true, hotAvailable: true, isAvailable: true, isArchived: false, displayOrder: 0 };
 
-function pricingSummary(item: AvailabilityItem): string[] {
-  const config = item.pricingConfig ?? {};
-  if (item.pricingType === "FREE") return ["FREE"];
-  if (item.pricingType === "FIXED") return [formatMoney(item.price ?? 0)];
-  if (item.pricingType === "STICKER_TIERS") {
-    return [
-      `Up to ${config.baseCupLimit} cups: ${formatMoney(config.basePrice)}`,
-      `Each additional ${config.additionalTierCups}-cup tier: ${formatMoney(config.additionalTierPrice)}`
-    ];
-  }
-  if (item.pricingType === "SLEEVE_RATES") {
-    return [
-      `Below ${config.threshold} cups: ${formatMoney(config.rateBelowThreshold)} per cup`,
-      `${config.threshold} cups and above: ${formatMoney(config.rateAtOrAboveThreshold)} per cup`
-    ];
-  }
-  return [];
-}
-
-function initialDraft(item: AvailabilityItem): PriceDraft {
-  if (item.pricingType === "FIXED") return { price: String(item.price ?? 0) };
-  return Object.fromEntries(Object.entries(item.pricingConfig ?? {}).map(([key, value]) => [key, String(value)]));
-}
-
-function parseCurrency(value: string): number | null {
-  if (!/^\d+(?:\.\d{1,2})?$/.test(value.trim())) return null;
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0 ? amount : null;
-}
-
-function parsePositiveInteger(value: string): number | null {
-  if (!/^\d+$/.test(value.trim())) return null;
-  const amount = Number(value);
-  return Number.isInteger(amount) && amount > 0 ? amount : null;
-}
-
-export default function ProductAvailabilityPage() {
-  const [groups, setGroups] = useState<AvailabilityGroups>({});
+export default function BeverageManagementPage() {
+  const [beverages, setBeverages] = useState<Beverage[]>([]);
+  const [editing, setEditing] = useState<Beverage | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<Beverage>>(emptyDraft);
+  const [image, setImage] = useState<File>();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [editingKey, setEditingKey] = useState("");
-  const [draft, setDraft] = useState<PriceDraft>({});
-  const [isSaving, setIsSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  async function refresh() {
-    setError("");
+  const refresh = () => loadAdminBeverages().then(setBeverages).catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load beverages."));
+  useEffect(() => { void refresh(); }, []);
+
+  function edit(beverage?: Beverage) {
+    setModalOpen(true);
+    setEditing(beverage ?? null);
+    setDraft(beverage ? { ...beverage } : { ...emptyDraft, displayOrder: (beverages.at(-1)?.displayOrder ?? 0) + 10 });
+    setImage(undefined); setError(""); setSuccess("");
+  }
+
+  async function save() {
+    setBusy(true); setError(""); setSuccess("");
     try {
-      setGroups(await loadProductAvailability());
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load product availability.");
-    }
+      const saved = editing ? await updateBeverage(editing.id, draft, image) : await createBeverage(draft, image);
+      setBeverages((current) => [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)));
+      setModalOpen(false); setEditing(null); setDraft(emptyDraft); setImage(undefined); setSuccess("Beverage saved.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save beverage."); }
+    finally { setBusy(false); }
   }
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  function replaceItem(updated: AvailabilityItem) {
-    setGroups((current) => ({
-      ...current,
-      [updated.category]: (current[updated.category] ?? []).map((item) => (item.itemKey === updated.itemKey ? updated : item))
-    }));
-  }
-
-  async function toggle(itemKey: string, isAvailable: boolean) {
+  async function toggle(beverage: Beverage, update: Partial<Beverage>) {
     setError("");
-    setSuccess("");
-    try {
-      replaceItem(await updateProductAvailability(itemKey, { isAvailable: !isAvailable }));
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Unable to update availability.");
-    }
+    try { const saved = await updateBeverage(beverage.id, update); setBeverages((current) => current.map((item) => item.id === saved.id ? saved : item)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to update beverage."); }
   }
 
-  function beginEdit(item: AvailabilityItem) {
+  async function remove(beverage: Beverage) {
+    if (!window.confirm(`Delete ${beverage.name}? Referenced beverages will be archived instead.`)) return;
     setError("");
-    setSuccess("");
-    setEditingKey(item.itemKey);
-    setDraft(initialDraft(item));
-  }
-
-  async function savePrice(item: AvailabilityItem) {
-    setError("");
-    setSuccess("");
-    let update: { price?: number; pricingConfig?: Record<string, number> } | null = null;
-
-    if (item.pricingType === "FIXED") {
-      const price = parseCurrency(draft.price ?? "");
-      if (price !== null) update = { price };
-    } else if (item.pricingType === "STICKER_TIERS") {
-      const baseCupLimit = parsePositiveInteger(draft.baseCupLimit ?? "");
-      const basePrice = parseCurrency(draft.basePrice ?? "");
-      const additionalTierCups = parsePositiveInteger(draft.additionalTierCups ?? "");
-      const additionalTierPrice = parseCurrency(draft.additionalTierPrice ?? "");
-      if (baseCupLimit !== null && basePrice !== null && additionalTierCups !== null && additionalTierPrice !== null) {
-        update = { pricingConfig: { baseCupLimit, basePrice, additionalTierCups, additionalTierPrice } };
-      }
-    } else if (item.pricingType === "SLEEVE_RATES") {
-      const threshold = parsePositiveInteger(draft.threshold ?? "");
-      const rateBelowThreshold = parseCurrency(draft.rateBelowThreshold ?? "");
-      const rateAtOrAboveThreshold = parseCurrency(draft.rateAtOrAboveThreshold ?? "");
-      if (threshold !== null && rateBelowThreshold !== null && rateAtOrAboveThreshold !== null) {
-        update = { pricingConfig: { threshold, rateBelowThreshold, rateAtOrAboveThreshold } };
-      }
-    }
-
-    if (!update) {
-      setError("Enter valid non-negative prices with no more than 2 decimal places. Thresholds must be positive whole numbers.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      replaceItem(await updateProductAvailability(item.itemKey, update));
-      setEditingKey("");
-      setDraft({});
-      setSuccess("Add-on price updated successfully.");
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Unable to update add-on price.");
-    } finally {
-      setIsSaving(false);
+    try { await deleteBeverage(beverage.id); setBeverages((current) => current.filter((item) => item.id !== beverage.id)); setSuccess("Beverage deleted."); }
+    catch (reason) {
+      const archived = (reason as Error & { beverage?: Beverage }).beverage;
+      if (archived) setBeverages((current) => current.map((item) => item.id === archived.id ? archived : item));
+      setError(reason instanceof Error ? reason.message : "Unable to delete beverage.");
     }
   }
 
-  function field(label: string, key: string, integer = false, currency = true) {
-    return (
-      <label className="availability-price-field" key={key}>
-        <span>{label}</span>
-        <div>{currency ? <span>RM</span> : <span>Cups</span>}<input type="number" min={integer ? 1 : 0} step={integer ? 1 : 0.01} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></div>
-      </label>
-    );
+  async function removeImage(beverage: Beverage) {
+    if (!window.confirm(`Remove the image for ${beverage.name}?`)) return;
+    try { const saved = await removeBeverageImage(beverage.id); setBeverages((current) => current.map((item) => item.id === saved.id ? saved : item)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to remove image."); }
   }
 
-  function priceEditor(item: AvailabilityItem) {
-    return (
-      <div className="availability-price-editor">
-        {item.pricingType === "FIXED" ? field("Fixed price", "price") : null}
-        {item.pricingType === "STICKER_TIERS" ? (
-          <>
-            {field("Base cup limit", "baseCupLimit", true, false)}
-            {field("Base price", "basePrice")}
-            {field("Additional tier size", "additionalTierCups", true, false)}
-            {field("Price per additional tier", "additionalTierPrice")}
-          </>
-        ) : null}
-        {item.pricingType === "SLEEVE_RATES" ? (
-          <>
-            {field("Cup threshold", "threshold", true, false)}
-            {field("Rate below threshold", "rateBelowThreshold")}
-            {field("Rate at/above threshold", "rateAtOrAboveThreshold")}
-          </>
-        ) : null}
-        <div className="availability-price-actions">
-          <button className="availability-action-button edit-price" type="button" disabled={isSaving} onClick={() => savePrice(item)}>{isSaving ? "Saving..." : "Save"}</button>
-          <button className="availability-action-button cancel-price" type="button" disabled={isSaving} onClick={() => { setEditingKey(""); setDraft({}); setError(""); }}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  function canEditPrice(item: AvailabilityItem): boolean {
-    return item.pricingType !== "FREE" && item.itemKey !== "coffee_cart" && item.itemKey !== "custom_branded_cart";
-  }
-
-  return (
-    <main className="admin-page">
-      <Card className="admin-card">
-        <div className="admin-page-header"><div><p className="admin-eyebrow">Catalog</p><h1>Product Availability</h1><p>Manage customer-facing product availability and existing pricing settings.</p></div></div>
-        {error ? <p className="error">{error}</p> : null}
-        {success ? <div className="ok-summary">{success}</div> : null}
-        {["Beverages", "Add-on Features"].map((category) => {
-          const isAddonCategory = category === "Add-on Features";
-          return (
-            <section className="availability-section" key={category}>
-              <h2>{category}</h2>
-              <div className="admin-table-wrap">
-                <table className="admin-table availability-table">
-                  <thead><tr><th>Item</th>{isAddonCategory ? <th>Price / Pricing Rule</th> : null}<th>Status</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    {(groups[category] ?? []).map((item) => (
-                      <tr key={item.itemKey}>
-                        <td>{item.itemName}</td>
-                        {isAddonCategory ? (
-                          <td className="availability-price-cell">
-                            {editingKey === item.itemKey ? priceEditor(item) : pricingSummary(item).map((line) => <span key={line}>{line}</span>)}
-                          </td>
-                        ) : null}
-                        <td><span className={`admin-status-badge ${item.isAvailable ? "approved" : "deleted"}`}>{item.isAvailable ? "Available" : "Unavailable"}</span></td>
-                        <td>
-                          <div className="availability-row-actions">
-                            {isAddonCategory && canEditPrice(item) ? (
-                              <button className="availability-action-button edit-price" type="button" onClick={() => beginEdit(item)} disabled={Boolean(editingKey)}>
-                                Edit Price
-                              </button>
-                            ) : null}
-                            <button className={`availability-action-button ${item.isAvailable ? "mark-unavailable" : "mark-available"}`} type="button" onClick={() => toggle(item.itemKey, item.isAvailable)}>
-                              {item.isAvailable ? "Mark Unavailable" : "Mark Available"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          );
-        })}
-      </Card>
-    </main>
-  );
+  return <main className="admin-page"><Card className="admin-card">
+    <header className="admin-page-header"><div><p className="admin-eyebrow">Catalog</p><h1>Beverage Management</h1><p>Manage availability, serving formats, images, archives, and display order.</p></div><button className="hc-button hc-button-primary" type="button" onClick={() => edit()}>Add beverage</button></header>
+    {error ? <p className="error">{error}</p> : null}{success ? <div className="ok-summary">{success}</div> : null}
+    <div className="beverage-admin-grid">{beverages.map((beverage) => <article className={`beverage-admin-card ${beverage.isArchived ? "archived" : ""}`} key={beverage.id}>
+      {beverage.imageUrl ? <img src={beverage.imageUrl} alt={beverage.name} /> : <div className="beverage-image-placeholder">No image</div>}
+      <div><h2>{beverage.name}</h2><p>{beverage.description || "No description"}</p><p>Iced: {beverage.icedAvailable ? "Yes" : "No"} · Hot: {beverage.hotAvailable ? "Yes" : "No"}</p><p>Order: {beverage.displayOrder}</p><strong>{beverage.isArchived ? "Archived" : beverage.isAvailable ? "Available" : "Unavailable"}</strong></div>
+      <div className="admin-actions"><button type="button" onClick={() => edit(beverage)}>Edit</button><button type="button" onClick={() => void toggle(beverage, { isAvailable: !beverage.isAvailable })}>{beverage.isAvailable ? "Mark unavailable" : "Mark available"}</button><button type="button" onClick={() => void toggle(beverage, { isArchived: !beverage.isArchived, ...(!beverage.isArchived ? { isAvailable: false } : {}) })}>{beverage.isArchived ? "Unarchive" : "Archive"}</button>{beverage.imageUrl ? <button type="button" onClick={() => void removeImage(beverage)}>Remove image</button> : null}<button type="button" onClick={() => void remove(beverage)}>Delete</button></div>
+    </article>)}</div>
+    {modalOpen ? <div className="modal-backdrop"><div className="drink-modal" role="dialog" aria-modal="true"><h2>{editing ? `Edit ${editing.name}` : "Add beverage"}</h2>
+      <label className="admin-field"><span>Name</span><input value={draft.name ?? ""} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+      <label className="admin-field"><span>Description</span><textarea rows={3} value={draft.description ?? ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
+      <label className="admin-field"><span>Display order</span><input type="number" min="0" step="1" value={draft.displayOrder ?? 0} onChange={(event) => setDraft({ ...draft, displayOrder: Number(event.target.value) })} /></label>
+      <label><input type="checkbox" checked={draft.icedAvailable ?? true} onChange={(event) => setDraft({ ...draft, icedAvailable: event.target.checked })} /> Iced available</label>
+      <label><input type="checkbox" checked={draft.hotAvailable ?? true} onChange={(event) => setDraft({ ...draft, hotAvailable: event.target.checked })} /> Hot available</label>
+      <label><input type="checkbox" checked={draft.isAvailable ?? true} onChange={(event) => setDraft({ ...draft, isAvailable: event.target.checked })} /> Available for new quotations</label>
+      <label className="admin-field"><span>{editing?.imageUrl ? "Replace image" : "Upload image"}</span><input type="file" accept="image/*" onChange={(event) => setImage(event.target.files?.[0])} /></label>
+      <div className="modal-actions"><button className="hc-button hc-button-secondary" type="button" onClick={() => { setModalOpen(false); setEditing(null); setDraft(emptyDraft); }}>Cancel</button><button className="hc-button hc-button-primary" type="button" disabled={busy} onClick={() => void save()}>{busy ? "Saving..." : "Save"}</button></div>
+    </div></div> : null}
+  </Card></main>;
 }

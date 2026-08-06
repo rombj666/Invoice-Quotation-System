@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
+    ,"test": "tsx --test tests/pricing.test.ts tests/drink-selection.test.ts tests/dashboard.test.ts tests/scope-contracts.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",

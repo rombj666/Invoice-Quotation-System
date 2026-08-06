@@ -31,6 +31,7 @@ export function validateChargeInput(value: any): { charge?: ChargeInput; error?:
   const amountText = String(value?.amount ?? "").trim();
 
   if (!title) return { error: "Charge title is required." };
+  if (title.toLowerCase() === "extra serving hour") return { error: "Extra Serving Hour is calculated automatically and cannot be added manually." };
   if (!amountText) return { error: "Charge amount is required." };
   if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) return { error: "Charge amount must be greater than RM0 and use no more than two decimal places." };
 

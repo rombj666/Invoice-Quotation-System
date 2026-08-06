@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -34,14 +34,6 @@ enum PaymentStatus {
   REJECTED
 }
 
-enum FollowUpStatus {
-  NEW
-  CONTACTED
-  FOLLOW_UP
-  WON
-  LOST
-}
-
 enum CustomizationType {
   CART_DESIGN
   CUP_STICKER
@@ -51,10 +43,16 @@ enum CustomizationType {
 enum InvoiceItemType {
   COFFEE_SERVICE
   EXTRA_BARISTA
+  EXTRA_SERVING_HOUR
   MACHINE_RENTAL
   ADDON
   DISCOUNT
   OTHER
+}
+
+enum DrinkDistributionMode {
+  MANUAL
+  HOUR_COFFEE_DECIDES
 }
 
 enum AdminRole {
@@ -85,9 +83,6 @@ model Quotation {
   customerId           String
   customer             Customer                   @relation(fields: [customerId], references: [id])
   status               QuotationStatus            @default(DRAFT)
-  followUpStatus       FollowUpStatus             @default(NEW)
-  lastFollowedUpAt     DateTime?
-  followUpNote         String?
   location             String
   eventType            String
   subtotalAmount       Decimal                    @db.Decimal(10, 2)
@@ -110,7 +105,6 @@ model Quotation {
 
   @@index([customerId])
   @@index([status])
-  @@index([followUpStatus])
   @@index([createdAt])
 }
 
@@ -128,39 +122,48 @@ model QuotationExtraCharge {
 }
 
 model QuotationDate {
-  id                 String              @id @default(cuid())
+  id                 String                @id @default(cuid())
   quotationId        String
-  quotation          Quotation           @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quotation          Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   serviceDate        DateTime
   cups               Int
   serviceStartTime   String
   serviceEndTime     String
-  serviceHours       Decimal             @db.Decimal(5, 2)
+  serviceHours       Decimal               @db.Decimal(5, 2)
   baristaCount       Int
-  extraBaristaFee    Decimal             @default(0) @db.Decimal(10, 2)
+  extraBaristaFee    Decimal               @default(0) @db.Decimal(10, 2)
+  distributionMode   DrinkDistributionMode @default(MANUAL)
   drinks             QuotationDrink[]
   customizationFiles CustomizationFile[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   @@index([quotationId])
   @@index([serviceDate])
 }
 
 model QuotationDrink {
-  id              String        @id @default(cuid())
-  quotationDateId String
-  quotationDate   QuotationDate @relation(fields: [quotationDateId], references: [id], onDelete: Cascade)
-  drinkId         String
-  drinkName       String
-  iceCups         Int           @default(0)
-  hotCups         Int           @default(0)
-  totalCups       Int
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                    String        @id @default(cuid())
+  quotationDateId       String
+  quotationDate         QuotationDate @relation(fields: [quotationDateId], references: [id], onDelete: Cascade)
+  drinkId               String
+  drinkName             String
+  beverageId            String?
+  beverage              Beverage?     @relation(fields: [beverageId], references: [id], onDelete: SetNull)
+  imageUrlSnapshot      String?
+  icedAvailableSnapshot Boolean       @default(true)
+  hotAvailableSnapshot  Boolean       @default(false)
+  isExcluded            Boolean       @default(false)
+  iceCups               Int           @default(0)
+  hotCups               Int           @default(0)
+  totalCups             Int
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
+  @@unique([quotationDateId, beverageId])
   @@index([quotationDateId])
   @@index([drinkId])
+  @@index([beverageId])
 }
 
 model QuotationAddon {
@@ -178,20 +181,20 @@ model QuotationAddon {
 }
 
 model Invoice {
-  id                  String              @id @default(cuid())
-  invoiceNo           String              @unique
+  id                  String                 @id @default(cuid())
+  invoiceNo           String                 @unique
   quotationId         String
-  quotation           Quotation           @relation(fields: [quotationId], references: [id])
+  quotation           Quotation              @relation(fields: [quotationId], references: [id])
   customerId          String
-  customer            Customer            @relation(fields: [customerId], references: [id])
-  status              InvoiceStatus       @default(DRAFT)
-  paymentStatus       PaymentStatus       @default(UNPAID)
+  customer            Customer               @relation(fields: [customerId], references: [id])
+  status              InvoiceStatus          @default(DRAFT)
+  paymentStatus       PaymentStatus          @default(UNPAID)
   eventAddress        String?
   dressCode           String?
   environmentNotes    String?
-  finalSubtotalAmount Decimal             @db.Decimal(10, 2)
-  finalDiscountAmount Decimal             @default(0) @db.Decimal(10, 2)
-  finalTotalAmount    Decimal             @db.Decimal(10, 2)
+  finalSubtotalAmount Decimal                @db.Decimal(10, 2)
+  finalDiscountAmount Decimal                @default(0) @db.Decimal(10, 2)
+  finalTotalAmount    Decimal                @db.Decimal(10, 2)
   invoicePdfUrl       String?
   invoicePdfPublicId  String?
   metadata            Json?
@@ -201,14 +204,37 @@ model Invoice {
   invoiceFiles        InvoiceFile[]
   internalNotes       InternalNote[]
   statusHistory       StatusHistory[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  drinkSnapshots      InvoiceDrinkSnapshot[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   @@index([quotationId])
   @@index([customerId])
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
+}
+
+model InvoiceDrinkSnapshot {
+  id                    String                @id @default(cuid())
+  invoiceId             String
+  invoice               Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceDateId         String
+  serviceDate           DateTime
+  beverageId            String?
+  beverageName          String
+  imageUrlSnapshot      String?
+  icedAvailableSnapshot Boolean               @default(true)
+  hotAvailableSnapshot  Boolean               @default(false)
+  iceCups               Int                   @default(0)
+  hotCups               Int                   @default(0)
+  isExcluded            Boolean               @default(false)
+  distributionMode      DrinkDistributionMode
+  createdAt             DateTime              @default(now())
+
+  @@index([invoiceId])
+  @@index([beverageId])
+  @@index([serviceDateId])
 }
 
 model InvoiceItem {
@@ -326,6 +352,38 @@ model QuotationAnalyticsSession {
   @@index([lastActivityAt])
   @@index([startedAt])
   @@index([submittedAt])
+}
+
+model PublicPageVisit {
+  id                 String   @id @default(cuid())
+  anonymousVisitorId String
+  visitDate          DateTime @db.Date
+  pagePath           String
+  createdAt          DateTime @default(now())
+
+  @@unique([anonymousVisitorId, visitDate, pagePath])
+  @@index([visitDate])
+  @@index([pagePath])
+}
+
+model Beverage {
+  id            String           @id @default(cuid())
+  legacyKey     String?          @unique
+  name          String
+  description   String?
+  imageUrl      String?
+  publicId      String?
+  icedAvailable Boolean          @default(true)
+  hotAvailable  Boolean          @default(true)
+  isAvailable   Boolean          @default(true)
+  isArchived    Boolean          @default(false)
+  displayOrder  Int              @default(0)
+  drinks        QuotationDrink[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([isAvailable, isArchived, displayOrder])
+  @@index([name])
 }
 
 model AdminUser {
