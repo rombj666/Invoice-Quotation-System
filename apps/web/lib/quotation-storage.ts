@@ -25,7 +25,7 @@ export type PreviousQuotationLookupResult =
   | { access: "INVOICE_STARTED" }
   | { access: "NOT_FOUND" };
 
-class ApiRequestError extends Error {
+export class ApiRequestError extends Error {
   constructor(message: string, readonly status: number, readonly payload?: Record<string, unknown>) {
     super(message);
   }

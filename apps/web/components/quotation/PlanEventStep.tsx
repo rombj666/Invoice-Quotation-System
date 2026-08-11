@@ -13,12 +13,13 @@ import { StepNavigation } from "../common/StepNavigation";
 type Props = {
   serviceDates: ServiceDate[];
   setServiceDates: (dates: ServiceDate[]) => void;
+  onBack?: () => void;
   onNext: () => void;
   error: string;
   pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
 };
 
-export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pricing }: Props) {
+export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, error, pricing }: Props) {
   const serviceDatesRef = useRef(serviceDates);
   const pointerSessionRef = useRef<{
     pointerId: number;
@@ -371,7 +372,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onNext, error, pr
       {copyMessage ? <div className="ok-summary">{copyMessage}</div> : null}
 
       {error ? <p className="error">{error}</p> : null}
-      <StepNavigation canGoBack={false} onNext={onNext} />
+      <StepNavigation canGoBack={Boolean(onBack)} onBack={onBack} onNext={onNext} />
     </div>
   );
 }

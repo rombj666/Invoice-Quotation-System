@@ -398,7 +398,7 @@ export function QuotationShell() {
       <Card>
         <ProgressHeader currentStep={step} totalSteps={totalSteps} />
         {step === 0 ? <ContactDetailsStep data={data} setData={updateContactData} onNext={validateContact} isChecking={isCheckingHistory} error={error} /> : null}
-        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onNext={validatePlanEvent} error={error} pricing={calculatePricing(data)} /> : null}
+        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onBack={back} onNext={validatePlanEvent} error={error} pricing={calculatePricing(data)} /> : null}
         {step === 2 ? <LocationStep data={data} setData={setData} onBack={back} onNext={validateLocation} error={error} /> : null}
         {step === 3 ? <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={validateDrinks} error={error} /> : null}
         {step === 4 ? <AddOnsStep data={data} setData={setData} onBack={back} onNext={next} /> : null}

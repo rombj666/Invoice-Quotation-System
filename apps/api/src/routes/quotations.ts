@@ -114,12 +114,20 @@ async function findMatchingCustomers(input: { name: unknown; phone: unknown; ema
 }
 
 async function getNextQuotationNo(): Promise<string> {
-  const latest = await prisma.quotation.findFirst({
-    orderBy: { quotationNo: "desc" },
-    select: { quotationNo: true }
-  });
-  const latestNumber = Number(latest?.quotationNo.replace(/^Q/, "") ?? "0");
-  return `Q${String(latestNumber + 1).padStart(5, "0")}`;
+  const [result] = await prisma.$queryRaw<Array<{ highestNumber: number }>>(Prisma.sql`
+    SELECT COALESCE(MAX(SUBSTRING("quotationNo" FROM 2)::INTEGER), 0)::INTEGER AS "highestNumber"
+    FROM "Quotation"
+    WHERE "quotationNo" ~ '^Q[0-9]{5}$'
+  `);
+  const nextNumber = result.highestNumber + 1;
+  if (nextNumber > 99999) throw new Error("Quotation number range exhausted.");
+  return `Q${String(nextNumber).padStart(5, "0")}`;
+}
+
+function isQuotationNoConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return false;
+  const target = error.meta?.target;
+  return Array.isArray(target) ? target.includes("quotationNo") : String(target ?? "").includes("quotationNo");
 }
 
 quotationRoutes.get("/next-number", async (_req, res, next) => {
@@ -213,6 +221,16 @@ quotationRoutes.post("/", async (req, res, next) => {
       }
     };
 
+    const requestedQuotationNo = String(data.quotationNo ?? "").trim().toUpperCase();
+    const quotationNo = await getNextQuotationNo();
+    if (requestedQuotationNo !== quotationNo) {
+      return res.status(409).json({
+        code: "QUOTATION_NUMBER_CONFLICT",
+        error: "The quotation number is no longer the next available number. Retrying with the current number.",
+        nextQuotationNo: quotationNo
+      });
+    }
+
     const matchingCustomers = await findMatchingCustomers(data.customer);
     const customerData = {
       name: data.customer.name.trim(),
@@ -226,40 +244,35 @@ quotationRoutes.post("/", async (req, res, next) => {
       ? await prisma.customer.update({ where: { id: matchingCustomers[0].id }, data: customerData })
       : await prisma.customer.create({ data: customerData });
 
-    let quotation = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const requestedQuotationNo = String(data.quotationNo ?? "").trim().toUpperCase();
-      const quotationNo = attempt === 0 && /^Q\d{5}$/.test(requestedQuotationNo)
-        ? requestedQuotationNo
-        : await getNextQuotationNo();
-      let quotationPdfUpload: Awaited<ReturnType<typeof uploadCloudinaryBuffer>> = null;
+    let quotationPdfUpload: Awaited<ReturnType<typeof uploadCloudinaryBuffer>> = null;
+    let quotation: Prisma.QuotationGetPayload<{ include: { customer: true; extraCharges: true } }> | null = null;
+    try {
       try {
-        try {
-          quotationPdfUpload = await uploadCloudinaryBuffer(
-            quotationPdfFile,
-            cloudinaryFolders.quotationPdfs,
-            `${quotationNo}-${Date.now()}.pdf`
-          );
-          if (!quotationPdfUpload) throw new Error("Cloudinary returned no quotation PDF upload result.");
-          logQuotationPdf("cloudinary_upload", {
-            quotationId: null,
-            quotationNo,
-            success: true,
-            secureUrl: quotationPdfUpload.fileUrl,
-            publicId: quotationPdfUpload.cloudinaryPublicId
-          });
-        } catch (error) {
-          logQuotationPdf("cloudinary_upload", {
-            quotationId: null,
-            quotationNo,
-            success: false,
-            error: errorMessage(error)
-          });
-          return res.status(502).json({ error: "Quotation submission failed while uploading the PDF. Please try again." });
-        }
+        quotationPdfUpload = await uploadCloudinaryBuffer(
+          quotationPdfFile,
+          cloudinaryFolders.quotationPdfs,
+          `${quotationNo}-${Date.now()}.pdf`
+        );
+        if (!quotationPdfUpload) throw new Error("Cloudinary returned no quotation PDF upload result.");
+        logQuotationPdf("cloudinary_upload", {
+          quotationId: null,
+          quotationNo,
+          success: true,
+          secureUrl: quotationPdfUpload.fileUrl,
+          publicId: quotationPdfUpload.cloudinaryPublicId
+        });
+      } catch (error) {
+        logQuotationPdf("cloudinary_upload", {
+          quotationId: null,
+          quotationNo,
+          success: false,
+          error: errorMessage(error)
+        });
+        return res.status(502).json({ error: "Quotation submission failed while uploading the PDF. Please try again." });
+      }
 
-        quotation = await prisma.quotation.create({
-          data: {
+      quotation = await prisma.quotation.create({
+        data: {
         quotationNo,
         customerId: customer.id,
         status: (data.status ?? "PENDING_APPROVAL") as QuotationStatus,
@@ -311,45 +324,43 @@ quotationRoutes.post("/", async (req, res, next) => {
             ...(data.hasCupSleeves ? [{ name: "Custom Cup Sleeves", price: pricing.cupSleeveFee, isIncluded: false, metadata: toJsonValue(data.customizationOptions?.sleeve ?? {}) }] : [])
           ]
         }
-          },
-          include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }
-        });
-        logQuotationPdf("database_save", {
-          quotationId: quotation.id,
-          quotationNo: quotation.quotationNo,
-          success: true,
-          secureUrl: quotation.quotationPdfUrl,
-          publicId: quotation.quotationPdfPublicId
-        });
-        break;
-      } catch (error) {
-        logQuotationPdf("database_save", {
-          quotationId: null,
-          quotationNo,
-          success: false,
-          secureUrl: quotationPdfUpload?.fileUrl,
-          publicId: quotationPdfUpload?.cloudinaryPublicId,
-          error: errorMessage(error)
-        });
-        if (quotationPdfUpload?.cloudinaryPublicId) {
-          await deleteCloudinaryPdf(quotationPdfUpload.cloudinaryPublicId).catch((cleanupError) => {
-            console.error("[quotation-pdf] failed_upload_cleanup", {
-              quotationId: null,
-              quotationNo,
-              publicId: quotationPdfUpload?.cloudinaryPublicId,
-              error: errorMessage(cleanupError)
-            });
+        },
+        include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }
+      });
+      logQuotationPdf("database_save", {
+        quotationId: quotation.id,
+        quotationNo: quotation.quotationNo,
+        success: true,
+        secureUrl: quotation.quotationPdfUrl,
+        publicId: quotation.quotationPdfPublicId
+      });
+    } catch (error) {
+      logQuotationPdf("database_save", {
+        quotationId: null,
+        quotationNo,
+        success: false,
+        secureUrl: quotationPdfUpload?.fileUrl,
+        publicId: quotationPdfUpload?.cloudinaryPublicId,
+        error: errorMessage(error)
+      });
+      if (quotationPdfUpload?.cloudinaryPublicId) {
+        await deleteCloudinaryPdf(quotationPdfUpload.cloudinaryPublicId).catch((cleanupError) => {
+          console.error("[quotation-pdf] failed_upload_cleanup", {
+            quotationId: null,
+            quotationNo,
+            publicId: quotationPdfUpload?.cloudinaryPublicId,
+            error: errorMessage(cleanupError)
           });
-        }
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          return res.status(409).json({ error: "The quotation number was just used. Please refresh and submit again so the PDF matches the quotation." });
-        }
-        return res.status(500).json({ error: "Quotation submission failed while saving the PDF. No successful submission was recorded. Please try again." });
+        });
       }
-    }
-
-    if (!quotation) {
-      return res.status(409).json({ error: "Unable to generate a unique quotation number. Please try again." });
+      if (isQuotationNoConflict(error)) {
+        return res.status(409).json({
+          code: "QUOTATION_NUMBER_CONFLICT",
+          error: "The quotation number was just used. Retrying with the next available number.",
+          nextQuotationNo: await getNextQuotationNo()
+        });
+      }
+      return res.status(500).json({ error: "Quotation submission failed while saving the PDF. No successful submission was recorded. Please try again." });
     }
 
     if (data.anonymousSessionId) {

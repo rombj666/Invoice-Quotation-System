@@ -35,3 +35,15 @@ test("invoice creation ignores browser quotation data and copies saved beverage 
   assert.match(invoices, /drinkSnapshots:/);
   assert.match(invoices, /itemType: "EXTRA_SERVING_HOUR"/);
 });
+
+test("quotation numbers use the highest numeric suffix and the plan step can navigate back", () => {
+  const quotations = read("apps", "api", "src", "routes", "quotations.ts");
+  const planEvent = read("apps", "web", "components", "quotation", "PlanEventStep.tsx");
+  const quotationShell = read("apps", "web", "components", "quotation", "QuotationShell.tsx");
+  assert.match(quotations, /MAX\(SUBSTRING\("quotationNo" FROM 2\)::INTEGER\)/);
+  assert.match(quotations, /WHERE "quotationNo" ~ '\^Q\[0-9\]\{5\}\$'/);
+  assert.match(quotations, /requestedQuotationNo !== quotationNo/);
+  assert.match(quotations, /QUOTATION_NUMBER_CONFLICT/);
+  assert.match(planEvent, /<StepNavigation canGoBack=\{Boolean\(onBack\)\} onBack=\{onBack\} onNext=\{onNext\} \/>/);
+  assert.match(quotationShell, /<PlanEventStep[^>]+onBack=\{back\}/);
+});

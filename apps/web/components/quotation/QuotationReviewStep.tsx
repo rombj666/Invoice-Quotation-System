@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import type { QuotationData } from "../../types/quotation";
 import { CART_SELECTION_ERROR, getAddonDisplayName, getAddonPrice, hasCartAddonConflict } from "../../lib/addons";
 import { calculateQuotationPricing, getBaristasNeeded } from "../../lib/pricing";
-import { saveQuotationLocally } from "../../lib/quotation-storage";
+import { ApiRequestError, saveQuotationLocally } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../common/Button";
 import { submittedQuotationStorageKey } from "./QuotationShell";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
@@ -23,12 +23,14 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const router = useRouter();
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeQuotationNo, setActiveQuotationNo] = useState(data.quotationNo);
   const pricing = calculateQuotationPricing(data);
   const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
   const hasOptionalAddons = data.selectedAddons.length > 0 || data.hasCupStickers || data.hasCupSleeves;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const quotationForInvoice = {
     ...data,
+    quotationNo: activeQuotationNo,
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: {
       subtotal: pricing.subtotal,
@@ -37,6 +39,14 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     },
     pricingBreakdown: { extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee }
   };
+
+  useEffect(() => {
+    setActiveQuotationNo(data.quotationNo);
+  }, [data.quotationNo]);
+
+  function afterQuotationNumberPaint(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }
 
   function addOnNames() {
     return [
@@ -57,7 +67,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   async function downloadQuotation() {
     setSubmitError("");
     try {
-      const filename = `Hour-Coffee-Quotation-${data.quotationNo || "Preview"}.pdf`;
+      const filename = `Hour-Coffee-Quotation-${activeQuotationNo || "Preview"}.pdf`;
       const pdf = await generatePdfBlob("quotationPreview", { filename });
       downloadPdfBlob(pdf, filename);
     } catch (error) {
@@ -73,20 +83,37 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     }
     setIsSubmitting(true);
     try {
-      const filename = `Hour-Coffee-Quotation-${data.quotationNo}.pdf`;
-      let quotationPdf: Blob;
-      try {
-        quotationPdf = await generatePdfBlob("quotationPreview", { filename });
-        console.info("[quotation-pdf] pdf_generation", { quotationNo: data.quotationNo, success: true, bytes: quotationPdf.size });
-      } catch (error) {
-        console.error("[quotation-pdf] pdf_generation", {
-          quotationNo: data.quotationNo,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error"
-        });
-        throw new Error("Quotation submission failed because the PDF could not be generated. Please try again.");
+      let quotationNo = activeQuotationNo;
+      let saved: QuotationData | null = null;
+      for (let attempt = 0; attempt < 5 && !saved; attempt += 1) {
+        if (quotationNo !== activeQuotationNo || attempt > 0) {
+          setActiveQuotationNo(quotationNo);
+          await afterQuotationNumberPaint();
+        }
+        const filename = `Hour-Coffee-Quotation-${quotationNo}.pdf`;
+        let quotationPdf: Blob;
+        try {
+          quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+          console.info("[quotation-pdf] pdf_generation", { quotationNo, success: true, bytes: quotationPdf.size });
+        } catch (error) {
+          console.error("[quotation-pdf] pdf_generation", {
+            quotationNo,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error"
+          });
+          throw new Error("Quotation submission failed because the PDF could not be generated. Please try again.");
+        }
+        try {
+          saved = await saveQuotationLocally({ ...quotationForInvoice, quotationNo, status: "PENDING_APPROVAL" }, quotationPdf);
+        } catch (error) {
+          const nextQuotationNo = error instanceof ApiRequestError && error.status === 409 && error.payload?.code === "QUOTATION_NUMBER_CONFLICT"
+            ? String(error.payload.nextQuotationNo ?? "")
+            : "";
+          if (!/^Q\d{5}$/.test(nextQuotationNo) || attempt === 4) throw error;
+          quotationNo = nextQuotationNo;
+        }
       }
-      const saved = await saveQuotationLocally({ ...quotationForInvoice, status: "PENDING_APPROVAL" }, quotationPdf);
+      if (!saved) throw new Error("Unable to generate a unique quotation number. Please try again.");
       if (!saved.quotationPdfUrl || !saved.quotationPdfPublicId) {
         console.error("[quotation-pdf] submission_verification", {
           quotationNo: saved.quotationNo,
@@ -119,7 +146,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
               <div className="invoice-meta">
                 <div>
                   <span>Quotation No</span>
-                  <strong>{data.quotationNo}</strong>
+                  <strong>{activeQuotationNo}</strong>
                 </div>
                 <div>
                   <span>Quote Date</span>
@@ -269,7 +296,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         <div className="review-section">
           <span>Reference</span>
           <div className="summary-rows">
-            <div><strong>Quotation No.</strong><span>{data.quotationNo}</span></div>
+            <div><strong>Quotation No.</strong><span>{activeQuotationNo}</span></div>
             <div><strong>Status</strong><span>{(data.status ?? "PENDING_APPROVAL").replaceAll("_", " ")}</span></div>
           </div>
         </div>
