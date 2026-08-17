@@ -13,6 +13,7 @@ import type { CustomizationByDate } from "../../../../types/customization";
 import type { InvoiceDetails } from "../../../../types/invoice";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { DocumentCard } from "../../../../components/admin/DocumentCard";
+import { getProvidedBeverageNames } from "../../../../lib/beverages";
 
 function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Image" | "File" {
   if (mimeType === "application/pdf") return "PDF";
@@ -198,13 +199,8 @@ export default function AdminInvoiceDetailPage() {
             ))}
           </section>
           <section>
-            <h3>Drink Distribution</h3>
-            {quotation.serviceDates.map((date) => (
-              <div key={date.id}>
-                <strong>{formatDateLabel(date.serviceDate)}</strong>
-                {(quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL")) === "HOUR_COFFEE_DECIDES" ? <><p>Distribution: Hour Coffee decides</p><p>Excluded drinks: {(quotation.excludedBeverageIdsByDate?.[date.id] ?? []).map((id) => quotation.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p></> : <>{Object.entries(quotation.drinkOrders[date.id] ?? {}).filter(([id, qty]) => qty.ice + qty.hot > 0 && !quotation.excludedBeverageIdsByDate?.[date.id]?.includes(id)).map(([drink, qty]) => <p key={drink}>{quotation.beverageSnapshots?.[drink]?.name ?? drink}: Iced {qty.ice}, Hot {qty.hot}</p>)}<p><strong>Total assigned: {Object.values(quotation.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</strong></p></>}
-              </div>
-            ))}
+            <h3>Drink Preferences</h3>
+            {quotation.serviceDates.map((date) => <div key={date.id}><strong>{formatDateLabel(date.serviceDate)}</strong><p>Drinks provided: {getProvidedBeverageNames(quotation, date.id).join(", ") || "None"}</p></div>)}
           </section>
           <section>
             <h3>Add-ons</h3>

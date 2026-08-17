@@ -1,4 +1,5 @@
 import { apiBaseUrl } from "./api-client";
+import type { QuotationData } from "../types/quotation";
 
 export type Beverage = {
   id: string;
@@ -40,3 +41,25 @@ export const createBeverage = (data: Partial<Beverage>, image?: File) => request
 export const updateBeverage = (id: string, data: Partial<Beverage>, image?: File) => request<Beverage>(`/api/admin/beverages/${encodeURIComponent(id)}`, { method: "PATCH", body: beverageForm(data, image) });
 export const removeBeverageImage = (id: string) => request<Beverage>(`/api/admin/beverages/${encodeURIComponent(id)}/image`, { method: "DELETE" });
 export const deleteBeverage = (id: string) => request<void>(`/api/admin/beverages/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export function getProvidedBeverageNames(data: QuotationData, dateId: string): string[] {
+  const snapshots = data.beverageSnapshots ?? {};
+  const excluded = new Set(data.excludedBeverageIdsByDate?.[dateId] ?? []);
+  const mode = data.drinkDistributionModeByDate?.[dateId]
+    ?? (data.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
+  const historicalOrder = data.drinkOrders[dateId] ?? {};
+  const manuallyProvidedIds = mode === "MANUAL"
+    ? Object.entries(historicalOrder)
+      .filter(([id, quantity]) => !excluded.has(id) && quantity.ice + quantity.hot > 0)
+      .map(([id]) => id)
+    : [];
+  const providedIds = manuallyProvidedIds.length
+    ? manuallyProvidedIds
+    : Object.keys(snapshots).filter((id) => !excluded.has(id));
+
+  return [...new Set(providedIds.map((id) => snapshots[id]?.name ?? id))];
+}
+
+export function getAllProvidedBeverageNames(data: QuotationData): string[] {
+  return [...new Set(data.serviceDates.flatMap((date) => getProvidedBeverageNames(data, date.id)))];
+}

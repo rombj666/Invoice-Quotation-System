@@ -8,7 +8,7 @@ import { QuotationReviewStep } from "../../../../../components/quotation/Quotati
 import { prepareAdminQuotationEdit, updateAdminQuotation } from "../../../../../lib/admin-api";
 import { generatePdfBlob } from "../../../../../lib/pdf-document";
 import { loadQuotationByNo } from "../../../../../lib/quotation-storage";
-import type { DrinkId, QuotationData, ServiceDate } from "../../../../../types/quotation";
+import type { QuotationData, ServiceDate } from "../../../../../types/quotation";
 
 const addons = ["Coffee Cart", "Custom Branded Cart", "Custom Menu", "Custom Latte Art Stencil"];
 
@@ -22,19 +22,27 @@ export default function AdminQuotationEditPage() {
 
   useEffect(() => { loadQuotationByNo(params.quotationNo).then((quotation) => quotation && setData({ ...quotation, status: quotation.status ?? "PENDING_APPROVAL" })).catch(() => setError("Unable to load quotation.")); }, [params.quotationNo]);
   if (!data) return <main className="admin-page"><Card className="admin-card"><h1>Edit Quotation</h1><p>{error || "Loading..."}</p></Card></main>;
-  const drinks = Object.values(data.beverageSnapshots ?? {}).map((drink) => ({ id: drink.id, label: drink.name, hot: drink.hotAvailable }));
+  const drinks = Object.values(data.beverageSnapshots ?? {}).map((drink) => ({ id: drink.id, label: drink.name }));
 
   const patch = (value: Partial<QuotationData>) => setData((current) => current ? { ...current, ...value } : current);
   const updateCustomer = (key: keyof QuotationData["customer"], value: string) => patch({ customer: { ...data.customer, [key]: value } });
   const updateDate = (id: string, value: Partial<ServiceDate>) => patch({ serviceDates: data.serviceDates.map((date) => date.id === id ? { ...date, ...value } : date) });
-  const updateDrink = (dateId: string, drinkId: DrinkId, kind: "ice" | "hot", value: number) => patch({ drinkOrders: { ...data.drinkOrders, [dateId]: { ...data.drinkOrders[dateId], [drinkId]: { ...(data.drinkOrders[dateId]?.[drinkId] ?? { ice: 0, hot: 0 }), [kind]: value } } } });
+  const toggleDrinkExclusion = (dateId: string, drinkId: string, checked: boolean) => {
+    const excluded = data.excludedBeverageIdsByDate?.[dateId] ?? [];
+    patch({
+      excludedBeverageIdsByDate: { ...(data.excludedBeverageIdsByDate ?? {}), [dateId]: checked ? [...new Set([...excluded, drinkId])] : excluded.filter((id) => id !== drinkId) },
+      drinkDistributionModeByDate: { ...(data.drinkDistributionModeByDate ?? {}), [dateId]: "HOUR_COFFEE_DECIDES" },
+      drinkOrders: { ...data.drinkOrders, [dateId]: { ...data.drinkOrders[dateId], [drinkId]: { ice: 0, hot: 0 } } },
+      letHourCoffeeDecideDrinks: true
+    });
+  };
   const toggleAddon = (name: string) => {
     const existing = data.selectedAddons.find((addon) => addon.name === name);
     patch({ selectedAddons: existing ? data.selectedAddons.filter((addon) => addon.name !== name) : [...data.selectedAddons, { name, price: 0 }] });
   };
   const addDate = () => {
     const id = crypto.randomUUID();
-    patch({ serviceDates: [...data.serviceDates, { id, serviceDate: "", cups: 50, startTime: "09:00", endTime: "11:00" }], drinkOrders: { ...data.drinkOrders, [id]: Object.fromEntries(drinks.map((drink) => [drink.id, { ice: 0, hot: 0 }])) as QuotationData["drinkOrders"][string] } });
+    patch({ serviceDates: [...data.serviceDates, { id, serviceDate: "", cups: 50, startTime: "09:00", endTime: "11:00" }], drinkOrders: { ...data.drinkOrders, [id]: Object.fromEntries(drinks.map((drink) => [drink.id, { ice: 0, hot: 0 }])) as QuotationData["drinkOrders"][string] }, drinkDistributionModeByDate: { ...(data.drinkDistributionModeByDate ?? {}), [id]: "HOUR_COFFEE_DECIDES" }, excludedBeverageIdsByDate: { ...(data.excludedBeverageIdsByDate ?? {}), [id]: [] }, letHourCoffeeDecideDrinks: true });
   };
 
   async function save() {
@@ -63,7 +71,7 @@ export default function AdminQuotationEditPage() {
       <section><h2>Customer & Billing</h2>{([['name','Name'],['phone','Phone'],['email','Email'],['companyName','Company'],['companyRegNo','Company registration'],['billingAddress','Billing address']] as const).map(([key,label])=><label className="admin-field" key={key}><span>{label}</span><input value={data.customer[key]} onChange={(event)=>updateCustomer(key,event.target.value)} /></label>)}</section>
       <section><h2>Event</h2><label className="admin-field"><span>Location</span><input value={data.location} onChange={(event)=>patch({location:event.target.value})} /></label><label className="admin-field"><span>Full address</span><textarea rows={3} value={data.fullAddress} onChange={(event)=>patch({fullAddress:event.target.value})} /></label><label className="admin-field"><span>Event type</span><input value={data.eventType} onChange={(event)=>patch({eventType:event.target.value})} /></label><label className="admin-field"><span>Custom event type</span><input value={data.customEventType} onChange={(event)=>patch({customEventType:event.target.value})} /></label></section>
     </div>
-    <section className="admin-edit-section"><div className="admin-section-heading"><h2>Service Dates & Drink Distribution</h2><button type="button" onClick={addDate}>Add Date</button></div>{data.serviceDates.map((date)=><div className="admin-date-editor" key={date.id}><div className="admin-inline-fields"><label className="admin-field"><span>Date</span><input type="date" value={date.serviceDate} onChange={(event)=>updateDate(date.id,{serviceDate:event.target.value})} /></label><label className="admin-field"><span>Cups</span><input type="number" min="50" step="1" value={date.cups} onChange={(event)=>updateDate(date.id,{cups:Number(event.target.value)})} /></label><label className="admin-field"><span>Start</span><input type="time" value={date.startTime} onChange={(event)=>updateDate(date.id,{startTime:event.target.value})} /></label><label className="admin-field"><span>End</span><input type="time" value={date.endTime} onChange={(event)=>updateDate(date.id,{endTime:event.target.value})} /></label><button type="button" onClick={()=>patch({serviceDates:data.serviceDates.filter(item=>item.id!==date.id)})}>Remove</button></div><div className="admin-drink-editor">{drinks.map((drink)=><div key={drink.id}><strong>{drink.label}</strong><label>Ice <input type="number" min="0" step="1" value={data.drinkOrders[date.id]?.[drink.id]?.ice ?? 0} onChange={(event)=>updateDrink(date.id,drink.id,"ice",Number(event.target.value))} /></label>{drink.hot?<label>Hot <input type="number" min="0" step="1" value={data.drinkOrders[date.id]?.[drink.id]?.hot ?? 0} onChange={(event)=>updateDrink(date.id,drink.id,"hot",Number(event.target.value))} /></label>:null}</div>)}</div></div>)}</section>
+    <section className="admin-edit-section"><div className="admin-section-heading"><h2>Service Dates & Drink Preferences</h2><button type="button" onClick={addDate}>Add Date</button></div>{data.serviceDates.map((date)=><div className="admin-date-editor" key={date.id}><div className="admin-inline-fields"><label className="admin-field"><span>Date</span><input type="date" value={date.serviceDate} onChange={(event)=>updateDate(date.id,{serviceDate:event.target.value})} /></label><label className="admin-field"><span>Cups</span><input type="number" min="50" step="1" value={date.cups} onChange={(event)=>updateDate(date.id,{cups:Number(event.target.value)})} /></label><label className="admin-field"><span>Start</span><input type="time" value={date.startTime} onChange={(event)=>updateDate(date.id,{startTime:event.target.value})} /></label><label className="admin-field"><span>End</span><input type="time" value={date.endTime} onChange={(event)=>updateDate(date.id,{endTime:event.target.value})} /></label><button type="button" onClick={()=>patch({serviceDates:data.serviceDates.filter(item=>item.id!==date.id)})}>Remove</button></div><div className="admin-drink-editor">{drinks.map((drink)=><div key={drink.id}><strong>{drink.label}</strong><label><input type="checkbox" checked={data.excludedBeverageIdsByDate?.[date.id]?.includes(drink.id) ?? false} onChange={(event)=>toggleDrinkExclusion(date.id,drink.id,event.target.checked)} /> Do not include</label></div>)}</div></div>)}</section>
     <section className="admin-edit-section"><h2>Add-ons</h2><div className="admin-checkbox-grid">{addons.map((name)=><label key={name}><input type="checkbox" checked={data.selectedAddons.some((addon)=>addon.name===name)} onChange={()=>toggleAddon(name)} /> {name}</label>)}<label><input type="checkbox" checked={data.hasCupStickers} onChange={(event)=>patch({hasCupStickers:event.target.checked})} /> Custom Cup Stickers</label><label><input type="checkbox" checked={data.hasCupSleeves} onChange={(event)=>patch({hasCupSleeves:event.target.checked})} /> Custom Cup Sleeves</label></div><div className="admin-inline-fields">{([['cart','Cart'],['sticker','Sticker'],['sleeve','Sleeve']] as const).map(([key,label])=><label className="admin-field" key={key}><span>{label} design count</span><input type="number" min="1" step="1" value={data.customizationOptions[key].designCount} onChange={(event)=>patch({customizationOptions:{...data.customizationOptions,[key]:{...data.customizationOptions[key],designCount:Number(event.target.value)}}})} /></label>)}</div></section>
     <div className="print-document" aria-hidden="true"><QuotationReviewStep data={data} readOnly /></div>
     <div className="admin-edit-actions"><button className="hc-button hc-button-primary" type="button" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save Changes"}</button><Link className="hc-button hc-button-secondary" href={`/admin/quotations/${params.quotationNo}`}>Cancel</Link></div>

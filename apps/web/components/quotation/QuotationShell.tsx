@@ -40,7 +40,7 @@ const emptyQuotation: QuotationData = {
   excludedBeverageIdsByDate: {},
   beverageSnapshots: {},
   sameDrinkDistribution: false,
-  letHourCoffeeDecideDrinks: false,
+  letHourCoffeeDecideDrinks: true,
   masterDrinkDate: undefined,
   selectedAddons: [],
   hasCupSleeves: false,
@@ -70,7 +70,7 @@ function ensureDrinkOrders(data: QuotationData): QuotationData {
       nextOrders[date.id] = {};
     }
   });
-  return { ...data, drinkOrders: nextOrders, drinkDistributionModeByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, data.drinkDistributionModeByDate?.[date.id] ?? "MANUAL"])), excludedBeverageIdsByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, data.excludedBeverageIdsByDate?.[date.id] ?? []])) };
+  return { ...data, drinkOrders: nextOrders, drinkDistributionModeByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, "HOUR_COFFEE_DECIDES"])), excludedBeverageIdsByDate: Object.fromEntries(data.serviceDates.map((date) => [date.id, data.excludedBeverageIdsByDate?.[date.id] ?? []])), letHourCoffeeDecideDrinks: true };
 }
 
 export function QuotationShell() {
@@ -227,11 +227,7 @@ export function QuotationShell() {
     for (const date of data.serviceDates) {
       const excluded = new Set(data.excludedBeverageIdsByDate?.[date.id] ?? []);
       const availableIds = Object.keys(data.beverageSnapshots ?? {});
-      if (availableIds.length && availableIds.every((id) => excluded.has(id))) return setError(`At least one beverage must remain allowed for ${date.serviceDate}.`);
-      const mode = data.drinkDistributionModeByDate?.[date.id] ?? (data.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
-      if (mode === "HOUR_COFFEE_DECIDES") continue;
-      const total = Object.entries(data.drinkOrders[date.id] ?? {}).reduce((sum, [id, quantity]) => excluded.has(id) ? sum : sum + quantity.ice + quantity.hot, 0);
-      if (total !== date.cups) return setError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);
+      if (availableIds.length && availableIds.every((id) => excluded.has(id))) return setError("Please keep at least one drink available for your event.");
     }
     next();
   }

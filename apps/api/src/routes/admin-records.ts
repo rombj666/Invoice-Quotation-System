@@ -21,18 +21,6 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-function validateDrinkDistribution(data: any): string | null {
-  for (const date of data.serviceDates ?? []) {
-    const mode = data.drinkDistributionModeByDate?.[date.id] ?? (data.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
-    if (mode === "HOUR_COFFEE_DECIDES") continue;
-    const quantities = Object.values(data.drinkOrders?.[date.id] ?? {}) as any[];
-    if (quantities.some((quantity) => !Number.isInteger(Number(quantity?.ice || 0)) || !Number.isInteger(Number(quantity?.hot || 0)) || Number(quantity?.ice || 0) < 0 || Number(quantity?.hot || 0) < 0)) return `Drink quantities for ${date.serviceDate} must be non-negative whole numbers.`;
-    const total = quantities.reduce((sum: number, quantity: any) => sum + Number(quantity?.ice || 0) + Number(quantity?.hot || 0), 0);
-    if (total !== Number(date.cups)) return `Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`;
-  }
-  return null;
-}
-
 function validateQuotationFields(data: any): string | null {
   if (!String(data.customer?.name ?? "").trim()) return "Customer name is required.";
   if (!/^\S+@\S+\.\S+$/.test(String(data.customer?.email ?? ""))) return "A valid customer email is required.";
@@ -79,8 +67,6 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     if (!hasValidServiceDates(data.serviceDates)) return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
     const fieldError = validateQuotationFields(data);
     if (fieldError) return res.status(400).json({ error: fieldError });
-    const drinkError = validateDrinkDistribution(data);
-    if (drinkError) return res.status(400).json({ error: drinkError });
     const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
     if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
@@ -104,8 +90,6 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     if (!hasValidServiceDates(data.serviceDates)) return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
     const fieldError = validateQuotationFields(data);
     if (fieldError) return res.status(400).json({ error: fieldError });
-    const drinkError = validateDrinkDistribution(data);
-    if (drinkError) return res.status(400).json({ error: drinkError });
     const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
     if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
@@ -191,8 +175,6 @@ adminRecordRoutes.patch("/invoices/:invoiceNo", async (req, res, next) => {
     const fieldError = validateQuotationFields(data.quotation);
     if (fieldError) return res.status(400).json({ error: fieldError });
     if (!String(data.eventAddress ?? "").trim()) return res.status(400).json({ error: "Event address is required." });
-    const drinkError = validateDrinkDistribution(data.quotation);
-    if (drinkError) return res.status(400).json({ error: drinkError });
     if (hasCartAddonConflict(data.quotation.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
 
     const current = await prisma.invoice.findUnique({

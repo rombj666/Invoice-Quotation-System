@@ -6,6 +6,7 @@ import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
 import { getAddonDisplayName } from "../../lib/addons";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
+import { getAllProvidedBeverageNames, getProvidedBeverageNames } from "../../lib/beverages";
 
 export function InvoicePreview({
   invoiceNo,
@@ -22,7 +23,9 @@ export function InvoicePreview({
 }) {
   const pricing = calculatePricing(quotation);
   const firstDate = quotation.serviceDates[0];
-  const beverageNames = [...new Set(Object.values(quotation.beverageSnapshots ?? {}).map((item) => item.name))].join(", ");
+  const beverageNames = getAllProvidedBeverageNames(quotation).join(", ");
+  const providedBeveragesByDate = quotation.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(quotation, date.id) }));
+  const hasDateSpecificDrinkPreferences = new Set(providedBeveragesByDate.map(({ names }) => names.join("|"))).size > 1;
 
   return (
     <div className="invoice-preview-wrap">
@@ -172,10 +175,10 @@ export function InvoicePreview({
         </tbody>
       </table>
 
-      <div className="invoice-section">
-        <h3>Drink Breakdown</h3>
-        <div className="drink-distribution-summary">{quotation.serviceDates.map((date) => { const mode = quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL"); const excluded = quotation.excludedBeverageIdsByDate?.[date.id] ?? []; return <div key={date.id}><strong>{formatCompactDate(date.serviceDate)}</strong>{mode === "HOUR_COFFEE_DECIDES" ? <><p>Distribution: Hour Coffee decides</p><p>Do not include: {excluded.map((id) => quotation.beverageSnapshots?.[id]?.name ?? id).join(", ") || "None"}</p></> : <>{Object.entries(quotation.drinkOrders[date.id] ?? {}).filter(([id, qty]) => !excluded.includes(id) && qty.ice + qty.hot > 0).map(([id, qty]) => <p key={id}>{quotation.beverageSnapshots?.[id]?.name ?? id}: Iced {qty.ice}{quotation.beverageSnapshots?.[id]?.hotAvailable ? `, Hot ${qty.hot}` : ""}</p>)}<p>Total assigned: {Object.values(quotation.drinkOrders[date.id] ?? {}).reduce((sum, qty) => sum + qty.ice + qty.hot, 0)} of {date.cups} cups</p></>}</div>; })}</div>
-      </div>
+      {hasDateSpecificDrinkPreferences ? <div className="invoice-section">
+        <h3>Drink Preferences</h3>
+        <div className="drink-preferences-summary">{providedBeveragesByDate.map(({ date, names }) => <div key={date.id}><strong>{formatCompactDate(date.serviceDate)}</strong><p>Drinks provided: {names.join(", ") || "None"}</p></div>)}</div>
+      </div> : null}
 
       <div className="invoice-totals">
         <div>

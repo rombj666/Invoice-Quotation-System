@@ -44,12 +44,6 @@ function withCustomizationDefaults(quotation: QuotationData): QuotationData {
   };
 }
 
-function drinkTotalForDate(data: QuotationData, dateId: string): number {
-  const order = data.drinkOrders[dateId] ?? {};
-  const excluded = new Set(data.excludedBeverageIdsByDate?.[dateId] ?? []);
-  return Object.entries(order).reduce((sum, [drinkId, quantity]) => excluded.has(drinkId) ? sum : sum + quantity.ice + quantity.hot, 0);
-}
-
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -302,10 +296,10 @@ export function InvoiceShell() {
   function validateEditedDrinks(): boolean {
     if (!quotation) return false;
     for (const date of quotation.serviceDates) {
-      const mode = quotation.drinkDistributionModeByDate?.[date.id] ?? (quotation.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
-      if (mode === "HOUR_COFFEE_DECIDES") continue;
-      if (drinkTotalForDate(quotation, date.id) !== date.cups) {
-        setReviewError(`Drink quantities for ${date.serviceDate} must equal ${date.cups} cups.`);
+      const beverageIds = Object.keys(quotation.beverageSnapshots ?? {});
+      const excluded = new Set(quotation.excludedBeverageIdsByDate?.[date.id] ?? []);
+      if (beverageIds.length > 0 && beverageIds.every((id) => excluded.has(id))) {
+        setReviewError("Please keep at least one drink available for your event.");
         return false;
       }
     }
