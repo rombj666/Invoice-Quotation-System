@@ -106,6 +106,8 @@ export type QuotationData = {
   hasInvoice?: boolean;
   editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
   serviceDates: ServiceDate[];
+  totalCups?: number;
+  serviceDuration?: ServiceDurationMode;
   location: string;
   fullAddress: string;
   eventType: string;
@@ -138,6 +140,7 @@ export type QuotationData = {
     total: number;
   };
   pricingBreakdown?: {
+    extraBaristas?: number;
     fullDayBaristaFeesByDate?: FullDayBaristaFeeBreakdown[];
     extraServingHoursByDate: ExtraServingHourBreakdown[];
     extraServingHourRate: number;

@@ -29,6 +29,8 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeQuotationNo, setActiveQuotationNo] = useState(data.quotationNo);
   const pricing = calculateQuotationPricing(data);
+  const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && (data.serviceDuration === "HALF_DAY" || data.serviceDuration === "FULL_DAY");
+  const quotationDurationLabel = data.serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
   const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
   const hasOptionalAddons = data.selectedAddons.length > 0 || data.hasCupStickers || data.hasCupSleeves;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
@@ -40,6 +42,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total },
     pricingBreakdown: {
+      extraBaristas: pricing.extraBaristas,
       fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
       extraServingHoursByDate: pricing.extraServingHoursByDate,
       extraServingHourRate: pricing.extraServingHourRate,
@@ -119,13 +122,17 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <div><span>Event address</span><strong>{data.fullAddress || data.location}</strong></div>
             <div><span>Total cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Service dates</span><strong>{data.serviceDates.length}</strong></div>
+            {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
           </div>
-          <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
+          {hasQuotationLevelSettings ? <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
+            <thead><tr><th>Selected service dates</th></tr></thead>
+            <tbody>{data.serviceDates.map((date) => <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td></tr>)}</tbody>
+          </table></div> : <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
             <thead><tr><th>Date</th><th>Duration</th><th>Cups</th><th>Baristas</th><th>Full-day charge</th></tr></thead>
             <tbody>{data.serviceDates.map((date) => <tr key={date.id}>
               <td className="date-cell">{formatCompactDate(date.serviceDate)}</td><td>{serviceDuration(date)}</td><td className="number-cell">{date.cups}</td><td className="number-cell">{getBaristasNeeded(date)}</td><td className="amount-cell">{date.durationMode === "FULL_DAY" ? formatMoney(getExtraBaristaFee(date)) : "—"}</td>
             </tr>)}</tbody>
-          </table></div>
+          </table></div>}
         </div>
 
         <div className="invoice-section"><h3>Selected Drinks</h3>{drinkSelection()}</div>
@@ -134,8 +141,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
           <tbody>
             <tr><td>Coffee Catering</td><td>{providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
+            {hasQuotationLevelSettings && pricing.extraBaristaFee > 0 ? <tr><td>Extra Barista Fee</td><td>{pricing.extraBaristas} extra barista(s) · {quotationDurationLabel}</td><td className="number-cell">{pricing.extraBaristas}</td><td className="amount-cell">RM100.00</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
             {pricing.fullDayBaristaFeesByDate.map((entry) => <tr key={`full-day-${entry.serviceDateId}`}><td>Full-Day Barista Charge</td><td>{formatCompactDate(entry.date)} · {entry.cups} cups · {entry.baristas} barista(s)</td><td className="number-cell">{entry.baristas}</td><td className="amount-cell">RM100.00</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
-            {!pricing.fullDayBaristaFeesByDate.length && pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Legacy service calculation</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
+            {!hasQuotationLevelSettings && !pricing.fullDayBaristaFeesByDate.length && pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Legacy service calculation</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
             {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <tr key={`legacy-hours-${entry.serviceDateId}`}><td>Extra Serving Hour</td><td>{formatCompactDate(entry.date)} · legacy service calculation</td><td className="number-cell">{entry.extraServingHours}</td><td className="amount-cell">{formatMoney(entry.rate)}</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
             {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
             {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
@@ -163,9 +171,12 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
         <section className="review-premium-card review-service-card">
           <span className="review-kicker">Event Setup</span>
-          <div className="table-scroll"><table className="summary-table"><thead><tr><th>Date</th><th>Duration</th><th>Cups</th><th>Baristas</th><th>Charge</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}>
+          {hasQuotationLevelSettings ? <>
+            <div className="review-detail-list quotation-settings-review"><div><span>Total cups</span><strong>{pricing.totalCups}</strong></div><div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div><div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div><div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div></div>
+            <div className="table-scroll"><table className="summary-table"><thead><tr><th>Selected service dates</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td></tr>)}</tbody></table></div>
+          </> : <div className="table-scroll"><table className="summary-table"><thead><tr><th>Date</th><th>Duration</th><th>Cups</th><th>Baristas</th><th>Charge</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}>
             <td className="date-cell">{formatCompactDate(date.serviceDate)}</td><td>{serviceDuration(date)}</td><td className="number-cell">{date.cups}</td><td className="number-cell">{getBaristasNeeded(date)}</td><td className="amount-cell">{date.durationMode === "FULL_DAY" ? formatMoney(getExtraBaristaFee(date)) : "—"}</td>
-          </tr>)}</tbody></table></div>
+          </tr>)}</tbody></table></div>}
         </section>
 
         <section className="review-premium-card"><span className="review-kicker">Selected Drinks</span>{drinkSelection()}</section>
@@ -178,7 +189,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
         <section className="review-premium-card review-pricing-card"><span className="review-kicker">Pricing Summary</span><div className="total-box">
           <div><span>Coffee catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
-          {pricing.extraBaristaFee > 0 ? <div><span>{pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Additional barista fee"}</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+          {pricing.extraBaristaFee > 0 ? <div><span>{hasQuotationLevelSettings ? "Extra barista fee" : pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Additional barista fee"}</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
           {pricing.totalExtraServingHourFee > 0 ? <div><span>Extra Serving Hour</span><strong>{formatMoney(pricing.totalExtraServingHourFee)}</strong></div> : null}
           {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
           {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}

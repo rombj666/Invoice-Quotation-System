@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CustomerDetails, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate } from "../../types/quotation";
+import type { CustomerDetails, DrinkOrderByDate, PreviousQuotationSummary, QuotationData, ServiceDate, ServiceDurationMode } from "../../types/quotation";
 import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
 import { calculatePricing } from "../../lib/pricing";
 import { findPreviousQuotations, getNextQuotationNo, loadPreviousQuotationSummary } from "../../lib/quotation-storage";
@@ -28,6 +28,8 @@ function identityKey(customer: Pick<CustomerDetails, "name" | "phone" | "email">
 const emptyQuotation: QuotationData = {
   quotationNo: "Q00001",
   serviceDates: [],
+  totalCups: 50,
+  serviceDuration: "HALF_DAY",
   location: "",
   fullAddress: "",
   eventType: "",
@@ -142,10 +144,23 @@ export function QuotationShell() {
             restored.location = restored.fullAddress;
             restored.fullAddress = "";
           }
+          if (parsed.version !== 5) {
+            const restoredTotalCups = Number(restored.totalCups) || restored.serviceDates.reduce((sum, date) => sum + Number(date.cups || 0), 0) || 50;
+            const restoredDuration = restored.serviceDuration ?? restored.serviceDates[0]?.durationMode ?? "HALF_DAY";
+            restored.totalCups = restoredTotalCups;
+            restored.serviceDuration = restoredDuration;
+            restored.serviceDates = restored.serviceDates.map((date) => ({
+              ...date,
+              cups: restoredTotalCups,
+              durationMode: restoredDuration,
+              startTime: "09:00",
+              endTime: restoredDuration === "FULL_DAY" ? "17:00" : "13:00"
+            }));
+          }
           const contactIsValid = hasText(restored.customer.name) && isValidMalaysiaPhone(restored.customer.phone) && isValidEmail(restored.customer.email);
           const legacyStep = Number(parsed.step ?? parsed.currentStep ?? 0);
           const previousFlowStep = parsed.version === 2 ? legacyStep : contactIsValid ? legacyStep + 1 : 0;
-          const restoredStep = parsed.version === 4
+          const restoredStep = parsed.version === 4 || parsed.version === 5
             ? legacyStep
             : previousFlowStep <= 0 ? 0 : 1;
           setData(restored);
@@ -182,7 +197,7 @@ export function QuotationShell() {
 
   useEffect(() => {
     if (!draftReady) return;
-    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 4, step, data }));
+    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 5, step, data }));
   }, [data, draftReady, step]);
 
   function next() {
@@ -200,10 +215,8 @@ export function QuotationShell() {
 
   function validatePlanEvent() {
     if (!data.serviceDates.length) return setError("Please add at least one service date.");
-    for (const date of data.serviceDates) {
-      if (date.cups < 50) return setError(`Minimum 50 cups for ${date.serviceDate}.`);
-      if (!date.durationMode) return setError(`Choose Half Day or Full Day for ${date.serviceDate}.`);
-    }
+    if (!Number.isInteger(data.totalCups) || Number(data.totalCups) < 50) return setError("Minimum order is 50 cups.");
+    if (data.serviceDuration !== "HALF_DAY" && data.serviceDuration !== "FULL_DAY") return setError("Choose Half Day or Full Day service duration.");
     if (!validateDrinks()) return;
     setData(ensureDrinkOrders(data));
     next();
@@ -215,8 +228,37 @@ export function QuotationShell() {
       const drinkOrders = Object.fromEntries(Object.entries(current.drinkOrders).filter(([dateId]) => selectedIds.has(dateId))) as DrinkOrderByDate;
       const drinkDistributionModeByDate = Object.fromEntries(Object.entries(current.drinkDistributionModeByDate ?? {}).filter(([dateId]) => selectedIds.has(dateId)));
       const excludedBeverageIdsByDate = Object.fromEntries(Object.entries(current.excludedBeverageIdsByDate ?? {}).filter(([dateId]) => selectedIds.has(dateId)));
-      return { ...current, serviceDates, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
+      const duration = current.serviceDuration ?? "HALF_DAY";
+      const normalizedDates = serviceDates.map((date) => ({
+        ...date,
+        cups: current.totalCups ?? 50,
+        durationMode: duration,
+        startTime: "09:00",
+        endTime: duration === "FULL_DAY" ? "17:00" : "13:00"
+      }));
+      return { ...current, serviceDates: normalizedDates, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
     });
+  }
+
+  function updateTotalCups(totalCups: number) {
+    setData((current) => ({
+      ...current,
+      totalCups,
+      serviceDates: current.serviceDates.map((date) => ({ ...date, cups: totalCups }))
+    }));
+  }
+
+  function updateServiceDuration(serviceDuration: ServiceDurationMode) {
+    setData((current) => ({
+      ...current,
+      serviceDuration,
+      serviceDates: current.serviceDates.map((date) => ({
+        ...date,
+        durationMode: serviceDuration,
+        startTime: "09:00",
+        endTime: serviceDuration === "FULL_DAY" ? "17:00" : "13:00"
+      }))
+    }));
   }
 
   function validateDrinks(): boolean {
@@ -374,7 +416,7 @@ export function QuotationShell() {
         {step === 0 ? <ContactDetailsStep data={data} setData={updateContactData} onNext={validateContact} isChecking={isCheckingHistory} error={error} /> : null}
         {step === 1 ? <div className="event-setup-step">
           <div className="step-intro"><h2>Event Setup</h2><p className="step-copy">Build your event service in one place.</p></div>
-          <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onBack={back} onNext={validatePlanEvent} error="" pricing={calculatePricing(data)} durationModeOnly embedded />
+          <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} totalCups={data.totalCups} serviceDuration={data.serviceDuration} setTotalCups={updateTotalCups} setServiceDuration={updateServiceDuration} onBack={back} onNext={validatePlanEvent} error="" pricing={calculatePricing(data)} durationModeOnly embedded />
           <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={() => undefined} error="" embedded onValidityChange={setDrinksValid} />
           <AddOnsStep
             data={data}

@@ -23,6 +23,8 @@ type DrinkQuantity = {
 
 type QuotationPayload = {
   serviceDates: ServiceDate[];
+  totalCups?: number;
+  serviceDuration?: "HALF_DAY" | "FULL_DAY";
   drinkOrders: Record<string, Record<string, DrinkQuantity>>;
   selectedAddons: Array<{ name: string; price: number }>;
   hasCupSleeves: boolean;
@@ -118,6 +120,17 @@ export function getFullDayBaristaFeeBreakdown(serviceDates: ServiceDate[]) {
     }));
 }
 
+export function getQuotationExtraBaristas(totalCups: number, duration: "HALF_DAY" | "FULL_DAY"): number {
+  if (totalCups < 50) return 0;
+  const includedCups = duration === "FULL_DAY" ? 400 : 200;
+  const cupsPerExtraBarista = duration === "FULL_DAY" ? 400 : 200;
+  return totalCups <= includedCups ? 0 : Math.ceil((totalCups - includedCups) / cupsPerExtraBarista);
+}
+
+export function getQuotationExtraBaristaFee(totalCups: number, duration: "HALF_DAY" | "FULL_DAY"): number {
+  return getQuotationExtraBaristas(totalCups, duration) * 100;
+}
+
 function getCaffeinatedCupsForDate(dateId: string, drinkOrders: Record<string, Record<string, DrinkQuantity>>): number {
   const order = drinkOrders[dateId] ?? {};
   const americano = order.bev_americano ?? order.americano ?? { ice: 0, hot: 0 };
@@ -135,10 +148,12 @@ function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Record<st
 }
 
 export function calculatePricing(data: QuotationPayload) {
-  const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
+  const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && Boolean(data.serviceDuration);
+  const totalCups = hasQuotationLevelSettings ? Number(data.totalCups) : data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
-  const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
-  const fullDayBaristaFeesByDate = getFullDayBaristaFeeBreakdown(data.serviceDates);
+  const extraBaristas = hasQuotationLevelSettings ? getQuotationExtraBaristas(totalCups, data.serviceDuration!) : 0;
+  const extraBaristaFee = hasQuotationLevelSettings ? getQuotationExtraBaristaFee(totalCups, data.serviceDuration!) : data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
+  const fullDayBaristaFeesByDate = hasQuotationLevelSettings ? [] : getFullDayBaristaFeeBreakdown(data.serviceDates);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const sleeve = data.addonPricing?.cupSleeve ?? DEFAULT_SLEEVE_PRICING;
@@ -156,6 +171,7 @@ export function calculatePricing(data: QuotationPayload) {
   return {
     totalCups,
     baseAmount,
+    extraBaristas,
     extraBaristaFee,
     fullDayBaristaFeesByDate,
     machineRentalFee,

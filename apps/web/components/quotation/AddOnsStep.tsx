@@ -98,8 +98,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     sticker: { mode: "same" as const, designCount: 1 },
     sleeve: { mode: "same" as const, designCount: 1 }
   };
-  const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const allSmallDates = data.serviceDates.length > 0 && data.serviceDates.every((date) => date.cups < 100);
+  const totalCups = Number.isFinite(data.totalCups) ? Number(data.totalCups) : data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
+  const allSmallDates = data.serviceDates.length > 0 && (Number.isFinite(data.totalCups) ? Number(data.totalCups) < 100 : data.serviceDates.every((date) => date.cups < 100));
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const enoughLeadTime = hasEnoughLeadTime(data);
   function fixedAddon(name: keyof typeof FIXED_ADDON_DEFAULTS, item: AvailabilityItem | undefined): QuotationAddon {

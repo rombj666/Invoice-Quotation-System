@@ -1,6 +1,6 @@
 import { Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
-import { calculatePricing, getBaristasNeeded, getExtraBaristaFee, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
+import { calculatePricing, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { prisma } from "../utils/prisma";
@@ -173,17 +173,29 @@ quotationRoutes.post("/", async (req, res, next) => {
       success: true,
       bytes: quotationPdfFile.buffer.length
     });
-    if (!hasValidServiceDates(incomingData.serviceDates)) {
-      return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
+    if (!Array.isArray(incomingData.serviceDates) || !incomingData.serviceDates.length) {
+      return res.status(400).json({ error: "Select at least one service date." });
     }
-    if (incomingData.serviceDates.some((date: any) => date.durationMode !== "HALF_DAY" && date.durationMode !== "FULL_DAY")) {
-      return res.status(400).json({ error: "Choose Half Day or Full Day for every service date." });
+    const totalCups = Number(incomingData.totalCups);
+    if (!Number.isInteger(totalCups) || totalCups < 50) {
+      return res.status(400).json({ error: "Minimum order is 50 cups." });
     }
+    const serviceDuration = incomingData.serviceDuration;
+    if (serviceDuration !== "HALF_DAY" && serviceDuration !== "FULL_DAY") {
+      return res.status(400).json({ error: "Choose Half Day or Full Day service duration." });
+    }
+    incomingData.totalCups = totalCups;
+    incomingData.serviceDuration = serviceDuration;
     incomingData.serviceDates = incomingData.serviceDates.map((date: any) => ({
       ...date,
+      cups: totalCups,
+      durationMode: serviceDuration,
       startTime: "09:00",
-      endTime: date.durationMode === "FULL_DAY" ? "17:00" : "13:00"
+      endTime: serviceDuration === "FULL_DAY" ? "17:00" : "13:00"
     }));
+    if (!hasValidServiceDates(incomingData.serviceDates)) {
+      return res.status(400).json({ error: "Select at least one valid service date." });
+    }
     const discountCode = String(incomingData.discountCode ?? "").trim().toUpperCase();
     if (discountCode && discountCode !== "FIRST") {
       return res.status(400).json({ error: "Invalid discount code." });
@@ -235,6 +247,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         total: pricing.total
       },
       pricingBreakdown: {
+        extraBaristas: pricing.extraBaristas,
         fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
         extraServingHoursByDate: pricing.extraServingHoursByDate,
         extraServingHourRate: pricing.extraServingHourRate,
@@ -316,8 +329,8 @@ quotationRoutes.post("/", async (req, res, next) => {
             serviceStartTime: date.startTime,
             serviceEndTime: date.endTime,
             serviceHours: getServiceHoursExact(date),
-            baristaCount: getBaristasNeeded(date),
-            extraBaristaFee: getExtraBaristaFee(date),
+            baristaCount: pricing.extraBaristas + 1,
+            extraBaristaFee: 0,
             distributionMode: data.drinkDistributionModeByDate[date.id],
             drinks: {
               create: Object.entries(data.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({

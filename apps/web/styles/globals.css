@@ -2748,6 +2748,161 @@ p {
   margin-top: 0;
 }
 
+.service-dates-column,
+.event-settings-panel {
+  background: #fff;
+  border: 1px solid #e5ded5;
+  border-radius: 16px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.service-dates-column > h3,
+.event-settings-panel > h3 {
+  margin: 0 0 6px;
+}
+
+.service-dates-column .hc-cal-help {
+  margin-bottom: 0;
+}
+
+.event-settings-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.event-setting-section {
+  border-top: 1px solid #eee8e0;
+  margin: 0;
+  padding-top: 14px;
+}
+
+.event-setting-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.event-setting-label,
+.event-setting-section legend {
+  color: #4e453d;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.selected-date-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+  max-height: 142px;
+  overflow-y: auto;
+}
+
+.selected-date-chip {
+  background: #edf7f0;
+  border: 1px solid #b9d8c4;
+  border-radius: 999px;
+  color: #205d3a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
+.selected-dates-empty {
+  color: #777067;
+  font-size: 13px;
+  margin: 9px 0 0;
+}
+
+.selected-date-count {
+  color: #6f675f;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.total-cups-field {
+  display: grid;
+  gap: 7px;
+}
+
+.total-cups-field small {
+  color: #746d65;
+}
+
+.total-cups-input {
+  font-size: 18px;
+  font-weight: 700;
+  max-width: 180px;
+}
+
+.quote-duration-picker legend {
+  margin-bottom: 8px;
+}
+
+.event-pricing-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.event-pricing-summary h4 {
+  margin: 0 0 3px;
+}
+
+.event-pricing-summary > div {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.event-pricing-total {
+  border-top: 1px dashed #d8d0c6;
+  margin-top: 3px;
+  padding-top: 10px;
+}
+
+.event-pricing-guide {
+  margin-top: 0;
+}
+
+.event-pricing-guide table {
+  max-width: none;
+}
+
+.barista-pricing-guide {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 10px;
+}
+
+.barista-pricing-guide > div {
+  background: #f7f4ef;
+  border-radius: 9px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.barista-pricing-guide span {
+  color: #675f57;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.barista-guide-minimum {
+  color: #4e453d;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 9px 0 0;
+}
+
+.quotation-settings-review {
+  margin-bottom: 16px;
+}
+
 .duration-date-grid {
   align-items: end;
   grid-template-columns: minmax(110px, .35fr) minmax(280px, 1fr);
@@ -2985,7 +3140,8 @@ p {
   .quotation-review-grid,
   .addons-panel,
   .duration-date-grid,
-  .duration-picker {
+  .duration-picker,
+  .barista-pricing-guide {
     grid-template-columns: 1fr;
   }
 

@@ -6,23 +6,27 @@ import type { ServiceDate, ServiceDurationMode } from "../../types/quotation";
 import type { PricingBreakdown } from "../../lib/pricing";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
-import { COFFEE_CATERING_TIERS, getBaristasNeeded, getCoffeeCateringTier, getExtraBaristaFee } from "../../lib/pricing";
+import { COFFEE_CATERING_TIERS, getBaristasNeeded, getCoffeeCateringTier } from "../../lib/pricing";
 import { Button } from "../common/Button";
 import { StepNavigation } from "../common/StepNavigation";
 
 type Props = {
   serviceDates: ServiceDate[];
   setServiceDates: (dates: ServiceDate[]) => void;
+  totalCups?: number;
+  serviceDuration?: ServiceDurationMode;
+  setTotalCups?: (cups: number) => void;
+  setServiceDuration?: (duration: ServiceDurationMode) => void;
   onBack?: () => void;
   onNext: () => void;
   error: string;
-  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
+  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristas" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
   durationModeOnly?: boolean;
   embedded?: boolean;
   onValidityChange?: (valid: boolean) => void;
 };
 
-export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, error, pricing, durationModeOnly = false, embedded = false, onValidityChange }: Props) {
+export function PlanEventStep({ serviceDates, setServiceDates, totalCups, serviceDuration, setTotalCups, setServiceDuration, onBack, onNext, error, pricing, durationModeOnly = false, embedded = false, onValidityChange }: Props) {
   const serviceDatesRef = useRef(serviceDates);
   const pointerSessionRef = useRef<{
     pointerId: number;
@@ -77,10 +81,10 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
       {
         id: crypto.randomUUID(),
         serviceDate: value,
-        cups: 50,
-        durationMode: durationModeOnly ? "HALF_DAY" as const : undefined,
+        cups: durationModeOnly ? totalCups ?? 50 : 50,
+        durationMode: durationModeOnly ? serviceDuration ?? "HALF_DAY" : undefined,
         startTime: durationModeOnly ? "09:00" : "",
-        endTime: durationModeOnly ? "13:00" : ""
+        endTime: durationModeOnly && serviceDuration === "FULL_DAY" ? "17:00" : durationModeOnly ? "13:00" : ""
       }
     ].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
     serviceDatesRef.current = next;
@@ -94,10 +98,10 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
       {
         id: crypto.randomUUID(),
         serviceDate: value,
-        cups: 50,
-        durationMode: durationModeOnly ? "HALF_DAY" as const : undefined,
+        cups: durationModeOnly ? totalCups ?? 50 : 50,
+        durationMode: durationModeOnly ? serviceDuration ?? "HALF_DAY" : undefined,
         startTime: durationModeOnly ? "09:00" : "",
-        endTime: durationModeOnly ? "13:00" : ""
+        endTime: durationModeOnly && serviceDuration === "FULL_DAY" ? "17:00" : durationModeOnly ? "13:00" : ""
       }
     ].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
   }
@@ -215,32 +219,138 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
       startTime: source.startTime,
       endTime: source.endTime
     })));
-    setCopyMessage(durationModeOnly ? "Cups and duration copied to all selected dates." : "Cups and service time copied to all selected dates.");
+    setCopyMessage("Cups and service time copied to all selected dates.");
   }
 
-  function updateDuration(id: string, durationMode: ServiceDurationMode) {
-    updateDate(id, {
-      durationMode,
-      startTime: "09:00",
-      endTime: durationMode === "FULL_DAY" ? "17:00" : "13:00"
-    });
-  }
-
-  const totalCups = serviceDates.reduce((sum, date) => sum + date.cups, 0);
-  const activeCoffeeTier = getCoffeeCateringTier(totalCups);
+  const quotationTotalCups = durationModeOnly ? totalCups ?? 0 : serviceDates.reduce((sum, date) => sum + date.cups, 0);
+  const activeCoffeeTier = getCoffeeCateringTier(quotationTotalCups);
   const hasInvalidTime = serviceDates.some(isInvalidTime);
-  const setupIsValid = serviceDates.length > 0 && serviceDates.every((date) => date.cups >= 50 && (!durationModeOnly || Boolean(date.durationMode)));
+  const setupIsValid = durationModeOnly
+    ? serviceDates.length > 0 && Number.isInteger(totalCups) && Number(totalCups) >= 50 && Boolean(serviceDuration)
+    : serviceDates.length > 0 && serviceDates.every((date) => date.cups >= 50);
 
   useEffect(() => {
     onValidityChange?.(setupIsValid);
   }, [onValidityChange, setupIsValid]);
 
+  if (durationModeOnly) {
+    const selectedDates = [...serviceDates].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
+    const durationLabel = serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
+    return (
+      <div className={embedded ? "quotation-section-panel" : undefined}>
+        {embedded ? <h3>Service Dates &amp; Event Settings</h3> : <h2>Plan the Event</h2>}
+        <p className="step-copy">Select your service dates, then set cups and duration once for the whole quotation.</p>
+
+        <div className="event-date-layout">
+          <section className="service-dates-column" aria-labelledby="service-dates-heading">
+            <h3 id="service-dates-heading">Service Dates</h3>
+            <p className="step-copy">Select the date or dates for your event.</p>
+            <div className="hc-calendar-wrap">
+              <div className="hc-calendar-head">
+                <button type="button" className="hc-cal-nav" onClick={() => moveMonth(-1)} aria-label="Previous month">&lt;</button>
+                <div className="hc-cal-month">{calendarMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
+                <button type="button" className="hc-cal-nav" onClick={() => moveMonth(1)} aria-label="Next month">&gt;</button>
+              </div>
+              <div className="hc-cal-weekdays"><div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div></div>
+              <div className="hc-cal-grid">
+                {calendarCells.map((iso, index) => {
+                  if (!iso) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
+                  const isPast = iso < todayIso;
+                  const isFullyBooked = iso >= todayIso && iso < minimumSelectableIso;
+                  const isUnavailable = isPast || isFullyBooked;
+                  const isSelected = selectedDateValues.includes(iso);
+                  const isPreview = !isUnavailable && Boolean(dragPreview?.dates.has(iso));
+                  return (
+                    <button
+                      className={`hc-cal-cell ${isUnavailable ? "hc-cal-unavailable" : ""} ${isSelected ? "hc-cal-selected" : ""} ${isPreview ? `hc-cal-preview hc-cal-preview-${dragPreview?.mode}` : ""}`}
+                      type="button"
+                      key={iso}
+                      data-calendar-date={iso}
+                      disabled={isUnavailable}
+                      aria-disabled={isUnavailable}
+                      aria-label={isPast ? `${Number(iso.slice(-2))}, unavailable` : isFullyBooked ? `${Number(iso.slice(-2))}, fully booked` : String(Number(iso.slice(-2)))}
+                      tabIndex={isUnavailable ? -1 : 0}
+                      onPointerDown={(event) => startDrag(iso, event)}
+                      onPointerMove={trackPointerMove}
+                      onPointerUp={(event) => finishPointer(event)}
+                      onPointerCancel={(event) => finishPointer(event, true)}
+                    >
+                      {isPast ? <span className="hc-cal-day" aria-hidden="true">/</span> : <><span className="hc-cal-day">{Number(iso.slice(-2))}</span>{isFullyBooked ? <span className="hc-cal-booked-stamp">FULLY<br />BOOKED</span> : null}</>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <p className="hc-cal-help">Tap a date to toggle - drag across dates to select a range</p>
+          </section>
+
+          <section className="event-settings-panel" aria-labelledby="event-settings-heading">
+            <h3 id="event-settings-heading">Event Settings</h3>
+            <div className="event-setting-section">
+              <div className="event-setting-label">Selected Dates</div>
+              {selectedDates.length ? <div className="selected-date-chips">{selectedDates.map((date) => <span className="selected-date-chip" key={date.id}>{formatDateLabel(date.serviceDate)}</span>)}</div> : <p className="selected-dates-empty">No service dates selected yet.</p>}
+              <div className="selected-date-count">{selectedDates.length} service {selectedDates.length === 1 ? "date" : "dates"} selected</div>
+            </div>
+
+            <label className="event-setting-section total-cups-field">
+              <span className="event-setting-label">Total Cups</span>
+              <input className="total-cups-input" type="number" min={50} step={1} value={totalCups ?? ""} onChange={(event) => setTotalCups?.(Number(event.target.value))} />
+              <small>This quantity covers all selected service dates combined.</small>
+            </label>
+
+            <fieldset className="event-setting-section duration-picker quote-duration-picker">
+              <legend>Service Duration</legend>
+              <label className={serviceDuration === "HALF_DAY" ? "active" : ""}>
+                <input type="radio" name="quotation-duration" checked={serviceDuration === "HALF_DAY"} onChange={() => setServiceDuration?.("HALF_DAY")} />
+                <span><strong>Half Day</strong><small>Up to 4 hours</small></span>
+              </label>
+              <label className={serviceDuration === "FULL_DAY" ? "active" : ""}>
+                <input type="radio" name="quotation-duration" checked={serviceDuration === "FULL_DAY"} onChange={() => setServiceDuration?.("FULL_DAY")} />
+                <span><strong>Full Day</strong><small>More than 4 hours</small></span>
+              </label>
+            </fieldset>
+
+            <div className="event-setting-section event-pricing-summary">
+              <h4>Pricing Summary</h4>
+              <div><span>Service dates</span><strong>{selectedDates.length}</strong></div>
+              <div><span>Total cups</span><strong>{quotationTotalCups}</strong></div>
+              <div><span>Duration</span><strong>{durationLabel}</strong></div>
+              <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div>
+              <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
+              <div className="event-pricing-total"><span>Estimated total before add-ons</span><strong>{formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}</strong></div>
+            </div>
+
+            <details className="pricing-guide event-pricing-guide">
+              <summary>View Pricing Guide</summary>
+              <table>
+                <caption>COFFEE CATERING</caption>
+                <thead><tr><th scope="col">Total cups</th><th scope="col">Rate</th></tr></thead>
+                <tbody>{COFFEE_CATERING_TIERS.map((tier) => {
+                  const isActive = tier.minimumCups === activeCoffeeTier.minimumCups;
+                  return <tr className={isActive ? "active" : undefined} key={tier.minimumCups} aria-current={isActive ? "true" : undefined}><td>{tier.cupsLabel}</td><td>{tier.rateLabel}</td></tr>;
+                })}</tbody>
+              </table>
+              <div className="barista-pricing-guide">
+                <div><strong>Half Day</strong><span>Up to 4 hours</span><span>First 200 cups: No extra barista fee</span><span>Every additional 200 cups: +1 extra barista, +RM100</span></div>
+                <div><strong>Full Day</strong><span>More than 4 hours</span><span>First 400 cups: No extra barista fee</span><span>Every additional 400 cups: +1 extra barista, +RM100</span></div>
+              </div>
+              <p className="barista-guide-minimum">Minimum order: 50 cups</p>
+            </details>
+          </section>
+        </div>
+
+        {error ? <p className="error">{error}</p> : null}
+        {!embedded ? <StepNavigation canGoBack={Boolean(onBack)} onBack={onBack} onNext={onNext} /> : null}
+      </div>
+    );
+  }
+
   return (
     <div className={embedded ? "quotation-section-panel" : undefined}>
       {embedded ? <h3>Service Dates &amp; Duration</h3> : <h2>Plan the Event</h2>}
-      <p className="step-copy">{durationModeOnly ? "Choose your event date, cup quantity, and Half Day or Full Day service." : "Set different cups and hours for each day."}</p>
+      <p className="step-copy">Set different cups and hours for each day.</p>
 
-      <div className={durationModeOnly ? "event-date-layout" : undefined}>
+      <div>
       <div className="hc-calendar-wrap">
         <div className="hc-calendar-head">
           <button type="button" className="hc-cal-nav" onClick={() => moveMonth(-1)} aria-label="Previous month">
@@ -304,7 +414,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
             <div className="date-row-head">
               <strong>{formatDateLabel(date.serviceDate)}</strong>
             </div>
-            <div className={`date-grid ${durationModeOnly ? "duration-date-grid" : ""}`}>
+            <div className="date-grid">
               <label>
                 Cups
                 <input
@@ -314,19 +424,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
                   onChange={(event) => updateDate(date.id, { cups: Number(event.target.value) })}
                 />
               </label>
-              {durationModeOnly ? (
-                <fieldset className="duration-picker">
-                  <legend>Service duration</legend>
-                  <label className={date.durationMode === "HALF_DAY" ? "active" : ""}>
-                    <input type="radio" name={`duration-${date.id}`} checked={date.durationMode === "HALF_DAY"} onChange={() => updateDuration(date.id, "HALF_DAY")} />
-                    <span><strong>Half Day</strong><small>Up to 4 hours</small></span>
-                  </label>
-                  <label className={date.durationMode === "FULL_DAY" ? "active" : ""}>
-                    <input type="radio" name={`duration-${date.id}`} checked={date.durationMode === "FULL_DAY"} onChange={() => updateDuration(date.id, "FULL_DAY")} />
-                    <span><strong>Full Day</strong><small>More than 4 hours</small></span>
-                  </label>
-                </fieldset>
-              ) : <><label>
+              <label>
                 Start time
                 <select value={date.startTime} onChange={(event) => updateDate(date.id, { startTime: event.target.value })}>
                   <option value="">Select</option>
@@ -347,13 +445,11 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
                     </option>
                   ))}
                 </select>
-              </label></>}
+              </label>
             </div>
             <div className="mini-summary">
               {isInvalidTime(date) ? (
                 <span className="invalid-time-text">End time must be after start time.</span>
-              ) : durationModeOnly ? (
-                <>{getBaristasNeeded(date)} required barista(s){date.durationMode === "FULL_DAY" ? ` · Full-day charge ${formatMoney(getExtraBaristaFee(date))}` : " · No full-day barista charge"}</>
               ) : (
                 <>
                   {date.startTime && date.endTime ? `${formatTime(date.startTime)} to ${formatTime(date.endTime)}` : "Set service time"}
@@ -364,7 +460,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
             </div>
             {serviceDates.length > 1 ? (
               <Button type="button" variant="secondary" onClick={() => copyToAll(date)}>
-                {durationModeOnly ? "Copy cups and duration to all dates" : "Copy cups and time to all dates"}
+                Copy cups and time to all dates
               </Button>
             ) : null}
           </div>
@@ -375,14 +471,14 @@ export function PlanEventStep({ serviceDates, setServiceDates, onBack, onNext, e
       {serviceDates.length && !hasInvalidTime ? (
         <>
           <div className="dark-summary">
-            Total cups: {totalCups}
+            Total cups: {quotationTotalCups}
             <br />
             Service dates: {serviceDates.length}
             <br />
-            {durationModeOnly ? "Full-day barista charge" : "Extra barista fee"}: {formatMoney(pricing.extraBaristaFee)}
+            Extra barista fee: {formatMoney(pricing.extraBaristaFee)}
             <br />
-            {!durationModeOnly && pricing.totalExtraServingHourFee > 0 ? <>Extra Serving Hour: {formatMoney(pricing.totalExtraServingHourFee)}<br /></> : null}
-            Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee + (durationModeOnly ? 0 : pricing.totalExtraServingHourFee))}
+            {pricing.totalExtraServingHourFee > 0 ? <>Extra Serving Hour: {formatMoney(pricing.totalExtraServingHourFee)}<br /></> : null}
+            Estimated total before add-ons: {formatMoney(pricing.baseAmount + pricing.extraBaristaFee + pricing.totalExtraServingHourFee)}
           </div>
           <details className="pricing-guide">
             <summary>View Pricing Guide</summary>
