@@ -2,6 +2,7 @@ import type { InvoiceDetails } from "../types/invoice";
 import type { PreviousQuotationSummary, QuotationData } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
 import { getQuotationAnalyticsSessionId } from "./quotation-analytics";
+import { generatePdfBlob } from "./pdf-document";
 
 type FindQuotationInput = {
   name: string;
@@ -65,6 +66,55 @@ export function saveQuotationLocally(data: QuotationData, quotationPdf: Blob): P
     }
     return response.json() as Promise<QuotationData>;
   });
+}
+
+export async function submitQuotationWithPdf(
+  data: QuotationData,
+  onQuotationNumberChange?: (quotationNo: string) => void | Promise<void>
+): Promise<QuotationData> {
+  let quotationNo = data.quotationNo;
+  let saved: QuotationData | null = null;
+
+  for (let attempt = 0; attempt < 5 && !saved; attempt += 1) {
+    if (quotationNo !== data.quotationNo || attempt > 0) {
+      await onQuotationNumberChange?.(quotationNo);
+    }
+    const filename = `Hour-Coffee-Quotation-${quotationNo}.pdf`;
+    let quotationPdf: Blob;
+    try {
+      quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+      console.info("[quotation-pdf] pdf_generation", { quotationNo, success: true, bytes: quotationPdf.size });
+    } catch (error) {
+      console.error("[quotation-pdf] pdf_generation", {
+        quotationNo,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error("Quotation submission failed because the PDF could not be generated. Please try again.");
+    }
+
+    try {
+      saved = await saveQuotationLocally({ ...data, quotationNo, status: "PENDING_APPROVAL" }, quotationPdf);
+    } catch (error) {
+      const nextQuotationNo = error instanceof ApiRequestError && error.status === 409 && error.payload?.code === "QUOTATION_NUMBER_CONFLICT"
+        ? String(error.payload.nextQuotationNo ?? "")
+        : "";
+      if (!/^Q\d{5}$/.test(nextQuotationNo) || attempt === 4) throw error;
+      quotationNo = nextQuotationNo;
+    }
+  }
+
+  if (!saved) throw new Error("Unable to generate a unique quotation number. Please try again.");
+  if (!saved.quotationPdfUrl || !saved.quotationPdfPublicId) {
+    console.error("[quotation-pdf] submission_verification", {
+      quotationNo: saved.quotationNo,
+      success: false,
+      quotationPdfUrl: saved.quotationPdfUrl ?? null,
+      quotationPdfPublicId: saved.quotationPdfPublicId ?? null
+    });
+    throw new Error("Quotation submission was not completed because PDF storage could not be verified. Please try again.");
+  }
+  return saved;
 }
 
 export function loadQuotationByNo(quotationNo: string): Promise<QuotationData | null> {

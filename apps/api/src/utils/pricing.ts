@@ -3,6 +3,7 @@ import { DEFAULT_SLEEVE_PRICING, DEFAULT_STICKER_PRICING, calculateSelectedAddon
 type ServiceDate = {
   id: string;
   cups: number;
+  durationMode?: "HALF_DAY" | "FULL_DAY";
   startTime: string;
   endTime: string;
 };
@@ -53,7 +54,7 @@ export type ExtraServingHourBreakdown = {
 export function getExtraServingHourBreakdown(serviceDates: ServiceDate[]): ExtraServingHourBreakdown[] {
   return serviceDates.map((date: ServiceDate & { serviceDate?: string }) => {
     const exactServiceHours = getServiceHoursExact(date);
-    const extraServingHours = date.cups < 100 ? Math.max(0, Math.ceil(exactServiceHours - 4)) : 0;
+    const extraServingHours = date.durationMode ? 0 : date.cups < 100 ? Math.max(0, Math.ceil(exactServiceHours - 4)) : 0;
     return {
       serviceDateId: date.id,
       date: date.serviceDate ?? "",
@@ -85,6 +86,8 @@ function timeToMinutes(value: string): number {
 }
 
 export function getServiceHoursExact(date: ServiceDate): number {
+  if (date.durationMode === "FULL_DAY") return 8;
+  if (date.durationMode === "HALF_DAY") return 4;
   if (!date.startTime || !date.endTime) return 4;
   return Math.max(0.25, (timeToMinutes(date.endTime) - timeToMinutes(date.startTime)) / 60);
 }
@@ -94,11 +97,25 @@ export function getServiceHoursBilled(date: ServiceDate): number {
 }
 
 export function getBaristasNeeded(date: ServiceDate): number {
+  if (date.durationMode) return Math.max(1, Math.ceil(date.cups / 100));
   return Math.ceil(date.cups / (50 * getServiceHoursExact(date)));
 }
 
 export function getExtraBaristaFee(date: ServiceDate): number {
+  if (date.durationMode) return date.durationMode === "FULL_DAY" ? getBaristasNeeded(date) * 100 : 0;
   return Math.max(0, getBaristasNeeded(date) - 1) * getServiceHoursBilled(date) * 30;
+}
+
+export function getFullDayBaristaFeeBreakdown(serviceDates: ServiceDate[]) {
+  return serviceDates
+    .filter((date) => date.durationMode === "FULL_DAY")
+    .map((date: ServiceDate & { serviceDate?: string }) => ({
+      serviceDateId: date.id,
+      date: date.serviceDate ?? "",
+      cups: date.cups,
+      baristas: getBaristasNeeded(date),
+      fee: getExtraBaristaFee(date)
+    }));
 }
 
 function getCaffeinatedCupsForDate(dateId: string, drinkOrders: Record<string, Record<string, DrinkQuantity>>): number {
@@ -121,6 +138,7 @@ export function calculatePricing(data: QuotationPayload) {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
+  const fullDayBaristaFeesByDate = getFullDayBaristaFeeBreakdown(data.serviceDates);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const sleeve = data.addonPricing?.cupSleeve ?? DEFAULT_SLEEVE_PRICING;
@@ -139,6 +157,7 @@ export function calculatePricing(data: QuotationPayload) {
     totalCups,
     baseAmount,
     extraBaristaFee,
+    fullDayBaristaFeesByDate,
     machineRentalFee,
     addonTotal,
     cupSleeveFee,

@@ -24,6 +24,10 @@ type Props = {
   onBack: () => void;
   onNext: () => void;
   useLatestPrices?: boolean;
+  embedded?: boolean;
+  nextLabel?: string;
+  nextDisabled?: boolean;
+  submissionError?: string;
 };
 
 const leadTimeAddonNames = new Set(["Custom Branded Cart", "Custom Menu"]);
@@ -86,7 +90,7 @@ function DesignOptions({
   );
 }
 
-export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = true }: Props) {
+export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = true, embedded = false, nextLabel, nextDisabled = false, submissionError = "" }: Props) {
   const [availability, setAvailability] = useState<Record<string, AvailabilityItem>>({});
   const [availabilityWarning, setAvailabilityWarning] = useState("");
   const customizationOptions = data.customizationOptions ?? {
@@ -245,8 +249,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     machineRentalFee;
 
   return (
-    <div>
-      <h2>Add-ons</h2>
+    <div className={embedded ? "quotation-section-panel addons-panel" : undefined}>
+      {embedded ? <h3>Add-ons</h3> : <h2>Add-ons</h2>}
       <p className="step-copy">Select any extras for this quotation.</p>
 
       {machineRentalFee > 0 ? (
@@ -338,7 +342,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       <div className="addon-total">Add-on Total: {formatMoney(selectedTotal)}</div>
       {hasCartConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
       {availabilityWarning && availabilityWarning !== CART_SELECTION_ERROR ? <div className="warn-summary">{availabilityWarning}</div> : null}
-      <StepNavigation onBack={onBack} onNext={handleNext} />
+      {submissionError ? <p className="error">{submissionError}</p> : null}
+      <StepNavigation onBack={onBack} onNext={handleNext} nextLabel={nextLabel} nextDisabled={nextDisabled} />
     </div>
   );
 }

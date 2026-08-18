@@ -9,10 +9,13 @@ export type DrinkOption = {
   hotAvailable: boolean;
 };
 
+export type ServiceDurationMode = "HALF_DAY" | "FULL_DAY";
+
 export type ServiceDate = {
   id: string;
   serviceDate: string;
   cups: number;
+  durationMode?: ServiceDurationMode;
   startTime: string;
   endTime: string;
 };
@@ -135,11 +138,20 @@ export type QuotationData = {
     total: number;
   };
   pricingBreakdown?: {
+    fullDayBaristaFeesByDate?: FullDayBaristaFeeBreakdown[];
     extraServingHoursByDate: ExtraServingHourBreakdown[];
     extraServingHourRate: number;
     extraServingHourFeeByDate: ExtraServingHourBreakdown[];
     totalExtraServingHourFee: number;
   };
+};
+
+export type FullDayBaristaFeeBreakdown = {
+  serviceDateId: string;
+  date: string;
+  cups: number;
+  baristas: number;
+  fee: number;
 };
 
 export type ExtraServingHourBreakdown = {

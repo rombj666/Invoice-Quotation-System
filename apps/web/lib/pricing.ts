@@ -1,10 +1,11 @@
-import type { CupSleevePricingConfig, CupStickerPricingConfig, DrinkOrderByDate, QuotationData, ServiceDate } from "../types/quotation";
+import type { CupSleevePricingConfig, CupStickerPricingConfig, DrinkOrderByDate, FullDayBaristaFeeBreakdown, QuotationData, ServiceDate, ServiceDurationMode } from "../types/quotation";
 import { DEFAULT_ADDON_PRICING, calculateSelectedAddonTotal } from "./addons";
 
 export type PricingBreakdown = {
   totalCups: number;
   baseAmount: number;
   extraBaristaFee: number;
+  fullDayBaristaFeesByDate: FullDayBaristaFeeBreakdown[];
   machineRentalFee: number;
   addonTotal: number;
   cupSleeveFee: number;
@@ -23,7 +24,7 @@ export const EXTRA_SERVING_HOUR_RATE = 50;
 export function getExtraServingHourBreakdown(serviceDates: ServiceDate[]) {
   return serviceDates.map((date) => {
     const exactServiceHours = getServiceHoursExact(date);
-    const extraServingHours = date.cups < 100 ? Math.max(0, Math.ceil(exactServiceHours - 4)) : 0;
+    const extraServingHours = date.durationMode ? 0 : date.cups < 100 ? Math.max(0, Math.ceil(exactServiceHours - 4)) : 0;
     return { serviceDateId: date.id, date: date.serviceDate, cups: date.cups, exactServiceHours, extraServingHours, rate: EXTRA_SERVING_HOUR_RATE, fee: extraServingHours * EXTRA_SERVING_HOUR_RATE };
   });
 }
@@ -55,6 +56,8 @@ function timeToMinutes(value: string): number {
 }
 
 export function getServiceHoursExact(date: ServiceDate): number {
+  if (date.durationMode === "FULL_DAY") return 8;
+  if (date.durationMode === "HALF_DAY") return 4;
   if (!date.startTime || !date.endTime) return 4;
   return Math.max(0.25, (timeToMinutes(date.endTime) - timeToMinutes(date.startTime)) / 60);
 }
@@ -64,12 +67,34 @@ export function getServiceHoursBilled(date: ServiceDate): number {
 }
 
 export function getBaristasNeeded(date: ServiceDate): number {
+  if (date.durationMode) return Math.max(1, Math.ceil(date.cups / 100));
   return Math.ceil(date.cups / (50 * getServiceHoursExact(date)));
 }
 
 export function getExtraBaristaFee(date: ServiceDate): number {
+  if (date.durationMode) return date.durationMode === "FULL_DAY" ? getBaristasNeeded(date) * 100 : 0;
   const extraBaristas = Math.max(0, getBaristasNeeded(date) - 1);
   return extraBaristas * getServiceHoursBilled(date) * 30;
+}
+
+export function getDurationMode(date: ServiceDate): ServiceDurationMode {
+  return date.durationMode ?? (getServiceHoursExact(date) > 4 ? "FULL_DAY" : "HALF_DAY");
+}
+
+export function getDurationLabel(date: ServiceDate): string {
+  return getDurationMode(date) === "FULL_DAY" ? "Full Day" : "Half Day";
+}
+
+export function getFullDayBaristaFeeBreakdown(serviceDates: ServiceDate[]): FullDayBaristaFeeBreakdown[] {
+  return serviceDates
+    .filter((date) => date.durationMode === "FULL_DAY")
+    .map((date) => ({
+      serviceDateId: date.id,
+      date: date.serviceDate,
+      cups: date.cups,
+      baristas: getBaristasNeeded(date),
+      fee: getExtraBaristaFee(date)
+    }));
 }
 
 export function getCupSleevePrice(totalCups: number, config: CupSleevePricingConfig = DEFAULT_ADDON_PRICING.cupSleeve): number {
@@ -102,6 +127,7 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   const totalCups = data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
   const extraBaristaFee = data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
+  const fullDayBaristaFeesByDate = getFullDayBaristaFeeBreakdown(data.serviceDates);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
   const cupSleeveFee = data.hasCupSleeves ? getCupSleevePrice(totalCups, data.addonPricing?.cupSleeve) : 0;
@@ -116,6 +142,7 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
     totalCups,
     baseAmount,
     extraBaristaFee,
+    fullDayBaristaFeesByDate,
     machineRentalFee,
     addonTotal,
     cupSleeveFee,

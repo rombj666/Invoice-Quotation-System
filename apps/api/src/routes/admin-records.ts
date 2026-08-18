@@ -21,13 +21,16 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-function validateQuotationFields(data: any): string | null {
+function validateQuotationFields(data: any, allowSimplifiedQuotation = false): string | null {
   if (!String(data.customer?.name ?? "").trim()) return "Customer name is required.";
   if (!/^\S+@\S+\.\S+$/.test(String(data.customer?.email ?? ""))) return "A valid customer email is required.";
   if (String(data.customer?.phone ?? "").replace(/\D/g, "").length < 9) return "A valid customer phone number is required.";
-  if (!String(data.customer?.billingAddress ?? "").trim()) return "Billing address is required.";
-  if (!String(data.location ?? "").trim() || !String(data.eventType ?? "").trim()) return "Location and event type are required.";
-  if ((data.serviceDates ?? []).some((date: any) => !/^\d{2}:\d{2}$/.test(date.startTime) || !/^\d{2}:\d{2}$/.test(date.endTime) || date.endTime <= date.startTime)) return "Every service date must have an end time after its start time.";
+  if (!allowSimplifiedQuotation && !String(data.customer?.billingAddress ?? "").trim()) return "Billing address is required.";
+  if (!String(data.location ?? "").trim()) return "Event address is required.";
+  if (!allowSimplifiedQuotation && !String(data.eventType ?? "").trim()) return "Event type is required.";
+  if ((data.serviceDates ?? []).some((date: any) => date.durationMode
+    ? date.durationMode !== "HALF_DAY" && date.durationMode !== "FULL_DAY"
+    : !/^\d{2}:\d{2}$/.test(date.startTime) || !/^\d{2}:\d{2}$/.test(date.endTime) || date.endTime <= date.startTime)) return "Every service date must have a valid duration or time range.";
   const discount = Number(data.discountPercent);
   if (!Number.isFinite(discount) || discount < 0 || discount > 100) return "Discount percent must be between 0 and 100.";
   return null;
@@ -65,7 +68,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
   try {
     const data = req.body;
     if (!hasValidServiceDates(data.serviceDates)) return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
-    const fieldError = validateQuotationFields(data);
+    const fieldError = validateQuotationFields(data, true);
     if (fieldError) return res.status(400).json({ error: fieldError });
     const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
@@ -74,7 +77,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
     const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
-    res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
+    res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
   } catch (error) {
     next(error);
   }
@@ -88,7 +91,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     const pdfFile = multipart.files.find((file) => file.fieldName === "quotationPdf");
     if (!pdfFile || pdfFile.mimeType !== "application/pdf") return res.status(400).json({ error: "A regenerated quotation PDF is required." });
     if (!hasValidServiceDates(data.serviceDates)) return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
-    const fieldError = validateQuotationFields(data);
+    const fieldError = validateQuotationFields(data, true);
     if (fieldError) return res.status(400).json({ error: fieldError });
     const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
@@ -111,7 +114,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     if (!pdfUpload) throw new Error("Unable to upload quotation PDF.");
     newPdfPublicId = pdfUpload.cloudinaryPublicId;
     const summaryFields = changedFields(current.metadata, data, ["quotationNo", "customer", "location", "fullAddress", "eventType", "customEventType", "serviceDates", "drinkOrders", "selectedAddons", "hasCupStickers", "hasCupSleeves", "discountPercent", "status"]);
-    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
+    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.customizationFile.updateMany({ where: { quotationDateId: { in: current.dates.map((date) => date.id) } }, data: { quotationDateId: null } });
@@ -121,8 +124,9 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
         where: { id: current.customerId },
         data: {
           name: data.customer.name.trim(), phone: data.customer.phone, email: data.customer.email.trim(),
-          companyName: data.customer.companyName || null, companyRegNo: data.customer.companyRegNo || null,
-          billingAddress: data.customer.billingAddress
+          companyName: data.customer.companyName || current.customer.companyName || null,
+          companyRegNo: data.customer.companyRegNo || current.customer.companyRegNo || null,
+          billingAddress: data.customer.billingAddress || current.customer.billingAddress || ""
         }
       });
       return tx.quotation.update({
@@ -172,7 +176,7 @@ adminRecordRoutes.patch("/invoices/:invoiceNo", async (req, res, next) => {
     if (!invoiceStatuses.has(data.invoiceStatus)) return res.status(400).json({ error: "Invalid invoice status." });
     if (!paymentStatuses.has(data.paymentStatus)) return res.status(400).json({ error: "Invalid payment status." });
     if (!hasValidServiceDates(data.quotation?.serviceDates)) return res.status(400).json({ error: "The invoice service dates are invalid." });
-    const fieldError = validateQuotationFields(data.quotation);
+    const fieldError = validateQuotationFields(data.quotation, data.quotation?.serviceDates?.some((date: any) => Boolean(date.durationMode)));
     if (fieldError) return res.status(400).json({ error: fieldError });
     if (!String(data.eventAddress ?? "").trim()) return res.status(400).json({ error: "Event address is required." });
     if (hasCartAddonConflict(data.quotation.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });

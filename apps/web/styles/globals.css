@@ -2625,6 +2625,325 @@ p {
 .beverage-choice-card.excluded,
 .beverage-admin-card.archived { opacity: .65; }
 
+/* Customer quotation workspace */
+.customer-flow .team-topbar {
+  max-width: 1120px;
+}
+
+.quotation-flow-card {
+  width: min(100%, 1120px);
+  padding: 42px 48px;
+  overflow: visible;
+}
+
+.progress-heading-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.progress-heading-row .progress-text {
+  margin: 0;
+}
+
+.progress-heading-row strong {
+  color: #5f432b;
+  font-size: 13px;
+}
+
+.progress-bar-line {
+  gap: 10px;
+}
+
+.progress-segment {
+  align-items: center;
+  background: #eee9e2;
+  border-radius: 10px;
+  color: #8a7c6c;
+  display: flex;
+  flex: 1;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.progress-segment.active {
+  background: #2d7a4f;
+  color: #fff;
+}
+
+.progress-segment small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.step-intro {
+  margin-bottom: 24px;
+}
+
+.basic-info-grid {
+  display: grid;
+  gap: 4px 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.basic-info-name,
+.basic-info-address {
+  grid-column: 1 / -1;
+}
+
+.basic-info-address textarea {
+  min-height: 112px;
+}
+
+.basic-info-discount {
+  align-self: end;
+}
+
+.discount-applied {
+  color: #2d7a4f !important;
+  font-weight: 700;
+}
+
+.event-setup-step {
+  display: grid;
+  gap: 22px;
+}
+
+.quotation-section-panel {
+  background: #fbfaf7;
+  border: 1px solid #e7e0d7;
+  border-radius: 18px;
+  padding: 24px;
+}
+
+.quotation-section-panel > h3 {
+  font-size: 22px;
+}
+
+.event-date-layout {
+  align-items: start;
+  display: grid;
+  gap: 8px 24px;
+  grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr);
+}
+
+.event-date-layout .hc-calendar-wrap {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
+  max-width: none;
+  width: 100%;
+}
+
+.event-date-layout .hc-cal-help {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.event-date-layout .date-list {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin-top: 0;
+}
+
+.duration-date-grid {
+  align-items: end;
+  grid-template-columns: minmax(110px, .35fr) minmax(280px, 1fr);
+}
+
+.duration-picker {
+  border: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 0;
+}
+
+.duration-picker legend {
+  color: #666;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.duration-picker label {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ddd5ca;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  padding: 10px;
+}
+
+.duration-picker label.active {
+  background: #f0faf3;
+  border-color: #2d7a4f;
+}
+
+.duration-picker input {
+  accent-color: #2d7a4f;
+  width: auto;
+}
+
+.duration-picker span {
+  display: grid;
+  gap: 2px;
+}
+
+.duration-picker small {
+  color: #777;
+  font-size: 10px;
+}
+
+.quotation-section-panel .beverage-card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.beverage-choice-card {
+  transition: border-color .18s ease, box-shadow .18s ease, opacity .18s ease, transform .18s ease;
+}
+
+.beverage-choice-card.enabled {
+  border-color: #99c5aa;
+  box-shadow: 0 10px 25px rgb(45 122 79 / 8%);
+}
+
+.beverage-choice-card:hover {
+  transform: translateY(-2px);
+}
+
+.beverage-card-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.beverage-card-heading h3 {
+  margin: 0;
+}
+
+.beverage-card-heading span {
+  background: #e8f5ed;
+  border-radius: 999px;
+  color: #23643f;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 8px;
+  text-transform: uppercase;
+}
+
+.beverage-choice-card.excluded .beverage-card-heading span {
+  background: #eeeae5;
+  color: #75695d;
+}
+
+.addons-panel {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.addons-panel > h3,
+.addons-panel > .step-copy,
+.addons-panel > .addon-total,
+.addons-panel > .warn-summary,
+.addons-panel > .error,
+.addons-panel > .hc-nav-row {
+  grid-column: 1 / -1;
+}
+
+.addons-panel .addon-card,
+.addons-panel .addon-card-shell {
+  height: 100%;
+  margin-top: 0;
+}
+
+.quotation-review-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.review-premium-card {
+  background: #fbfaf7;
+  border: 1px solid #e7e0d7;
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.review-service-card,
+.review-pricing-card {
+  grid-column: 1 / -1;
+}
+
+.review-kicker {
+  color: #82684f;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.review-detail-list,
+.review-addon-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+
+.review-detail-list > div,
+.review-addon-list li {
+  align-items: start;
+  border-bottom: 1px solid #eee7de;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.review-detail-list span {
+  color: #786e64;
+  flex-shrink: 0;
+}
+
+.review-detail-list strong {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.review-addon-list {
+  list-style: none;
+}
+
+.review-empty-state {
+  color: #777;
+  margin: 0;
+}
+
+.readonly-reference {
+  align-items: center;
+  background: #f0faf3;
+  border: 1px solid #b8dfc8;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 14px 18px;
+}
+
+.quotation-review-step .final-action-section {
+  margin-top: 22px;
+}
+
 .beverage-choice-card > img,
 .beverage-admin-card > img,
 .beverage-image-placeholder {
@@ -2648,6 +2967,53 @@ p {
 @media (max-width: 720px) {
   .beverage-card-grid,
   .beverage-admin-grid { grid-template-columns: 1fr; }
+
+  .quotation-flow-card {
+    padding: 26px 18px;
+  }
+
+  .progress-segment {
+    min-height: 8px;
+    padding: 0;
+  }
+
+  .progress-segment small {
+    display: none;
+  }
+
+  .basic-info-grid,
+  .quotation-review-grid,
+  .addons-panel,
+  .duration-date-grid,
+  .duration-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .quotation-section-panel .beverage-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review-service-card,
+  .review-pricing-card {
+    grid-column: auto;
+  }
+
+  .quotation-section-panel {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 920px) {
+  .event-date-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .event-date-layout .hc-calendar-wrap,
+  .event-date-layout .hc-cal-help,
+  .event-date-layout .date-list {
+    grid-column: 1;
+    grid-row: auto;
+  }
 }
 
 /* Operational dashboard analytics */

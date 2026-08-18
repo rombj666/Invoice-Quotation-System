@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
-import { calculateQuotationPricing } from "../../../../lib/pricing";
+import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
@@ -216,7 +216,7 @@ export default function AdminQuotationDetailPage() {
             <h3>Service Dates</h3>
             {quotation.serviceDates.map((date) => (
               <p key={date.id}>
-                {formatDateLabel(date.serviceDate)} - {date.cups} cups - {formatTime(date.startTime)} to {formatTime(date.endTime)}
+                {formatDateLabel(date.serviceDate)} - {date.cups} cups - {date.durationMode ? getDurationLabel(date) : `${formatTime(date.startTime)} to ${formatTime(date.endTime)}`}
               </p>
             ))}
           </section>
@@ -237,7 +237,7 @@ export default function AdminQuotationDetailPage() {
           <section>
             <h3>Pricing</h3>
             <p>Base: {formatMoney(pricing.baseAmount)}</p>
-            {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
+            {pricing.extraBaristaFee > 0 ? <p>{pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Extra barista fee"}: {formatMoney(pricing.extraBaristaFee)}</p> : null}
             {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
             {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}

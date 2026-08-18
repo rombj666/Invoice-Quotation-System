@@ -176,6 +176,27 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!hasValidServiceDates(incomingData.serviceDates)) {
       return res.status(400).json({ error: "Select at least one service date with a minimum of 50 whole cups per date." });
     }
+    if (incomingData.serviceDates.some((date: any) => date.durationMode !== "HALF_DAY" && date.durationMode !== "FULL_DAY")) {
+      return res.status(400).json({ error: "Choose Half Day or Full Day for every service date." });
+    }
+    incomingData.serviceDates = incomingData.serviceDates.map((date: any) => ({
+      ...date,
+      startTime: "09:00",
+      endTime: date.durationMode === "FULL_DAY" ? "17:00" : "13:00"
+    }));
+    const discountCode = String(incomingData.discountCode ?? "").trim().toUpperCase();
+    if (discountCode && discountCode !== "FIRST") {
+      return res.status(400).json({ error: "Invalid discount code." });
+    }
+    incomingData.discountCode = discountCode;
+    incomingData.discountPercent = discountCode === "FIRST" ? 5 : 0;
+    const selectedLocation = String(incomingData.location ?? "").trim();
+    const resolvedEventAddress = selectedLocation.startsWith("Others")
+      ? String(incomingData.fullAddress ?? selectedLocation).trim()
+      : selectedLocation;
+    if (!resolvedEventAddress) {
+      return res.status(400).json({ error: "Event address is required." });
+    }
     if (hasCartAddonConflict(incomingData.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
@@ -214,6 +235,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         total: pricing.total
       },
       pricingBreakdown: {
+        fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
         extraServingHoursByDate: pricing.extraServingHoursByDate,
         extraServingHourRate: pricing.extraServingHourRate,
         extraServingHourFeeByDate: pricing.extraServingHourFeeByDate,
@@ -232,16 +254,17 @@ quotationRoutes.post("/", async (req, res, next) => {
     }
 
     const matchingCustomers = await findMatchingCustomers(data.customer);
+    const existingCustomer = matchingCustomers[0];
     const customerData = {
       name: data.customer.name.trim(),
       phone: data.customer.phone,
       email: data.customer.email.trim(),
-      companyName: data.customer.companyName || null,
-      companyRegNo: data.customer.companyRegNo || null,
-      billingAddress: data.customer.billingAddress
+      companyName: data.customer.companyName || existingCustomer?.companyName || null,
+      companyRegNo: data.customer.companyRegNo || existingCustomer?.companyRegNo || null,
+      billingAddress: String(data.customer.billingAddress || existingCustomer?.billingAddress || "")
     };
-    const customer = matchingCustomers[0]
-      ? await prisma.customer.update({ where: { id: matchingCustomers[0].id }, data: customerData })
+    const customer = existingCustomer
+      ? await prisma.customer.update({ where: { id: existingCustomer.id }, data: customerData })
       : await prisma.customer.create({ data: customerData });
 
     let quotationPdfUpload: Awaited<ReturnType<typeof uploadCloudinaryBuffer>> = null;
@@ -276,8 +299,8 @@ quotationRoutes.post("/", async (req, res, next) => {
         quotationNo,
         customerId: customer.id,
         status: (data.status ?? "PENDING_APPROVAL") as QuotationStatus,
-        location: data.location.startsWith("Others") ? data.fullAddress || data.location : data.location,
-        eventType: data.eventType === "Others" ? data.customEventType || data.eventType : data.eventType,
+        location: resolvedEventAddress,
+        eventType: data.eventType === "Others" ? data.customEventType || data.eventType : String(data.eventType ?? ""),
         subtotalAmount: pricing.subtotal,
         discountPercent: data.discountPercent || 0,
         discountAmount: pricing.discountAmount,

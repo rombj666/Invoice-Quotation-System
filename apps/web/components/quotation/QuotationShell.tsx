@@ -9,17 +9,14 @@ import { findPreviousQuotations, getNextQuotationNo, loadPreviousQuotationSummar
 import { Card } from "../common/Card";
 import { AddOnsStep } from "./AddOnsStep";
 import { ContactDetailsStep } from "./ContactDetailsStep";
-import { CustomerDetailsStep } from "./CustomerDetailsStep";
 import { DrinkPreferencesStep } from "./DrinkPreferencesStep";
-import { LocationStep } from "./LocationStep";
 import { PlanEventStep } from "./PlanEventStep";
 import { ProgressHeader } from "./ProgressHeader";
-import { QuotationReferenceStep } from "./QuotationReferenceStep";
 import { QuotationReviewStep } from "./QuotationReviewStep";
 import { PreviousQuotationsPanel } from "./PreviousQuotationsPanel";
 import { resetQuotationAnalyticsSession, trackQuotationAnalytics } from "../../lib/quotation-analytics";
 
-const totalSteps = 8;
+const totalSteps = 3;
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 const quotationDraftStorageKey = "hourCoffeeQuotationDraft";
 const quotationSummaryIdentityKey = "hourCoffeeQuotationSummaryIdentity";
@@ -84,6 +81,7 @@ export function QuotationShell() {
   const [summaryQuotation, setSummaryQuotation] = useState<QuotationData | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [isCheckingHistory, setIsCheckingHistory] = useState(false);
+  const [drinksValid, setDrinksValid] = useState(false);
   const [lookedUpIdentity, setLookedUpIdentity] = useState("");
   const analyticsStarted = useRef(false);
   const analyticsLastTrackedAt = useRef(0);
@@ -140,13 +138,18 @@ export function QuotationShell() {
             customer: { ...emptyQuotation.customer, ...draftData.customer },
             customizationOptions: { ...emptyQuotation.customizationOptions, ...draftData.customizationOptions }
           } as QuotationData;
+          if (parsed.version !== 3 && parsed.version !== 4 && hasText(restored.fullAddress)) {
+            restored.location = restored.fullAddress;
+            restored.fullAddress = "";
+          }
           const contactIsValid = hasText(restored.customer.name) && isValidMalaysiaPhone(restored.customer.phone) && isValidEmail(restored.customer.email);
           const legacyStep = Number(parsed.step ?? parsed.currentStep ?? 0);
-          const restoredStep = parsed.version === 2
+          const previousFlowStep = parsed.version === 2 ? legacyStep : contactIsValid ? legacyStep + 1 : 0;
+          const restoredStep = parsed.version === 4
             ? legacyStep
-            : contactIsValid ? legacyStep + 1 : 0;
+            : previousFlowStep <= 0 ? 0 : 1;
           setData(restored);
-          setStep(Math.min(totalSteps - 1, Math.max(0, restoredStep)));
+          setStep(hasText(restored.location) ? Math.min(totalSteps - 1, Math.max(0, restoredStep)) : 0);
           setDraftReady(true);
           if (summaryQuotationNo) void openPreviousQuotation(summaryQuotationNo, restored.customer, false);
           return;
@@ -179,7 +182,7 @@ export function QuotationShell() {
 
   useEffect(() => {
     if (!draftReady) return;
-    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 2, step, data }));
+    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 4, step, data }));
   }, [data, draftReady, step]);
 
   function next() {
@@ -199,9 +202,9 @@ export function QuotationShell() {
     if (!data.serviceDates.length) return setError("Please add at least one service date.");
     for (const date of data.serviceDates) {
       if (date.cups < 50) return setError(`Minimum 50 cups for ${date.serviceDate}.`);
-      if (!date.startTime || !date.endTime) return setError(`Set start and end time for ${date.serviceDate}.`);
-      if (date.endTime <= date.startTime) return setError(`End time must be after start time for ${date.serviceDate}.`);
+      if (!date.durationMode) return setError(`Choose Half Day or Full Day for ${date.serviceDate}.`);
     }
+    if (!validateDrinks()) return;
     setData(ensureDrinkOrders(data));
     next();
   }
@@ -216,20 +219,17 @@ export function QuotationShell() {
     });
   }
 
-  function validateLocation() {
-    if (!data.location || !data.eventType) return setError("Please fill all fields.");
-    if (data.location.startsWith("Others") && !hasText(data.fullAddress)) return setError("Please enter the full event address.");
-    if (data.eventType === "Others" && !hasText(data.customEventType)) return setError("Please describe the event type.");
-    next();
-  }
-
-  function validateDrinks() {
+  function validateDrinks(): boolean {
     for (const date of data.serviceDates) {
       const excluded = new Set(data.excludedBeverageIdsByDate?.[date.id] ?? []);
       const availableIds = Object.keys(data.beverageSnapshots ?? {});
-      if (availableIds.length && availableIds.every((id) => excluded.has(id))) return setError("Please keep at least one drink available for your event.");
+      if (availableIds.length && availableIds.every((id) => excluded.has(id))) {
+        setError("Please keep at least one drink available for your event.");
+        return false;
+      }
     }
-    next();
+    setError("");
+    return true;
   }
 
   async function validateContact() {
@@ -237,8 +237,11 @@ export function QuotationShell() {
     if (!hasText(customer.name)) return setError("Customer name is required.");
     if (!isValidMalaysiaPhone(customer.phone)) return setError("Valid phone number is required.");
     if (!isValidEmail(customer.email)) return setError("Valid email is required.");
+    if (!hasText(data.location)) return setError("Event address is required.");
+    const discountCode = data.discountCode.trim().toUpperCase();
+    if (discountCode && discountCode !== "FIRST") return setError("Invalid discount code.");
     const normalizedCustomer = { ...customer, name: customer.name.trim(), email: customer.email.trim() };
-    setData({ ...data, customer: normalizedCustomer });
+    setData({ ...data, location: data.location.trim(), customer: normalizedCustomer, discountCode, discountPercent: discountCode === "FIRST" ? 5 : 0 });
     setError("");
     setIsCheckingHistory(true);
     try {
@@ -320,7 +323,7 @@ export function QuotationShell() {
     window.localStorage.removeItem(submittedQuotationStorageKey);
     window.sessionStorage.removeItem(quotationSummaryIdentityKey);
     resetQuotationAnalyticsSession();
-    trackQuotationAnalytics("START", 1);
+    trackQuotationAnalytics("START", 0);
     analyticsStarted.current = true;
     setData({ ...emptyQuotation, customer: preservedContact });
     setPreviousQuotations([]);
@@ -329,35 +332,10 @@ export function QuotationShell() {
     setHistoryError("");
     setLookedUpIdentity("");
     setError("");
-    setStep(1);
+    setStep(0);
     router.replace("/quotation");
     getNextQuotationNo()
       .then((quotationNo) => setData((current) => ({ ...current, quotationNo })))
-      .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function validateCustomer() {
-    const customer = data.customer;
-    if (!hasText(customer.billingAddress)) return setError("Billing address is required.");
-    next();
-  }
-
-  function validateReference() {
-    if (!hasText(data.quotationNo)) return setError("Quotation No. is required.");
-    const code = data.discountCode.trim().toUpperCase();
-    if (code && code !== "FIRST") return setError("Invalid voucher code.");
-    setData({ ...data, discountCode: code, discountPercent: code === "FIRST" ? 5 : 0, linkExpiryDays: 7 });
-    next();
-  }
-
-  function resetQuotation() {
-    window.localStorage.removeItem(submittedQuotationStorageKey);
-    window.localStorage.removeItem(quotationDraftStorageKey);
-    setStep(0);
-    setError("");
-    getNextQuotationNo()
-      .then((quotationNo) => setData({ ...emptyQuotation, quotationNo }))
       .catch(() => setError("Unable to load the next quotation number. Please check the API connection."));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -366,7 +344,7 @@ export function QuotationShell() {
     return (
       <main className="hc-page">
         <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
-        <Card><QuotationReviewStep data={summaryQuotation} readOnly onCreateAnother={createAnotherQuotation} /></Card>
+        <Card className="quotation-flow-card"><QuotationReviewStep data={summaryQuotation} readOnly onCreateAnother={createAnotherQuotation} /></Card>
       </main>
     );
   }
@@ -375,7 +353,7 @@ export function QuotationShell() {
     return (
       <main className="hc-page">
         <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
-        <Card>
+        <Card className="quotation-flow-card">
           <PreviousQuotationsPanel
             quotations={previousQuotations}
             error={historyError}
@@ -391,16 +369,25 @@ export function QuotationShell() {
   return (
     <main className="hc-page" onInputCapture={markAnalyticsStarted} onChangeCapture={markAnalyticsStarted}>
       <div className="team-topbar">HOUR COFFEE — QUOTATION &amp; INVOICE SYSTEM</div>
-      <Card>
-        <ProgressHeader currentStep={step} totalSteps={totalSteps} />
+      <Card className="quotation-flow-card">
+        <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info", "Event Setup", "Review & Submit"]} />
         {step === 0 ? <ContactDetailsStep data={data} setData={updateContactData} onNext={validateContact} isChecking={isCheckingHistory} error={error} /> : null}
-        {step === 1 ? <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onBack={back} onNext={validatePlanEvent} error={error} pricing={calculatePricing(data)} /> : null}
-        {step === 2 ? <LocationStep data={data} setData={setData} onBack={back} onNext={validateLocation} error={error} /> : null}
-        {step === 3 ? <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={validateDrinks} error={error} /> : null}
-        {step === 4 ? <AddOnsStep data={data} setData={setData} onBack={back} onNext={next} /> : null}
-        {step === 5 ? <CustomerDetailsStep data={data} setData={setData} onBack={back} onNext={validateCustomer} error={error} /> : null}
-        {step === 6 ? <QuotationReferenceStep data={data} setData={setData} onBack={back} onNext={validateReference} error={error} /> : null}
-        {step === 7 ? <QuotationReviewStep data={data} onBack={back} onReset={resetQuotation} /> : null}
+        {step === 1 ? <div className="event-setup-step">
+          <div className="step-intro"><h2>Event Setup</h2><p className="step-copy">Build your event service in one place.</p></div>
+          <PlanEventStep serviceDates={data.serviceDates} setServiceDates={updateServiceDates} onBack={back} onNext={validatePlanEvent} error="" pricing={calculatePricing(data)} durationModeOnly embedded />
+          <DrinkPreferencesStep data={data} setData={setData} onBack={back} onNext={() => undefined} error="" embedded onValidityChange={setDrinksValid} />
+          <AddOnsStep
+            data={data}
+            setData={setData}
+            onBack={back}
+            onNext={validatePlanEvent}
+            embedded
+            nextLabel="CONTINUE"
+            nextDisabled={!drinksValid}
+            submissionError={error}
+          />
+        </div> : null}
+        {step === 2 ? <QuotationReviewStep data={data} onBack={back} /> : null}
       </Card>
     </main>
   );
