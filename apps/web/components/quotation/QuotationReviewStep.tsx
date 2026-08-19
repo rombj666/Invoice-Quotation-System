@@ -32,7 +32,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && (data.serviceDuration === "HALF_DAY" || data.serviceDuration === "FULL_DAY");
   const quotationDurationLabel = data.serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
   const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
-  const hasOptionalAddons = data.selectedAddons.length > 0 || data.hasCupStickers || data.hasCupSleeves;
+  const totalBaristasRequired = hasQuotationLevelSettings
+    ? pricing.requiredBaristas
+    : Math.max(0, ...data.serviceDates.map((date) => getBaristasNeeded(date)));
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const providedBeverageNames = getAllProvidedBeverageNames(data);
   const providedBeveragesByDate = data.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(data, date.id) }));
@@ -169,44 +171,43 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
       <div className="step-intro"><h2>{readOnly ? "Quotation Summary" : "Review & Submit"}</h2>{!readOnly ? <p className="step-copy">Review your event details before submitting your quotation.</p> : null}</div>
 
       <div className="quotation-review-grid">
-        <section className="review-premium-card">
-          <span className="review-kicker">Basic Info</span><h3>{data.customer.name}</h3>
-          <div className="review-detail-list"><div><span>Phone</span><strong>{data.customer.phone}</strong></div><div><span>Email</span><strong>{data.customer.email}</strong></div><div><span>Event address</span><strong>{data.fullAddress || data.location}</strong></div>{data.discountCode ? <div><span>Discount code</span><strong>{data.discountCode}</strong></div> : null}</div>
+        <section className="review-premium-card review-personal-card">
+          <h3 className="review-column-title">Personal Info</h3>
+          <strong className="review-person-name">{data.customer.name}</strong>
+          <div className="review-person-details">
+            <div><span>Phone</span><strong>{data.customer.phone}</strong></div>
+            <div><span>Email</span><a href={`mailto:${data.customer.email}`}>{data.customer.email}</a></div>
+            <div><span>Event Address</span><strong>{data.fullAddress || data.location}</strong></div>
+            {data.discountCode ? <div><span>Discount Code</span><strong>{data.discountCode}</strong></div> : null}
+          </div>
         </section>
 
-        <section className="review-premium-card review-service-card">
-          <span className="review-kicker">Event Setup</span>
-          {hasQuotationLevelSettings ? <>
-            <div className="review-detail-list quotation-settings-review"><div><span>Total cups</span><strong>{pricing.totalCups}</strong></div><div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div><div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div><div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div><div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div></div>
-            <div className="table-scroll"><table className="summary-table"><thead><tr><th>Selected service dates</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td></tr>)}</tbody></table></div>
-          </> : <div className="table-scroll"><table className="summary-table"><thead><tr><th>Date</th><th>Duration</th><th>Cups</th><th>Baristas</th><th>Charge</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}>
-            <td className="date-cell">{formatCompactDate(date.serviceDate)}</td><td>{serviceDuration(date)}</td><td className="number-cell">{date.cups}</td><td className="number-cell">{getBaristasNeeded(date)}</td><td className="amount-cell">{date.durationMode === "FULL_DAY" ? formatMoney(getExtraBaristaFee(date)) : "—"}</td>
-          </tr>)}</tbody></table></div>}
+        <section className="review-premium-card review-summary-card">
+          <h3 className="review-column-title">Quotation Summary</h3>
+          <div className="review-selected-dates">
+            <span className="review-summary-heading">Selected Dates</span>
+            <div>{data.serviceDates.map((date) => <strong key={date.id}>{formatCompactDate(date.serviceDate)}</strong>)}</div>
+          </div>
+          <div className="review-summary-rows">
+            <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
+            <div><span>Total Baristas Required</span><strong>{totalBaristasRequired}</strong></div>
+            <div className="review-fee-start"><span>Coffee Catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
+            <div><span>Extra Barista Fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
+            <div><span>Add-on Fee</span><strong>{formatMoney(addonAmount)}</strong></div>
+            {pricing.totalExtraServingHourFee > 0 ? <div><span>Extra Serving Hour</span><strong>{formatMoney(pricing.totalExtraServingHourFee)}</strong></div> : null}
+            {pricing.machineRentalFee > 0 ? <div><span>Machine Rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
+            {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}</span><strong>{formatMoney(charge.amount)}</strong></div>)}
+            {pricing.discountAmount > 0 ? <div className="review-subtotal"><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div> : null}
+            {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>-{formatMoney(pricing.discountAmount)}</strong></div> : null}
+            <div className="review-final-total"><span>Total</span><strong>{formatMoney(pricing.total)}</strong></div>
+          </div>
         </section>
-
-        <section className="review-premium-card"><span className="review-kicker">Selected Drinks</span>{drinkSelection()}</section>
-
-        <section className="review-premium-card"><span className="review-kicker">Add-ons</span>{hasOptionalAddons ? <ul className="review-addon-list">
-          {data.selectedAddons.map((addon) => <li key={addon.name}><span>{getAddonDisplayName(addon.name)}</span><strong>{getAddonPrice(addon) > 0 ? formatMoney(getAddonPrice(addon)) : "FREE"}</strong></li>)}
-          {data.hasCupStickers ? <li><span>Custom Cup Stickers</span><strong>{formatMoney(pricing.cupStickerFee)}</strong></li> : null}
-          {data.hasCupSleeves ? <li><span>Custom Cup Sleeves</span><strong>{formatMoney(pricing.cupSleeveFee)}</strong></li> : null}
-        </ul> : <p className="review-empty-state">No optional add-ons selected.</p>}</section>
-
-        <section className="review-premium-card review-pricing-card"><span className="review-kicker">Pricing Summary</span><div className="total-box">
-          <div><span>Coffee catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
-          {pricing.extraBaristaFee > 0 ? <div><span>{hasQuotationLevelSettings ? "Extra barista fee" : pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Additional barista fee"}</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
-          {pricing.totalExtraServingHourFee > 0 ? <div><span>Extra Serving Hour</span><strong>{formatMoney(pricing.totalExtraServingHourFee)}</strong></div> : null}
-          {pricing.machineRentalFee > 0 ? <div><span>Machine rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
-          {addonAmount > 0 ? <div><span>Add-ons</span><strong>{formatMoney(addonAmount)}</strong></div> : null}
-          {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}</span><strong>{formatMoney(charge.amount)}</strong></div>)}
-          <div><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div>{pricing.discountAmount > 0 ? <div><span>Discount</span><strong>-{formatMoney(pricing.discountAmount)}</strong></div> : null}<div className="final"><span>Total</span><strong>{formatMoney(pricing.total)}</strong></div>
-        </div></section>
       </div>
 
       {readOnly ? <div className="readonly-reference"><span>Quotation No.</span><strong>{activeQuotationNo}</strong></div> : null}
       {cartSelectionConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
       <div className="final-action-section">
-        {readOnly ? <><Button type="button" variant="secondary" onClick={downloadQuotation}>Download Quotation</Button><Button type="button" onClick={onCreateAnother}>Create Another Quotation</Button></> : <div className="review-submit-row"><Button type="button" variant="secondary" onClick={onBack}>BACK</Button><Button type="button" onClick={submitQuotation} disabled={isSubmitting}>{isSubmitting ? "SUBMITTING..." : "SUBMIT QUOTATION"}</Button></div>}
+        {readOnly ? <><Button type="button" variant="secondary" onClick={downloadQuotation}>Download Quotation</Button><Button type="button" onClick={onCreateAnother}>Create Another Quotation</Button></> : <div className="review-submit-row"><Button type="button" variant="secondary" onClick={onBack}>BACK</Button><Button type="button" onClick={submitQuotation} disabled={isSubmitting}>{isSubmitting ? "SUBMITTING..." : "SUBMIT"}</Button></div>}
         {submitError ? <p className="error">{submitError}</p> : null}
       </div>
     </div>

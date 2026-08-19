@@ -236,7 +236,6 @@ export function PlanEventStep({ serviceDates, setServiceDates, totalCups, servic
 
   if (durationModeOnly) {
     const selectedDates = [...serviceDates].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
-    const durationLabel = serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
     return (
       <div className={embedded ? "quotation-section-panel" : undefined}>
         {embedded ? <h3>Service Dates &amp; Event Settings</h3> : <h2>Plan the Event</h2>}
@@ -316,9 +315,9 @@ export function PlanEventStep({ serviceDates, setServiceDates, totalCups, servic
               {meetsMinimumOrder ? <>
                 <div><span>Service dates</span><strong>{selectedDates.length}</strong></div>
                 <div><span>Total cups</span><strong>{quotationTotalCups}</strong></div>
-                <div><span>Duration</span><strong>{durationLabel}</strong></div>
                 <div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div>
                 <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div>
+                <div className="event-pricing-amount-start"><span>Coffee catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
                 <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
                 <div className="event-pricing-total"><span>Estimated total before add-ons</span><strong>{formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}</strong></div>
               </> : <p className="error">Minimum order is 50 cups.</p>}

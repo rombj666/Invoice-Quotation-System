@@ -2832,9 +2832,27 @@ p {
 }
 
 .total-cups-input {
+  background: #fffdf9;
+  border: 1px solid #d8d0c6;
+  border-radius: 10px;
+  color: #1f1b17;
   font-size: 18px;
   font-weight: 700;
+  min-height: 48px;
   max-width: 180px;
+  outline: none;
+  padding: 10px 12px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+  width: 100%;
+}
+
+.total-cups-input:hover {
+  border-color: #b9ad9f;
+}
+
+.total-cups-input:focus {
+  border-color: #2d7a4f;
+  box-shadow: 0 0 0 3px rgb(45 122 79 / 14%);
 }
 
 .quote-duration-picker legend {
@@ -2855,6 +2873,12 @@ p {
   display: flex;
   gap: 16px;
   justify-content: space-between;
+}
+
+.event-pricing-amount-start {
+  border-top: 1px dashed #d8d0c6;
+  margin-top: 3px;
+  padding-top: 10px;
 }
 
 .event-pricing-total {
@@ -3020,16 +3044,147 @@ p {
 }
 
 .quotation-review-grid {
+  align-items: stretch;
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(240px, .6fr) minmax(0, 1fr);
 }
 
 .review-premium-card {
   background: #fbfaf7;
   border: 1px solid #e7e0d7;
   border-radius: 16px;
+  min-width: 0;
   padding: 22px;
+}
+
+.review-column-title {
+  border-bottom: 1px solid #e7e0d7;
+  color: #34291f;
+  font-size: 17px;
+  letter-spacing: .04em;
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.review-person-name {
+  color: #252019;
+  display: block;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 20px;
+  line-height: 1.3;
+  margin-bottom: 20px;
+  overflow-wrap: anywhere;
+}
+
+.review-person-details {
+  display: grid;
+  gap: 15px;
+}
+
+.review-person-details > div {
+  border-bottom: 1px solid #eee7de;
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+}
+
+.review-person-details > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.review-person-details span,
+.review-summary-heading {
+  color: #786e64;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.review-person-details strong,
+.review-person-details a {
+  color: #28231e;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.review-person-details a:hover {
+  color: #2d7a4f;
+  text-decoration: underline;
+}
+
+.review-selected-dates {
+  border-bottom: 1px solid #e7e0d7;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+}
+
+.review-selected-dates > div {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.review-selected-dates strong {
+  background: #fff;
+  border: 1px solid #eee7de;
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.review-summary-rows {
+  display: grid;
+  gap: 0;
+}
+
+.review-summary-rows > div {
+  align-items: baseline;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.review-summary-rows span {
+  color: #625950;
+  min-width: 0;
+}
+
+.review-summary-rows strong {
+  color: #24201b;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.review-summary-rows .review-fee-start,
+.review-summary-rows .review-subtotal {
+  border-top: 1px dashed #d8d0c6;
+  margin-top: 7px;
+  padding-top: 14px;
+}
+
+.review-summary-rows .review-final-total {
+  border-top: 2px solid #2d7a4f;
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
+.review-final-total span {
+  color: #205d3a;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.review-final-total strong {
+  color: #205d3a;
+  font-size: 19px;
 }
 
 .review-service-card,
@@ -3156,6 +3311,10 @@ p {
 
   .quotation-section-panel {
     padding: 18px;
+  }
+
+  .quotation-review-step .final-action-section {
+    margin-bottom: 72px;
   }
 }
 
