@@ -20,7 +20,7 @@ type Props = {
   onBack?: () => void;
   onNext: () => void;
   error: string;
-  pricing: Pick<PricingBreakdown, "baseAmount" | "extraBaristas" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
+  pricing: Pick<PricingBreakdown, "baseAmount" | "requiredBaristas" | "extraBaristas" | "extraBaristaFee" | "totalExtraServingHourFee" | "extraServingHoursByDate">;
   durationModeOnly?: boolean;
   embedded?: boolean;
   onValidityChange?: (valid: boolean) => void;
@@ -224,6 +224,7 @@ export function PlanEventStep({ serviceDates, setServiceDates, totalCups, servic
 
   const quotationTotalCups = durationModeOnly ? totalCups ?? 0 : serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const activeCoffeeTier = getCoffeeCateringTier(quotationTotalCups);
+  const meetsMinimumOrder = Number.isInteger(quotationTotalCups) && quotationTotalCups >= 50;
   const hasInvalidTime = serviceDates.some(isInvalidTime);
   const setupIsValid = durationModeOnly
     ? serviceDates.length > 0 && Number.isInteger(totalCups) && Number(totalCups) >= 50 && Boolean(serviceDuration)
@@ -306,18 +307,21 @@ export function PlanEventStep({ serviceDates, setServiceDates, totalCups, servic
               </label>
               <label className={serviceDuration === "FULL_DAY" ? "active" : ""}>
                 <input type="radio" name="quotation-duration" checked={serviceDuration === "FULL_DAY"} onChange={() => setServiceDuration?.("FULL_DAY")} />
-                <span><strong>Full Day</strong><small>More than 4 hours</small></span>
+                <span><strong>Full Day</strong><small>More than 4 hours, up to 8 hours</small></span>
               </label>
             </fieldset>
 
             <div className="event-setting-section event-pricing-summary">
               <h4>Pricing Summary</h4>
-              <div><span>Service dates</span><strong>{selectedDates.length}</strong></div>
-              <div><span>Total cups</span><strong>{quotationTotalCups}</strong></div>
-              <div><span>Duration</span><strong>{durationLabel}</strong></div>
-              <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div>
-              <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
-              <div className="event-pricing-total"><span>Estimated total before add-ons</span><strong>{formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}</strong></div>
+              {meetsMinimumOrder ? <>
+                <div><span>Service dates</span><strong>{selectedDates.length}</strong></div>
+                <div><span>Total cups</span><strong>{quotationTotalCups}</strong></div>
+                <div><span>Duration</span><strong>{durationLabel}</strong></div>
+                <div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div>
+                <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div>
+                <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
+                <div className="event-pricing-total"><span>Estimated total before add-ons</span><strong>{formatMoney(pricing.baseAmount + pricing.extraBaristaFee)}</strong></div>
+              </> : <p className="error">Minimum order is 50 cups.</p>}
             </div>
 
             <details className="pricing-guide event-pricing-guide">
@@ -331,8 +335,8 @@ export function PlanEventStep({ serviceDates, setServiceDates, totalCups, servic
                 })}</tbody>
               </table>
               <div className="barista-pricing-guide">
-                <div><strong>Half Day</strong><span>Up to 4 hours</span><span>First 200 cups: No extra barista fee</span><span>Every additional 200 cups: +1 extra barista, +RM100</span></div>
-                <div><strong>Full Day</strong><span>More than 4 hours</span><span>First 400 cups: No extra barista fee</span><span>Every additional 400 cups: +1 extra barista, +RM100</span></div>
+                <div><strong>Half Day</strong><span>Up to 4 hours</span><span>1 barista can serve up to 100 cups.</span><span>The first barista is included.</span><span>Every additional 100 cups requires another barista.</span><span>Each additional barista costs RM100.</span></div>
+                <div><strong>Full Day</strong><span>More than 4 hours, up to 8 hours</span><span>1 barista can serve up to 200 cups.</span><span>The first barista is included.</span><span>Every additional 200 cups requires another barista.</span><span>Each additional barista costs RM100.</span></div>
               </div>
               <p className="barista-guide-minimum">Minimum order: 50 cups</p>
             </details>

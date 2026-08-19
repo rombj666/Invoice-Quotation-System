@@ -28,6 +28,9 @@ function validateQuotationFields(data: any, allowSimplifiedQuotation = false): s
   if (!allowSimplifiedQuotation && !String(data.customer?.billingAddress ?? "").trim()) return "Billing address is required.";
   if (!String(data.location ?? "").trim()) return "Event address is required.";
   if (!allowSimplifiedQuotation && !String(data.eventType ?? "").trim()) return "Event type is required.";
+  const hasQuotationLevelSettings = data.totalCups !== undefined || data.serviceDuration !== undefined;
+  if (hasQuotationLevelSettings && (!Number.isInteger(Number(data.totalCups)) || Number(data.totalCups) < 50)) return "Minimum order is 50 cups.";
+  if (hasQuotationLevelSettings && data.serviceDuration !== "HALF_DAY" && data.serviceDuration !== "FULL_DAY") return "Choose Half Day or Full Day service duration.";
   if ((data.serviceDates ?? []).some((date: any) => date.durationMode
     ? date.durationMode !== "HALF_DAY" && date.durationMode !== "FULL_DAY"
     : !/^\d{2}:\d{2}$/.test(date.startTime) || !/^\d{2}:\d{2}$/.test(date.endTime) || date.endTime <= date.startTime)) return "Every service date must have a valid duration or time range.";
@@ -77,7 +80,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
     const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
-    res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
+    res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
   } catch (error) {
     next(error);
   }
@@ -114,7 +117,8 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     if (!pdfUpload) throw new Error("Unable to upload quotation PDF.");
     newPdfPublicId = pdfUpload.cloudinaryPublicId;
     const summaryFields = changedFields(current.metadata, data, ["quotationNo", "customer", "location", "fullAddress", "eventType", "customEventType", "serviceDates", "drinkOrders", "selectedAddons", "hasCupStickers", "hasCupSleeves", "discountPercent", "status"]);
-    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
+    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
+    const hasQuotationLevelSettings = Number.isFinite(pricedData.totalCups) && (pricedData.serviceDuration === "HALF_DAY" || pricedData.serviceDuration === "FULL_DAY");
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.customizationFile.updateMany({ where: { quotationDateId: { in: current.dates.map((date) => date.id) } }, data: { quotationDateId: null } });
@@ -143,7 +147,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
           dates: { create: pricedData.serviceDates.map((date: any) => ({
             serviceDate: new Date(`${date.serviceDate}T12:00:00`), cups: Number(date.cups),
             serviceStartTime: date.startTime, serviceEndTime: date.endTime,
-            serviceHours: getServiceHoursExact(date), baristaCount: getBaristasNeeded(date), extraBaristaFee: getExtraBaristaFee(date), distributionMode: pricedData.drinkDistributionModeByDate[date.id],
+            serviceHours: getServiceHoursExact(date), baristaCount: hasQuotationLevelSettings ? pricing.requiredBaristas : getBaristasNeeded(date), extraBaristaFee: hasQuotationLevelSettings ? 0 : getExtraBaristaFee(date), distributionMode: pricedData.drinkDistributionModeByDate[date.id],
             drinks: { create: Object.entries(pricedData.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({
               drinkId, beverageId: drinkId, drinkName: pricedData.beverageSnapshots[drinkId]?.name ?? drinkNames[drinkId] ?? drinkId, imageUrlSnapshot: pricedData.beverageSnapshots[drinkId]?.imageUrl ?? null, icedAvailableSnapshot: pricedData.beverageSnapshots[drinkId]?.icedAvailable ?? true, hotAvailableSnapshot: pricedData.beverageSnapshots[drinkId]?.hotAvailable ?? false, isExcluded: pricedData.excludedBeverageIdsByDate[date.id]?.includes(drinkId) ?? false, iceCups: Number(quantity.ice || 0), hotCups: Number(quantity.hot || 0), totalCups: Number(quantity.ice || 0) + Number(quantity.hot || 0)
             })) }

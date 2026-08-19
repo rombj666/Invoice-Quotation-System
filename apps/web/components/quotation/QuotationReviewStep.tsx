@@ -42,7 +42,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total },
     pricingBreakdown: {
+      requiredBaristas: pricing.requiredBaristas,
       extraBaristas: pricing.extraBaristas,
+      extraBaristaFee: pricing.extraBaristaFee,
       fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
       extraServingHoursByDate: pricing.extraServingHoursByDate,
       extraServingHourRate: pricing.extraServingHourRate,
@@ -123,6 +125,9 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <div><span>Total cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Service dates</span><strong>{data.serviceDates.length}</strong></div>
             {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
+            {hasQuotationLevelSettings ? <div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div> : null}
+            {hasQuotationLevelSettings ? <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div> : null}
+            {hasQuotationLevelSettings ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
           </div>
           {hasQuotationLevelSettings ? <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
             <thead><tr><th>Selected service dates</th></tr></thead>
@@ -172,7 +177,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         <section className="review-premium-card review-service-card">
           <span className="review-kicker">Event Setup</span>
           {hasQuotationLevelSettings ? <>
-            <div className="review-detail-list quotation-settings-review"><div><span>Total cups</span><strong>{pricing.totalCups}</strong></div><div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div><div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div><div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div></div>
+            <div className="review-detail-list quotation-settings-review"><div><span>Total cups</span><strong>{pricing.totalCups}</strong></div><div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div><div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div><div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div><div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div></div>
             <div className="table-scroll"><table className="summary-table"><thead><tr><th>Selected service dates</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)}</td></tr>)}</tbody></table></div>
           </> : <div className="table-scroll"><table className="summary-table"><thead><tr><th>Date</th><th>Duration</th><th>Cups</th><th>Baristas</th><th>Charge</th></tr></thead><tbody>{data.serviceDates.map((date) => <tr key={date.id}>
             <td className="date-cell">{formatCompactDate(date.serviceDate)}</td><td>{serviceDuration(date)}</td><td className="number-cell">{date.cups}</td><td className="number-cell">{getBaristasNeeded(date)}</td><td className="amount-cell">{date.durationMode === "FULL_DAY" ? formatMoney(getExtraBaristaFee(date)) : "—"}</td>

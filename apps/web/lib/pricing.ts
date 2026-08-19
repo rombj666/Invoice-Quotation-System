@@ -4,6 +4,7 @@ import { DEFAULT_ADDON_PRICING, calculateSelectedAddonTotal } from "./addons";
 export type PricingBreakdown = {
   totalCups: number;
   baseAmount: number;
+  requiredBaristas: number;
   extraBaristas: number;
   extraBaristaFee: number;
   fullDayBaristaFeesByDate: FullDayBaristaFeeBreakdown[];
@@ -98,15 +99,22 @@ export function getFullDayBaristaFeeBreakdown(serviceDates: ServiceDate[]): Full
     }));
 }
 
+export function getQuotationBaristaPricing(totalCups: number, duration: ServiceDurationMode) {
+  if (!Number.isInteger(totalCups) || totalCups < 50) {
+    return { requiredBaristas: 0, extraBaristas: 0, extraBaristaFee: 0 };
+  }
+  const cupsPerBarista = duration === "FULL_DAY" ? 200 : 100;
+  const requiredBaristas = Math.ceil(totalCups / cupsPerBarista);
+  const extraBaristas = Math.max(requiredBaristas - 1, 0);
+  return { requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
+}
+
 export function getQuotationExtraBaristas(totalCups: number, duration: ServiceDurationMode): number {
-  if (totalCups < 50) return 0;
-  const includedCups = duration === "FULL_DAY" ? 400 : 200;
-  const cupsPerExtraBarista = duration === "FULL_DAY" ? 400 : 200;
-  return totalCups <= includedCups ? 0 : Math.ceil((totalCups - includedCups) / cupsPerExtraBarista);
+  return getQuotationBaristaPricing(totalCups, duration).extraBaristas;
 }
 
 export function getQuotationExtraBaristaFee(totalCups: number, duration: ServiceDurationMode): number {
-  return getQuotationExtraBaristas(totalCups, duration) * 100;
+  return getQuotationBaristaPricing(totalCups, duration).extraBaristaFee;
 }
 
 export function getCupSleevePrice(totalCups: number, config: CupSleevePricingConfig = DEFAULT_ADDON_PRICING.cupSleeve): number {
@@ -139,8 +147,10 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && Boolean(data.serviceDuration);
   const totalCups = hasQuotationLevelSettings ? Number(data.totalCups) : data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
-  const extraBaristas = hasQuotationLevelSettings ? getQuotationExtraBaristas(totalCups, data.serviceDuration!) : 0;
-  const extraBaristaFee = hasQuotationLevelSettings ? getQuotationExtraBaristaFee(totalCups, data.serviceDuration!) : data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
+  const quotationBaristaPricing = hasQuotationLevelSettings ? getQuotationBaristaPricing(totalCups, data.serviceDuration!) : null;
+  const requiredBaristas = quotationBaristaPricing?.requiredBaristas ?? 0;
+  const extraBaristas = quotationBaristaPricing?.extraBaristas ?? 0;
+  const extraBaristaFee = quotationBaristaPricing?.extraBaristaFee ?? data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
   const fullDayBaristaFeesByDate = hasQuotationLevelSettings ? [] : getFullDayBaristaFeeBreakdown(data.serviceDates);
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const addonTotal = calculateSelectedAddonTotal(data.selectedAddons);
@@ -155,6 +165,7 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   return {
     totalCups,
     baseAmount,
+    requiredBaristas,
     extraBaristas,
     extraBaristaFee,
     fullDayBaristaFeesByDate,

@@ -140,7 +140,9 @@ export type QuotationData = {
     total: number;
   };
   pricingBreakdown?: {
+    requiredBaristas?: number;
     extraBaristas?: number;
+    extraBaristaFee?: number;
     fullDayBaristaFeesByDate?: FullDayBaristaFeeBreakdown[];
     extraServingHoursByDate: ExtraServingHourBreakdown[];
     extraServingHourRate: number;

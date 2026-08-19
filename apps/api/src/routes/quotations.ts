@@ -247,7 +247,9 @@ quotationRoutes.post("/", async (req, res, next) => {
         total: pricing.total
       },
       pricingBreakdown: {
+        requiredBaristas: pricing.requiredBaristas,
         extraBaristas: pricing.extraBaristas,
+        extraBaristaFee: pricing.extraBaristaFee,
         fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
         extraServingHoursByDate: pricing.extraServingHoursByDate,
         extraServingHourRate: pricing.extraServingHourRate,
@@ -329,7 +331,7 @@ quotationRoutes.post("/", async (req, res, next) => {
             serviceStartTime: date.startTime,
             serviceEndTime: date.endTime,
             serviceHours: getServiceHoursExact(date),
-            baristaCount: pricing.extraBaristas + 1,
+            baristaCount: pricing.requiredBaristas,
             extraBaristaFee: 0,
             distributionMode: data.drinkDistributionModeByDate[date.id],
             drinks: {
