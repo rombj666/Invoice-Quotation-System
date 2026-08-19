@@ -670,124 +670,229 @@ p {
 }
 
 .addon-card {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
   align-items: flex-start;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-  padding: 14px;
-  margin-top: 10px;
+  background: #fffdf9;
+  border: 1px solid #e1d9cf;
+  border-radius: 14px;
+  color: #26211c;
   cursor: pointer;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 10px;
+  min-height: 112px;
+  padding: 18px;
   text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
 }
 
-.addon-card > div {
+.addon-card-copy {
+  display: grid;
+  gap: 8px;
   min-width: 0;
 }
 
 .addon-card .addon-price {
+  color: #3e342b;
   flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
 .addon-card-shell {
+  border-radius: 14px;
   margin-top: 10px;
-  border-radius: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .addon-card-shell .addon-card {
   margin-top: 0;
 }
 
-.addon-card p {
-  margin: 4px 0 0;
-  color: #777;
-  font-size: 12px;
+.addon-card-shell.active {
+  border: 1px solid #9bc9ab;
+  background: #fbfdfb;
 }
 
-.addon-card p.cart-lock-message {
-  color: #7a1e1e;
-  font-weight: 700;
+.addon-card-shell.active .addon-card {
+  border: 0;
+  border-bottom: 1px solid #cfe3d6;
+  border-radius: 0;
+}
+
+.addon-card-shell.active .addon-card:last-child {
+  border-bottom: 0;
+}
+
+.addon-card-title-row {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.addon-card-title-row strong {
+  flex: 1 1 150px;
+  line-height: 1.35;
+}
+
+.addon-card p {
+  color: #746b62;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.addon-card-selectable[aria-pressed="false"]:hover:not(:disabled) {
+  border-color: #a99a8b;
+  box-shadow: 0 8px 22px rgb(59 45 33 / 8%);
+  transform: translateY(-1px);
 }
 
 .addon-card.active {
-  background: #1a1a1a;
-  border-color: #1a1a1a;
-  color: #fff;
+  background: #eef7f1;
+  border-color: #82b795;
+  color: #1f5637;
 }
 
 .addon-card.active p {
-  color: rgba(255, 255, 255, 0.68);
+  color: #526b5b;
+}
+
+.addon-card.active .addon-price {
+  color: #205d3a;
+}
+
+.addon-card-included {
+  cursor: default;
+}
+
+.addon-card:disabled {
+  background: #f3f0ec;
+  border-color: #e3ddd5;
+  box-shadow: none;
+  color: #8b837a;
+  opacity: .66;
+  transform: none;
+}
+
+.addon-selection-status {
+  background: #eee9e2;
+  border-radius: 999px;
+  color: #6d6257;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.addon-selection-status.selected,
+.addon-card-included .addon-selection-status {
+  background: #d9eee0;
+  color: #205d3a;
+}
+
+.addon-group-heading {
+  border-top: 1px solid #e7e0d7;
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 16px;
+}
+
+.addon-group-heading strong {
+  color: #3d3228;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 16px;
+}
+
+.addon-group-heading span {
+  color: #756b61;
+  font-size: 12px;
 }
 
 .addon-options {
-  border: 1px solid #e7e2da;
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
-  background: #fffdf9;
-  padding: 14px;
+  background: #fbfdfb;
+  padding: 16px 18px 18px;
 }
 
 .addon-option-title {
-  color: #555;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-.addon-options label {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-  color: #555;
-  font-size: 12px;
-}
-
-.addon-options input,
-.addon-options select {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 9px;
-  background: #fff;
-  color: #1a1a1a;
-  padding: 10px 12px;
-}
-
-.addon-options p {
-  margin: 10px 0 0;
-  color: #777;
-  font-size: 12px;
-}
-
-.design-mode-summary {
-  border-radius: 8px;
-  background: #f7f4ef;
   color: #3d352c;
   font-size: 13px;
-  font-weight: 700;
-  margin-top: 8px;
-  padding: 9px 10px;
+  font-weight: 800;
 }
 
-.design-mode-details {
-  margin-top: 10px;
+.addon-design-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
 }
 
-.design-mode-details summary {
-  color: #6c4e2f;
+.design-mode-badge {
+  background: #eee9e2;
+  border-radius: 999px;
+  color: #62574c;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.design-mode-badge.per-date {
+  background: #d9eee0;
+  color: #205d3a;
+}
+
+.design-mode-checkbox {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #dfd8cf;
+  border-radius: 10px;
+  color: #40372f;
   cursor: pointer;
+  display: flex;
   font-size: 13px;
-  font-weight: 700;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+}
+
+.design-mode-checkbox input {
+  accent-color: #2d7a4f;
+  flex: 0 0 auto;
+  height: 17px;
+  margin: 1px 0 0;
+  width: 17px;
+}
+
+.addon-options .addon-design-price-note {
+  color: #766e65;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 10px 0 0;
 }
 
 .addon-total {
-  background: #f0faf3;
-  color: #1e6b42;
+  align-items: center;
+  background: #eef7f1;
+  border: 1px solid #b8d9c4;
+  color: #205d3a;
+  display: flex;
   font-weight: 700;
-  text-align: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  position: static;
+  text-align: left;
+}
+
+.addon-total strong {
+  font-size: 16px;
 }
 
 .find-button {
@@ -3023,13 +3128,15 @@ p {
 }
 
 .addons-panel {
+  align-items: start;
   display: grid;
-  gap: 12px;
+  gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .addons-panel > h3,
 .addons-panel > .step-copy,
+.addons-panel > .addon-group-heading,
 .addons-panel > .addon-total,
 .addons-panel > .warn-summary,
 .addons-panel > .error,
@@ -3039,7 +3146,7 @@ p {
 
 .addons-panel .addon-card,
 .addons-panel .addon-card-shell {
-  height: 100%;
+  height: auto;
   margin-top: 0;
 }
 

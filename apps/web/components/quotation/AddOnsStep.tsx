@@ -68,24 +68,29 @@ function DesignOptions({
 }) {
   const showMode = selectedDateCount > 1;
   const normalized = normalizeDesignOption(option, selectedDateCount);
-  const designModeLabel = normalized.mode === "same" ? "Same design for all dates" : "Different design for different dates";
+  const usesDifferentDesigns = normalized.mode === "per-date";
   return (
     <div className="addon-options" onClick={(event) => event.stopPropagation()}>
-      <div className="addon-option-title">{label} design</div>
-      <div className="design-mode-summary">{designModeLabel}</div>
+      <div className="addon-design-heading">
+        <div className="addon-option-title">{label} design</div>
+        <span className={`design-mode-badge ${usesDifferentDesigns ? "per-date" : ""}`}>
+          {usesDifferentDesigns ? `${selectedDateCount} designs · one per date` : "One shared design"}
+        </span>
+      </div>
       {showMode ? (
-        <details className="design-mode-details" open={normalized.mode !== "same"}>
-          <summary>Change design setup</summary>
-          <label>
-            <span>Design mode</span>
-            <select value={normalized.mode} onChange={(event) => onChange(normalizeDesignOption({ ...normalized, mode: event.target.value as CustomizationOption["mode"], designCount: event.target.value === "same" ? 1 : selectedDateCount }, selectedDateCount))}>
-              <option value="same">Same design for all dates</option>
-              <option value="per-date">Different design for different dates</option>
-            </select>
-          </label>
-        </details>
+        <label className="design-mode-checkbox">
+          <input
+            type="checkbox"
+            checked={usesDifferentDesigns}
+            onChange={(event) => onChange(normalizeDesignOption({
+              mode: event.target.checked ? "per-date" : "same",
+              designCount: event.target.checked ? selectedDateCount : 1
+            }, selectedDateCount))}
+          />
+          <span>Need different design for each service date</span>
+        </label>
       ) : null}
-      <p>No extra design-version cost is added. Current add-on price stays unchanged.</p>
+      <p className="addon-design-price-note">Current add-on price stays unchanged.</p>
     </div>
   );
 }
@@ -116,8 +121,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     fixedAddon("Custom Menu", availability.custom_menu),
     fixedAddon("Custom Latte Art Stencil", availability.custom_latte_art_stencil)
   ];
+  const [brandedCartAddon, ...otherOptionalAddons] = optionalAddons;
   const coffeeCartSelected = hasAddon(data, COFFEE_CART_ADDON_NAME);
-  const customBrandedCartSelected = hasAddon(data, CUSTOM_BRANDED_CART_ADDON_NAME);
   const hasCartConflict = hasCartAddonConflict(data.selectedAddons);
   const activePricing = data.addonPricing ?? (useLatestPrices ? getConfiguredAddonPricing(availability) : DEFAULT_ADDON_PRICING);
 
@@ -142,6 +147,13 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
 
   useEffect(() => {
     const needsLeadTimeRemoval = !enoughLeadTime && data.selectedAddons.some((addon) => leadTimeAddonNames.has(addon.name));
+    const leadTimeSafeAddons = needsLeadTimeRemoval
+      ? data.selectedAddons.filter((addon) => !leadTimeAddonNames.has(addon.name))
+      : data.selectedAddons;
+    const needsCartNormalization = hasCartAddonConflict(leadTimeSafeAddons);
+    const normalizedSelectedAddons = needsCartNormalization
+      ? leadTimeSafeAddons.filter((addon) => addon.name !== COFFEE_CART_ADDON_NAME)
+      : leadTimeSafeAddons;
     const normalizedOptions = {
       cart: normalizeDesignOption(customizationOptions.cart, data.serviceDates.length),
       sticker: normalizeDesignOption(customizationOptions.sticker, data.serviceDates.length),
@@ -155,10 +167,10 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       normalizedOptions.sleeve.mode !== customizationOptions.sleeve.mode ||
       normalizedOptions.sleeve.designCount !== customizationOptions.sleeve.designCount;
 
-    if (needsLeadTimeRemoval || optionsChanged) {
+    if (needsLeadTimeRemoval || needsCartNormalization || optionsChanged) {
       setData({
         ...data,
-        selectedAddons: needsLeadTimeRemoval ? data.selectedAddons.filter((addon) => !leadTimeAddonNames.has(addon.name)) : data.selectedAddons,
+        selectedAddons: normalizedSelectedAddons,
         customizationOptions: normalizedOptions
       });
       if (needsLeadTimeRemoval) setAvailabilityWarning("This add-on requires at least 2 weeks lead time.");
@@ -242,6 +254,25 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     });
   }
 
+  function renderOptionalAddon(addon: QuotationAddon) {
+    const isSelected = hasAddon(data, addon.name);
+    const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON_NAME;
+    return (
+      <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
+        <button className={`addon-card addon-card-selectable ${isCustomBrandedCart ? "cart-option-card" : ""} ${isSelected ? "active" : ""}`} type="button" aria-pressed={isSelected} disabled={((!isAvailable(addon.name) || (leadTimeAddonNames.has(addon.name) && !enoughLeadTime)) && !isSelected)} onClick={() => toggleAddon(addon)}>
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>{isCustomBrandedCart ? "Branded Cart" : addon.name} {unavailableLabel(addon.name)}</strong><span className={`addon-selection-status ${isSelected ? "selected" : ""}`}>{isSelected ? "Selected" : "Select"}</span></div>
+            <p>{isCustomBrandedCart ? "Cart with customer logo. 2-week lead time." : leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
+          </div>
+          <span className="addon-price">{formatMoney(addon.price)}</span>
+        </button>
+        {isCustomBrandedCart && isSelected ? (
+          <DesignOptions label="Cart" option={customizationOptions.cart} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("cart", option)} />
+        ) : null}
+      </div>
+    );
+  }
+
   const selectedTotal =
     calculateSelectedAddonTotal(data.selectedAddons) +
     (data.hasCupSleeves ? getCupSleevePrice(totalCups, activePricing.cupSleeve) : 0) +
@@ -254,69 +285,61 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       <p className="step-copy">Select any extras for this quotation.</p>
 
       {machineRentalFee > 0 ? (
-        <div className="addon-card active">
-          <div>
-            <strong>Additional Coffee Machine</strong>
+        <div className="addon-card active addon-card-included">
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>Additional Coffee Machine</strong><span className="addon-selection-status">Required</span></div>
             <p>Required for this order volume.</p>
           </div>
           <span className="addon-price">{formatMoney(machineRentalFee)}</span>
         </div>
       ) : null}
 
-      {isAvailable("Smart QR Ordering System") ? <div className="addon-card active">
-        <div>
-          <strong>Smart QR Ordering System {unavailableLabel("Smart QR Ordering System")}</strong>
+      {isAvailable("Smart QR Ordering System") ? <div className="addon-card active addon-card-included">
+        <div className="addon-card-copy">
+          <div className="addon-card-title-row"><strong>Smart QR Ordering System {unavailableLabel("Smart QR Ordering System")}</strong><span className="addon-selection-status">Included</span></div>
           <p>Included with every service.</p>
         </div>
         <span className="addon-price">FREE</span>
       </div> : null}
 
       {allSmallDates && isAvailable("Premium Table Setup") ? (
-        <div className="addon-card active">
-          <div>
-            <strong>Premium Table Setup {unavailableLabel("Premium Table Setup")}</strong>
+        <div className="addon-card active addon-card-included">
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>Premium Table Setup {unavailableLabel("Premium Table Setup")}</strong><span className="addon-selection-status">Included</span></div>
             <p>Included for 50 to 99 cup orders.</p>
           </div>
           <span className="addon-price">FREE</span>
         </div>
       ) : null}
 
+      <div className="addon-group-heading">
+        <strong>Cart options</strong>
+        <span>Choose one cart style. Selecting another cart replaces the current selection.</span>
+      </div>
+
       {data.serviceDates.length && (isAvailable(COFFEE_CART_ADDON_NAME) || coffeeCartSelected) ? (
-        <button type="button" className={`addon-card ${coffeeCartSelected ? "active" : ""}`} disabled={(customBrandedCartSelected && !coffeeCartSelected) || (!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected)} onClick={setCoffeeCart}>
-          <div>
-            <strong>Standard Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong>
+        <button type="button" className={`addon-card addon-card-selectable cart-option-card ${coffeeCartSelected ? "active" : ""}`} aria-pressed={coffeeCartSelected} disabled={!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected} onClick={setCoffeeCart}>
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>Standard Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong><span className={`addon-selection-status ${coffeeCartSelected ? "selected" : ""}`}>{coffeeCartSelected ? "Selected" : "Select"}</span></div>
             <p>Cart without customer logo.</p>
-            {customBrandedCartSelected && !coffeeCartSelected ? <p className="cart-lock-message">Branded Cart is selected.</p> : null}
           </div>
           <span className="addon-price">{formatMoney(coffeeCartAddon.price)}</span>
         </button>
       ) : null}
 
-      {optionalAddons.filter((addon) => isAvailable(addon.name) || hasAddon(data, addon.name)).map((addon) => {
-        const isSelected = hasAddon(data, addon.name);
-        const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON_NAME;
-        const isLockedByCoffeeCart = isCustomBrandedCart && coffeeCartSelected && !isSelected;
-        return (
-          <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
-            <button className={`addon-card ${isSelected ? "active" : ""}`} type="button" disabled={isLockedByCoffeeCart || (((!isAvailable(addon.name) || (leadTimeAddonNames.has(addon.name) && !enoughLeadTime)) && !isSelected))} onClick={() => toggleAddon(addon)}>
-              <div>
-                <strong>{isCustomBrandedCart ? "Branded Cart" : addon.name} {unavailableLabel(addon.name)}</strong>
-                <p>{isCustomBrandedCart ? "Cart with customer logo. 2-week lead time." : leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
-                {isLockedByCoffeeCart ? <p className="cart-lock-message">Standard Cart is selected.</p> : null}
-              </div>
-              <span className="addon-price">{formatMoney(addon.price)}</span>
-            </button>
-            {addon.name === "Custom Branded Cart" && isSelected ? (
-              <DesignOptions label="Cart" option={customizationOptions.cart} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("cart", option)} />
-            ) : null}
-          </div>
-        );
-      })}
+      {isAvailable(brandedCartAddon.name) || hasAddon(data, brandedCartAddon.name) ? renderOptionalAddon(brandedCartAddon) : null}
+
+      <div className="addon-group-heading">
+        <strong>Other add-ons</strong>
+        <span>Select any additional items for the quotation.</span>
+      </div>
+
+      {otherOptionalAddons.filter((addon) => isAvailable(addon.name) || hasAddon(data, addon.name)).map(renderOptionalAddon)}
 
       {isAvailable("Custom Cup Stickers") || data.hasCupStickers ? <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
-        <button type="button" className={`addon-card ${data.hasCupStickers ? "active" : ""}`} disabled={!isAvailable("Custom Cup Stickers") && !data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
-          <div>
-            <strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong>
+        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupStickers ? "active" : ""}`} aria-pressed={data.hasCupStickers} disabled={!isAvailable("Custom Cup Stickers") && !data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong><span className={`addon-selection-status ${data.hasCupStickers ? "selected" : ""}`}>{data.hasCupStickers ? "Selected" : "Select"}</span></div>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span className="addon-price">{formatMoney(getCupStickerPrice(totalCups, activePricing.cupSticker))}</span>
@@ -327,9 +350,9 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       </div> : null}
 
       {isAvailable("Custom Cup Sleeves") || data.hasCupSleeves ? <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
-        <button type="button" className={`addon-card ${data.hasCupSleeves ? "active" : ""}`} disabled={!isAvailable("Custom Cup Sleeves") && !data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
-          <div>
-            <strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong>
+        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupSleeves ? "active" : ""}`} aria-pressed={data.hasCupSleeves} disabled={!isAvailable("Custom Cup Sleeves") && !data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
+          <div className="addon-card-copy">
+            <div className="addon-card-title-row"><strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong><span className={`addon-selection-status ${data.hasCupSleeves ? "selected" : ""}`}>{data.hasCupSleeves ? "Selected" : "Select"}</span></div>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span className="addon-price">{formatMoney(getCupSleevePrice(totalCups, activePricing.cupSleeve))}</span>
@@ -339,7 +362,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         ) : null}
       </div> : null}
 
-      <div className="addon-total">Add-on Total: {formatMoney(selectedTotal)}</div>
+      <div className="addon-total"><span>Add-on Total</span><strong>{formatMoney(selectedTotal)}</strong></div>
       {hasCartConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
       {availabilityWarning && availabilityWarning !== CART_SELECTION_ERROR ? <div className="warn-summary">{availabilityWarning}</div> : null}
       {submissionError ? <p className="error">{submissionError}</p> : null}
