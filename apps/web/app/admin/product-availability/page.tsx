@@ -2,108 +2,108 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
-import { createBeverage, deleteBeverage, loadAdminBeverages, updateBeverage, type Beverage } from "../../../lib/beverages";
-import { loadProductAvailability, updateProductAvailability, type AvailabilityItem } from "../../../lib/product-availability";
+import { formatMoney } from "../../../lib/formatters";
+import { createPackage, deletePackage, loadAdminPackages, updatePackage } from "../../../lib/packages";
+import type { PackageLevel, QuotationPackage } from "../../../types/quotation";
 
-const emptyDraft: Partial<Beverage> = { name: "", description: "", icedAvailable: true, hotAvailable: true, isAvailable: true, isArchived: false, displayOrder: 0 };
+type PackageDraft = { name: string; level: PackageLevel; briefDescription: string; price: string; perks: string[] };
 
-export default function ProductAvailabilityPage() {
-  const [beverages, setBeverages] = useState<Beverage[]>([]);
-  const [addOns, setAddOns] = useState<AvailabilityItem[]>([]);
-  const [editing, setEditing] = useState<Beverage | null>(null);
+const levelOptions: Array<{ value: PackageLevel; label: string }> = [
+  { value: "LOW_SPEC", label: "Low Spec" },
+  { value: "MIDDLE_SPEC", label: "Middle Spec" },
+  { value: "HIGH_SPEC", label: "High Spec" },
+  { value: "CUSTOMIZED", label: "Customized Package" }
+];
+const emptyDraft: PackageDraft = { name: "", level: "LOW_SPEC", briefDescription: "", price: "", perks: [""] };
+
+function levelLabel(level: PackageLevel) {
+  return levelOptions.find((option) => option.value === level)?.label ?? level;
+}
+
+export default function PackageSettingsPage() {
+  const [packages, setPackages] = useState<QuotationPackage[]>([]);
+  const [expandedId, setExpandedId] = useState("");
+  const [editing, setEditing] = useState<QuotationPackage | null>(null);
+  const [draft, setDraft] = useState<PackageDraft>(emptyDraft);
   const [modalOpen, setModalOpen] = useState(false);
-  const [draft, setDraft] = useState<Partial<Beverage>>(emptyDraft);
-  const [image, setImage] = useState<File>();
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [busyAddon, setBusyAddon] = useState("");
 
-  function refresh() {
-    return Promise.all([loadAdminBeverages(), loadProductAvailability()])
-      .then(([loadedBeverages, groups]) => { setBeverages(loadedBeverages); setAddOns(groups["Add-on Features"] ?? []); })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load product availability."));
+  async function refresh() {
+    setError("");
+    try { setPackages(await loadAdminPackages()); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to load quotation packages."); }
   }
+
   useEffect(() => { void refresh(); }, []);
 
-  function edit(beverage?: Beverage) {
-    setModalOpen(true); setEditing(beverage ?? null);
-    setDraft(beverage ? { ...beverage } : { ...emptyDraft, displayOrder: (beverages.at(-1)?.displayOrder ?? 0) + 10 });
-    setImage(undefined); setError(""); setSuccess("");
+  function openEditor(item?: QuotationPackage) {
+    setEditing(item ?? null);
+    setDraft(item ? {
+      name: item.name,
+      level: item.level,
+      briefDescription: item.briefDescription ?? "",
+      price: String(item.price),
+      perks: item.perks.length ? item.perks.map((perk) => perk.name) : [""]
+    } : { ...emptyDraft, perks: [""] });
+    setError(""); setSuccess(""); setModalOpen(true);
+  }
+
+  function updatePerk(index: number, value: string) {
+    setDraft((current) => ({ ...current, perks: current.perks.map((perk, perkIndex) => perkIndex === index ? value : perk) }));
   }
 
   async function save() {
-    setBusy(true); setError(""); setSuccess("");
+    const price = Number(draft.price);
+    if (!draft.name.trim()) return setError("Package name is required.");
+    if (!Number.isFinite(price) || price < 0) return setError("Enter a valid package price.");
+    setBusy(true); setError("");
     try {
-      const saved = editing
-        ? await updateBeverage(editing.id, { name: draft.name, description: draft.description }, image)
-        : await createBeverage(draft, image);
-      setBeverages((current) => [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)));
-      setModalOpen(false); setEditing(null); setDraft(emptyDraft); setImage(undefined); setSuccess("Beverage saved.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save beverage."); }
+      const input = { ...draft, name: draft.name.trim(), briefDescription: draft.briefDescription.trim(), price, perks: draft.perks.map((perk) => perk.trim()).filter(Boolean) };
+      const saved = editing ? await updatePackage(editing.id, input) : await createPackage(input);
+      setPackages((current) => [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => levelOptions.findIndex((option) => option.value === a.level) - levelOptions.findIndex((option) => option.value === b.level)));
+      setModalOpen(false); setEditing(null); setSuccess(editing ? "Package updated." : "Package created.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save package."); }
     finally { setBusy(false); }
   }
 
-  async function toggleBeverage(beverage: Beverage) {
+  async function remove(item: QuotationPackage) {
+    if (!window.confirm(`Delete ${item.name}? Existing quotations will keep their saved package snapshot.`)) return;
     setError(""); setSuccess("");
-    const update = beverage.isArchived || !beverage.isAvailable
-      ? { isAvailable: true, isArchived: false }
-      : { isAvailable: false };
-    try {
-      const saved = await updateBeverage(beverage.id, update);
-      setBeverages((current) => current.map((item) => item.id === saved.id ? saved : item));
-      setSuccess(`${saved.name} is now ${saved.isAvailable && !saved.isArchived ? "available" : "unavailable"}.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to update beverage."); }
+    try { await deletePackage(item.id); setPackages((current) => current.filter((candidate) => candidate.id !== item.id)); setSuccess("Package deleted."); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to delete package."); }
   }
 
-  async function remove(beverage: Beverage) {
-    if (!window.confirm(`Delete ${beverage.name}? Referenced beverages will be archived instead.`)) return;
-    setError(""); setSuccess("");
-    try { await deleteBeverage(beverage.id); setBeverages((current) => current.filter((item) => item.id !== beverage.id)); setSuccess("Beverage deleted."); }
-    catch (reason) {
-      const archived = (reason as Error & { beverage?: Beverage }).beverage;
-      if (archived) setBeverages((current) => current.map((item) => item.id === archived.id ? archived : item));
-      setError(reason instanceof Error ? reason.message : "Unable to delete beverage.");
-    }
-  }
+  return <main className="admin-page">
+    <Card className="admin-card package-settings-admin">
+      <header className="admin-page-header"><div><p className="admin-eyebrow">Quotation Setup</p><h1>Package Settings</h1><p>Manage the four package choices, fixed prices and included perks shown to customers.</p></div><button className="hc-button hc-button-primary" type="button" onClick={() => openEditor()}>Create Package</button></header>
+      {error && !modalOpen ? <p className="error">{error}</p> : null}{success ? <div className="ok-summary">{success}</div> : null}
+      <div className="admin-package-grid">
+        {packages.map((item) => {
+          const expanded = expandedId === item.id;
+          return <article className="admin-package-card" key={item.id}>
+            <div className="admin-package-card-heading"><div><span className={`package-level-badge ${item.level.toLowerCase()}`}>{levelLabel(item.level)}</span><h2>{item.name}</h2></div><strong>{formatMoney(item.price)}</strong></div>
+            <p>{item.briefDescription || "No package description."}</p>
+            <div className="admin-package-preview"><strong>{item.perks.length} included perk{item.perks.length === 1 ? "" : "s"}</strong><span>{item.perks.slice(0, 2).map((perk) => perk.name).join(" · ") || "No perks added yet"}</span></div>
+            {expanded ? <ul className="admin-package-perks">{item.perks.map((perk) => <li key={perk.id}>{perk.name}</li>)}{!item.perks.length ? <li>No included perks.</li> : null}</ul> : null}
+            <div className="admin-actions"><button type="button" onClick={() => setExpandedId(expanded ? "" : item.id)}>{expanded ? "Hide" : "View"}</button><button type="button" onClick={() => openEditor(item)}>Edit</button><button type="button" onClick={() => void remove(item)}>Delete</button></div>
+          </article>;
+        })}
+        {!packages.length && !error ? <div className="admin-package-empty"><h2>No packages yet</h2><p>Create a package to make it available in the customer quotation flow.</p></div> : null}
+      </div>
+    </Card>
 
-  async function toggleAddon(item: AvailabilityItem) {
-    setBusyAddon(item.itemKey); setError(""); setSuccess("");
-    try {
-      const saved = await updateProductAvailability(item.itemKey, { isAvailable: !item.isAvailable });
-      setAddOns((current) => current.map((addOn) => addOn.itemKey === saved.itemKey ? saved : addOn));
-      setSuccess(`${saved.itemName} is now ${saved.isAvailable ? "available" : "unavailable"}.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to update add-on availability."); }
-    finally { setBusyAddon(""); }
-  }
-
-  function addOnName(item: AvailabilityItem) {
-    if (item.itemKey === "coffee_cart") return "Coffee Cart";
-    if (item.itemKey === "custom_branded_cart") return "Custom Branded Cart";
-    return item.itemName;
-  }
-
-  return <main className="admin-page"><Card className="admin-card">
-    <header className="admin-page-header"><div><p className="admin-eyebrow">Catalog</p><h1>Product Availability</h1><p>Manage beverages, product images and availability.</p></div><button className="hc-button hc-button-primary" type="button" onClick={() => edit()}>Add Beverage</button></header>
-    {error ? <p className="error">{error}</p> : null}{success ? <div className="ok-summary">{success}</div> : null}
-    <div className="beverage-admin-grid">{beverages.map((beverage) => <article className={`beverage-admin-card ${beverage.isArchived ? "archived" : ""}`} key={beverage.id}>
-      {beverage.imageUrl ? <img src={beverage.imageUrl} alt={beverage.name} /> : <div className="beverage-image-placeholder">No image</div>}
-      <div className="beverage-admin-content"><h2>{beverage.name}</h2><p>{beverage.description || "No description"}</p><span className={`availability-status ${beverage.isArchived ? "archived" : beverage.isAvailable ? "available" : "unavailable"}`}>{beverage.isArchived ? "ARCHIVED" : beverage.isAvailable ? "AVAILABLE" : "UNAVAILABLE"}</span></div>
-      <div className="admin-actions beverage-admin-actions"><button type="button" onClick={() => edit(beverage)}>Edit</button><button type="button" onClick={() => void toggleBeverage(beverage)}>{beverage.isArchived || !beverage.isAvailable ? "Mark Available" : "Mark Unavailable"}</button><button type="button" onClick={() => void remove(beverage)}>Delete</button></div>
-    </article>)}</div>
-
-    <section className="addon-availability-section" aria-labelledby="addon-features-heading"><h2 id="addon-features-heading">Add-on Features</h2>
-      <div className="admin-table-wrap"><table className="admin-table addon-availability-table"><thead><tr><th>Item</th><th>Status</th><th>Action</th></tr></thead><tbody>
-        {addOns.map((item) => <tr key={item.itemKey}><td data-label="Item">{addOnName(item)}</td><td data-label="Status"><span className={`availability-status ${item.isAvailable ? "available" : "unavailable"}`}>{item.isAvailable ? "AVAILABLE" : "UNAVAILABLE"}</span></td><td data-label="Action"><button type="button" disabled={busyAddon === item.itemKey} onClick={() => void toggleAddon(item)}>{busyAddon === item.itemKey ? "Saving…" : item.isAvailable ? "Mark Unavailable" : "Mark Available"}</button></td></tr>)}
-        {!addOns.length ? <tr><td colSpan={3}>No add-on features are configured.</td></tr> : null}
-      </tbody></table></div>
-    </section>
-
-    {modalOpen ? <div className="modal-backdrop"><div className="drink-modal" role="dialog" aria-modal="true"><h2>{editing ? `Edit ${editing.name}` : "Add Beverage"}</h2>
-      <label className="admin-field"><span>Name</span><input value={draft.name ?? ""} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-      <label className="admin-field"><span>Description</span><textarea rows={3} value={draft.description ?? ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-      <label className="admin-field"><span>{editing ? "Replace image" : "Upload image"}</span><input type="file" accept="image/*" onChange={(event) => setImage(event.target.files?.[0])} /></label>
-      <div className="modal-actions"><button className="hc-button hc-button-secondary" type="button" onClick={() => { setModalOpen(false); setEditing(null); setDraft(emptyDraft); }}>Cancel</button><button className="hc-button hc-button-primary" type="button" disabled={busy} onClick={() => void save()}>{busy ? "Saving..." : "Save"}</button></div>
+    {modalOpen ? <div className="modal-backdrop" role="presentation"><div className="drink-modal package-editor-modal" role="dialog" aria-modal="true" aria-labelledby="package-editor-title">
+      <div className="package-editor-heading"><div><p className="admin-eyebrow">Package Details</p><h2 id="package-editor-title">{editing ? `Edit ${editing.name}` : "Create Package"}</h2></div><button className="modal-close" type="button" aria-label="Close" onClick={() => setModalOpen(false)}>×</button></div>
+      <div className="admin-inline-fields"><label className="admin-field"><span>Package name</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label className="admin-field"><span>Level / type</span><select value={draft.level} onChange={(event) => setDraft({ ...draft, level: event.target.value as PackageLevel })}>{levelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label></div>
+      <label className="admin-field"><span>Brief description</span><textarea rows={3} value={draft.briefDescription} onChange={(event) => setDraft({ ...draft, briefDescription: event.target.value })} /></label>
+      <label className="admin-field"><span>Package price (RM)</span><input type="number" min="0" step="0.01" value={draft.price} onChange={(event) => setDraft({ ...draft, price: event.target.value })} /></label>
+      <section className="package-perk-editor"><div><h3>Included perks</h3><button type="button" onClick={() => setDraft((current) => ({ ...current, perks: [...current.perks, ""] }))}>+ Add Perk</button></div><p>Cup quantity is entered by the customer and is not a package perk.</p>
+        {draft.perks.map((perk, index) => <div className="package-perk-row" key={index}><input aria-label={`Perk ${index + 1}`} placeholder="e.g. Branded coffee cart" value={perk} onChange={(event) => updatePerk(index, event.target.value)} /><button type="button" aria-label={`Remove perk ${index + 1}`} onClick={() => setDraft((current) => ({ ...current, perks: current.perks.filter((_, perkIndex) => perkIndex !== index) }))}>Remove</button></div>)}
+        {!draft.perks.length ? <p className="package-perks-empty">No perks added. Use “Add Perk” to include one.</p> : null}
+      </section>
+      {error ? <p className="error">{error}</p> : null}<div className="modal-actions"><button className="hc-button hc-button-secondary" type="button" onClick={() => setModalOpen(false)} disabled={busy}>Cancel</button><button className="hc-button hc-button-primary" type="button" onClick={() => void save()} disabled={busy}>{busy ? "Saving..." : editing ? "Save Changes" : "Create Package"}</button></div>
     </div></div> : null}
-  </Card></main>;
+  </main>;
 }

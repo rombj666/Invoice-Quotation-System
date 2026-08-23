@@ -6,8 +6,6 @@ import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
-import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
-import { validateAndNormalizeDrinkSelections } from "../utils/drink-selection";
 
 export const quotationRoutes = Router();
 
@@ -212,8 +210,33 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (hasCartAddonConflict(incomingData.selectedAddons)) {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
-    const normalizedDrinks = await validateAndNormalizeDrinkSelections(incomingData);
-    if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
+    const selectedPackageId = String(incomingData.selectedPackageId ?? "").trim();
+    const selectedPackage = selectedPackageId
+      ? await prisma.quotationPackage.findUnique({ where: { id: selectedPackageId }, include: { perks: { orderBy: { displayOrder: "asc" } } } })
+      : null;
+    if (!selectedPackage) {
+      return res.status(400).json({ error: "Choose one of the available quotation packages." });
+    }
+    incomingData.selectedPackageId = selectedPackage.id;
+    incomingData.packageSnapshot = {
+      id: selectedPackage.id,
+      name: selectedPackage.name,
+      level: selectedPackage.level,
+      briefDescription: selectedPackage.briefDescription ?? undefined,
+      price: Number(selectedPackage.price),
+      perks: selectedPackage.perks.map((perk) => ({ id: perk.id, name: perk.name, displayOrder: perk.displayOrder }))
+    };
+    incomingData.selectedAddons = [];
+    incomingData.hasCupStickers = false;
+    incomingData.hasCupSleeves = false;
+    const normalizedData = {
+      ...incomingData,
+      drinkOrders: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, {}])),
+      drinkDistributionModeByDate: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, "HOUR_COFFEE_DECIDES"])),
+      excludedBeverageIdsByDate: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, []])),
+      beverageSnapshots: {},
+      letHourCoffeeDecideDrinks: true
+    };
     if (incomingData.anonymousSessionId) {
       const trackedSubmission = await prisma.quotationAnalyticsSession.findUnique({
         where: { anonymousSessionId: incomingData.anonymousSessionId },
@@ -235,9 +258,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         return res.json(toQuotationPayload(trackedSubmission.quotation));
       }
     }
-    await ensureProductAvailabilityDefaults();
-    const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-    const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
+    const pricedData = normalizedData;
     const pricing = calculatePricing(pricedData);
     const data = {
       ...pricedData,
@@ -411,7 +432,7 @@ quotationRoutes.post("/", async (req, res, next) => {
           lastActivityAt: submittedAt,
           startedAt: submittedAt,
           submittedAt,
-          lastStep: 7,
+          lastStep: 1,
           quotationId: quotation.id
         },
         update: { submittedAt, lastActivityAt: submittedAt, quotationId: quotation.id }

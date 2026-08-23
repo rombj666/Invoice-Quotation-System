@@ -146,6 +146,30 @@ export function getMachineRentalFee(serviceDates: ServiceDate[], drinkOrders: Dr
 export function calculatePricing(data: QuotationData): PricingBreakdown {
   const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && Boolean(data.serviceDuration);
   const totalCups = hasQuotationLevelSettings ? Number(data.totalCups) : data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
+  if (data.packageSnapshot && Number.isFinite(Number(data.packageSnapshot.price))) {
+    const subtotal = Number(data.packageSnapshot.price);
+    const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
+    const baristaPricing = getQuotationBaristaPricing(totalCups, data.serviceDuration ?? "HALF_DAY");
+    return {
+      totalCups,
+      baseAmount: subtotal,
+      requiredBaristas: baristaPricing.requiredBaristas,
+      extraBaristas: baristaPricing.extraBaristas,
+      extraBaristaFee: 0,
+      fullDayBaristaFeesByDate: [],
+      machineRentalFee: 0,
+      addonTotal: 0,
+      cupSleeveFee: 0,
+      cupStickerFee: 0,
+      extraServingHoursByDate: [],
+      extraServingHourRate: EXTRA_SERVING_HOUR_RATE,
+      extraServingHourFeeByDate: [],
+      totalExtraServingHourFee: 0,
+      subtotal,
+      discountAmount,
+      total: subtotal - discountAmount
+    };
+  }
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
   const quotationBaristaPricing = hasQuotationLevelSettings ? getQuotationBaristaPricing(totalCups, data.serviceDuration!) : null;
   const requiredBaristas = quotationBaristaPricing?.requiredBaristas ?? 0;

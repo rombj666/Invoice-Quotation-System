@@ -37,6 +37,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     : Math.max(0, ...data.serviceDates.map((date) => getBaristasNeeded(date)));
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const providedBeverageNames = getAllProvidedBeverageNames(data);
+  const selectedPackage = data.packageSnapshot;
   const providedBeveragesByDate = data.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(data, date.id) }));
   const quotationForSubmission: QuotationData = {
     ...data,
@@ -126,6 +127,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <div><span>Event address</span><strong>{data.fullAddress || data.location}</strong></div>
             <div><span>Total cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Service dates</span><strong>{data.serviceDates.length}</strong></div>
+            {selectedPackage ? <div><span>Package</span><strong>{selectedPackage.name}</strong></div> : null}
             {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
             {hasQuotationLevelSettings ? <div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div> : null}
             {hasQuotationLevelSettings ? <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div> : null}
@@ -142,12 +144,12 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           </table></div>}
         </div>
 
-        <div className="invoice-section"><h3>Selected Drinks</h3>{drinkSelection()}</div>
+        {selectedPackage ? <div className="invoice-section"><h3>Package Inclusions</h3><ul>{selectedPackage.perks.map((perk) => <li key={perk.id}>{perk.name}</li>)}</ul></div> : <div className="invoice-section"><h3>Selected Drinks</h3>{drinkSelection()}</div>}
 
         <table className="invoice-table invoice-item-table">
           <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
           <tbody>
-            <tr><td>Coffee Catering</td><td>{providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
+            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
             {hasQuotationLevelSettings && pricing.extraBaristaFee > 0 ? <tr><td>Extra Barista Fee</td><td>{pricing.extraBaristas} extra barista(s) · {quotationDurationLabel}</td><td className="number-cell">{pricing.extraBaristas}</td><td className="amount-cell">RM100.00</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
             {pricing.fullDayBaristaFeesByDate.map((entry) => <tr key={`full-day-${entry.serviceDateId}`}><td>Full-Day Barista Charge</td><td>{formatCompactDate(entry.date)} · {entry.cups} cups · {entry.baristas} barista(s)</td><td className="number-cell">{entry.baristas}</td><td className="amount-cell">RM100.00</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
             {!hasQuotationLevelSettings && !pricing.fullDayBaristaFeesByDate.length && pricing.extraBaristaFee > 0 ? <tr><td>Additional Barista Fee</td><td>Legacy service calculation</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}

@@ -214,17 +214,25 @@ export default function AdminQuotationDetailPage() {
           </section>
           <section>
             <h3>Service Dates</h3>
+            <p><strong>Total cups: {quotation.totalCups ?? quotation.serviceDates[0]?.cups ?? 0}</strong></p>
             {quotation.serviceDates.map((date) => (
               <p key={date.id}>
                 {formatDateLabel(date.serviceDate)} - {date.cups} cups - {date.durationMode ? getDurationLabel(date) : `${formatTime(date.startTime)} to ${formatTime(date.endTime)}`}
               </p>
             ))}
           </section>
-          <section>
+          {quotation.packageSnapshot ? <section>
+            <h3>Selected Package</h3>
+            <p><strong>{quotation.packageSnapshot.name}</strong> · {formatMoney(quotation.packageSnapshot.price)}</p>
+            {quotation.packageSnapshot.briefDescription ? <p>{quotation.packageSnapshot.briefDescription}</p> : null}
+            {quotation.packageSnapshot.perks.map((perk) => <p key={perk.id}>✓ {perk.name}</p>)}
+            {quotation.notes ? <p><strong>Customer notes:</strong> {quotation.notes}</p> : null}
+          </section> : null}
+          {!quotation.packageSnapshot ? <section>
             <h3>Drink Preferences</h3>
             {quotation.serviceDates.map((date) => <div key={date.id}><strong>{formatDateLabel(date.serviceDate)}</strong><p>Drinks provided: {getProvidedBeverageNames(quotation, date.id).join(", ") || "None"}</p></div>)}
-          </section>
-          <section>
+          </section> : null}
+          {!quotation.packageSnapshot ? <section>
             <h3>Add-ons</h3>
             {addonRows.map((addon) => (
               <p key={addon.name}>
@@ -233,10 +241,10 @@ export default function AdminQuotationDetailPage() {
             ))}
             {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-          </section>
+          </section> : null}
           <section>
             <h3>Pricing</h3>
-            <p>Base: {formatMoney(pricing.baseAmount)}</p>
+            <p>{quotation.packageSnapshot ? "Package price" : "Base"}: {formatMoney(pricing.baseAmount)}</p>
             {pricing.extraBaristaFee > 0 ? <p>{pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Extra barista fee"}: {formatMoney(pricing.extraBaristaFee)}</p> : null}
             {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}

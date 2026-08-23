@@ -60,6 +60,13 @@ enum AdminRole {
   STAFF
 }
 
+enum PackageLevel {
+  LOW_SPEC
+  MIDDLE_SPEC
+  HIGH_SPEC
+  CUSTOMIZED
+}
+
 model Customer {
   id             String      @id @default(cuid())
   name           String
@@ -410,4 +417,29 @@ model ProductAvailability {
 
   @@index([category])
   @@index([isAvailable])
+}
+
+model QuotationPackage {
+  id               String        @id @default(cuid())
+  name             String
+  level            PackageLevel  @unique
+  briefDescription String?
+  price            Decimal       @db.Decimal(10, 2)
+  perks            PackagePerk[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([level])
+}
+
+model PackagePerk {
+  id           String           @id @default(cuid())
+  packageId    String
+  package      QuotationPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  name         String
+  displayOrder Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([packageId, displayOrder])
 }

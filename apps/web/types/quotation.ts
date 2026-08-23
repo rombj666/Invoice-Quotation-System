@@ -44,6 +44,27 @@ export type QuotationAddon = {
   isIncluded?: boolean;
 };
 
+export type PackageLevel = "LOW_SPEC" | "MIDDLE_SPEC" | "HIGH_SPEC" | "CUSTOMIZED";
+
+export type PackagePerk = {
+  id: string;
+  name: string;
+  displayOrder: number;
+};
+
+export type QuotationPackage = {
+  id: string;
+  name: string;
+  level: PackageLevel;
+  briefDescription?: string;
+  price: number;
+  perks: PackagePerk[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt">;
+
 export type QuotationExtraCharge = {
   id: string;
   title: string;
@@ -106,6 +127,9 @@ export type QuotationData = {
   hasInvoice?: boolean;
   editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
   serviceDates: ServiceDate[];
+  selectedPackageId?: string;
+  packageSnapshot?: QuotationPackageSnapshot;
+  notes?: string;
   totalCups?: number;
   serviceDuration?: ServiceDurationMode;
   location: string;

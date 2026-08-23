@@ -8,7 +8,7 @@ const navigation = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/quotations", label: "Quotation List" },
   { href: "/admin/invoices", label: "Invoice List" },
-  { href: "/admin/product-availability", label: "Product Availability" }
+  { href: "/admin/product-availability", label: "Package Settings" }
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
