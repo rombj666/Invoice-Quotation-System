@@ -1,48 +1,57 @@
 import { PackageLevel, Prisma } from "@prisma/client";
+import {
+  CART_STYLE_LABELS,
+  PACKAGE_CODES,
+  PACKAGE_OPTION_LABELS,
+  PACKAGE_RULES,
+  type PackageCode
+} from "@hour-coffee/shared";
 import { Router } from "express";
 import { prisma } from "../utils/prisma";
 
 export const packageRoutes = Router();
 export const adminPackageRoutes = Router();
 
-const levels = Object.values(PackageLevel);
-const includePerks = { perks: { orderBy: { displayOrder: "asc" as const } } };
+const levelByCode: Record<PackageCode, PackageLevel> = {
+  CONFERENCE: PackageLevel.LOW_SPEC,
+  EXHIBITOR: PackageLevel.MIDDLE_SPEC,
+  BRAND_LAUNCH: PackageLevel.HIGH_SPEC,
+  CUSTOMIZE: PackageLevel.CUSTOMIZED
+};
 
-function serializePackage(item: any) {
-  return { ...item, price: Number(item.price) };
+const legacyNames = new Set(["Low Spec", "Middle Spec", "High Spec", "Customized Package"]);
+
+function isPackageCode(value: string): value is PackageCode {
+  return PACKAGE_CODES.includes(value as PackageCode);
 }
 
-function parsePackageInput(body: any) {
-  const name = String(body.name ?? "").trim();
-  const level = String(body.level ?? "") as PackageLevel;
-  const briefDescription = String(body.briefDescription ?? "").trim() || null;
-  const price = Number(body.price);
-  const rawPerks = Array.isArray(body.perks) ? body.perks : [];
-  const perks = rawPerks.map((perk: unknown) => String(perk).trim()).filter(Boolean);
-
-  if (!name) return { error: "Package name is required." } as const;
-  if (!levels.includes(level)) return { error: "Choose a valid package level." } as const;
-  if (!Number.isFinite(price) || price < 0 || !/^\d+(\.\d{1,2})?$/.test(String(body.price))) {
-    return { error: "Enter a valid non-negative package price with no more than 2 decimal places." } as const;
-  }
-  if (perks.some((perk: string) => /^(total\s+)?cups?(\s+quantity)?$/i.test(perk))) {
-    return { error: "Cups are set by the customer and cannot be added as a package perk." } as const;
-  }
-  if (new Set(perks.map((perk: string) => perk.toLowerCase())).size !== perks.length) {
-    return { error: "Package perks must be unique." } as const;
-  }
-
-  return { data: { name, level, briefDescription, price, perks } } as const;
+function packageDisplay(code: PackageCode, stored?: { id: string; name: string; briefDescription: string | null }) {
+  const rule = PACKAGE_RULES[code];
+  const useStoredCopy = Boolean(stored && !legacyNames.has(stored.name));
+  return {
+    id: stored?.id ?? `fixed-${code.toLowerCase()}`,
+    code,
+    name: useStoredCopy ? stored!.name : rule.name,
+    shortDescription: useStoredCopy && stored!.briefDescription ? stored!.briefDescription : rule.shortDescription,
+    perDayMoq: rule.perDayMoq,
+    includedItems: rule.includedItems,
+    availableOptions: rule.availableOptions.map((option) => ({ code: option, label: PACKAGE_OPTION_LABELS[option] })),
+    availableCartStyles: rule.availableCartStyles.map((cart) => ({ code: cart, label: CART_STYLE_LABELS[cart] })),
+    cartSelectionRequired: rule.cartSelectionRequired,
+    defaultCart: rule.defaultCart
+  };
 }
 
-function packageConflict(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+export async function getFixedPackages() {
+  const stored = await prisma.quotationPackage.findMany({
+    select: { id: true, level: true, name: true, briefDescription: true }
+  });
+  return PACKAGE_CODES.map((code) => packageDisplay(code, stored.find((item) => item.level === levelByCode[code])));
 }
 
 packageRoutes.get("/", async (_req, res, next) => {
   try {
-    const items = await prisma.quotationPackage.findMany({ include: includePerks, orderBy: { level: "asc" } });
-    res.json(items.map(serializePackage));
+    res.json(await getFixedPackages());
   } catch (error) {
     next(error);
   }
@@ -50,66 +59,37 @@ packageRoutes.get("/", async (_req, res, next) => {
 
 adminPackageRoutes.get("/", async (_req, res, next) => {
   try {
-    const items = await prisma.quotationPackage.findMany({ include: includePerks, orderBy: { level: "asc" } });
-    res.json(items.map(serializePackage));
+    res.json(await getFixedPackages());
   } catch (error) {
     next(error);
   }
 });
 
-adminPackageRoutes.post("/", async (req, res, next) => {
-  const parsed = parsePackageInput(req.body);
-  if ("error" in parsed) return res.status(400).json({ error: parsed.error });
+adminPackageRoutes.put("/:code", async (req, res, next) => {
+  const codeText = String(req.params.code ?? "").toUpperCase();
+  if (!isPackageCode(codeText)) return res.status(404).json({ error: "Fixed package not found." });
+  const name = String(req.body.name ?? "").trim();
+  const shortDescription = String(req.body.shortDescription ?? "").trim();
+  if (!name) return res.status(400).json({ error: "Display title is required." });
+  if (!shortDescription) return res.status(400).json({ error: "Short description is required." });
+  if (name.length > 80 || shortDescription.length > 300) return res.status(400).json({ error: "Package display details are too long." });
+
   try {
-    const item = await prisma.quotationPackage.create({
-      data: {
-        name: parsed.data.name,
-        level: parsed.data.level,
-        briefDescription: parsed.data.briefDescription,
-        price: parsed.data.price,
-        perks: { create: parsed.data.perks.map((name: string, displayOrder: number) => ({ name, displayOrder })) }
-      },
-      include: includePerks
+    const level = levelByCode[codeText];
+    const stored = await prisma.quotationPackage.upsert({
+      where: { level },
+      create: { name, level, briefDescription: shortDescription, price: 0 },
+      update: { name, briefDescription: shortDescription },
+      select: { id: true, name: true, briefDescription: true }
     });
-    res.status(201).json(serializePackage(item));
+    res.json(packageDisplay(codeText, stored));
   } catch (error) {
-    if (packageConflict(error)) return res.status(409).json({ error: "A package already exists for this level. Edit or delete it first." });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return res.status(409).json({ error: "This package display title is already in use." });
+    }
     next(error);
   }
 });
 
-adminPackageRoutes.put("/:id", async (req, res, next) => {
-  const parsed = parsePackageInput(req.body);
-  if ("error" in parsed) return res.status(400).json({ error: parsed.error });
-  try {
-    const item = await prisma.quotationPackage.update({
-      where: { id: req.params.id },
-      data: {
-        name: parsed.data.name,
-        level: parsed.data.level,
-        briefDescription: parsed.data.briefDescription,
-        price: parsed.data.price,
-        perks: {
-          deleteMany: {},
-          create: parsed.data.perks.map((name: string, displayOrder: number) => ({ name, displayOrder }))
-        }
-      },
-      include: includePerks
-    });
-    res.json(serializePackage(item));
-  } catch (error) {
-    if (packageConflict(error)) return res.status(409).json({ error: "A package already exists for this level." });
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return res.status(404).json({ error: "Package not found." });
-    next(error);
-  }
-});
-
-adminPackageRoutes.delete("/:id", async (req, res, next) => {
-  try {
-    await prisma.quotationPackage.delete({ where: { id: req.params.id } });
-    res.status(204).send();
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return res.status(404).json({ error: "Package not found." });
-    next(error);
-  }
-});
+adminPackageRoutes.post("/", (_req, res) => res.status(405).json({ error: "The four package types are fixed and cannot be created." }));
+adminPackageRoutes.delete("/:code", (_req, res) => res.status(405).json({ error: "Fixed package types cannot be deleted." }));

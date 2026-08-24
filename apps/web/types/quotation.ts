@@ -45,6 +45,34 @@ export type QuotationAddon = {
 };
 
 export type PackageLevel = "LOW_SPEC" | "MIDDLE_SPEC" | "HIGH_SPEC" | "CUSTOMIZED";
+export type PackageCode = "CONFERENCE" | "EXHIBITOR" | "BRAND_LAUNCH" | "CUSTOMIZE";
+export type CartStyle = "EQUIPMENT_CART" | "FOAM_BOARD_DISPLAY_CART";
+export type PackageOptionCode = "CUP_SLEEVES" | "LATTE_ART" | "FOAM_BOARD_STAND" | "CUSTOM_SYRUP";
+
+export type FixedPackageDisplay = {
+  id: string;
+  code: PackageCode;
+  name: string;
+  shortDescription: string;
+  perDayMoq: number;
+  includedItems: string[];
+  availableOptions: Array<{ code: PackageOptionCode; label: string }>;
+  availableCartStyles: Array<{ code: CartStyle; label: string }>;
+  cartSelectionRequired: boolean;
+  defaultCart?: CartStyle;
+};
+
+export type QuotationPricingPreview = {
+  valid: boolean;
+  validationMessages: string[];
+  finalTotal: number;
+  packageDisplay: FixedPackageDisplay;
+  selectedItems: string[];
+  averageCupsPerDay: number;
+  baristasPerDay: number;
+  standardServiceHours: 4 | 8;
+  extendedToEightHours: boolean;
+};
 
 export type PackagePerk = {
   id: string;
@@ -128,6 +156,11 @@ export type QuotationData = {
   editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
   serviceDates: ServiceDate[];
   selectedPackageId?: string;
+  packageCode?: PackageCode;
+  selectedDates?: string[];
+  extendToEightHours?: boolean;
+  cartStyle?: CartStyle;
+  selectedOptions?: PackageOptionCode[];
   packageSnapshot?: QuotationPackageSnapshot;
   notes?: string;
   totalCups?: number;
@@ -162,6 +195,13 @@ export type QuotationData = {
     subtotal: number;
     discountAmount: number;
     total: number;
+    cupRate?: number;
+    cupRevenue?: number;
+    sleeveCharge?: number;
+    selectionCharge?: number;
+    extensionLabor?: number;
+    preTravelSubtotal?: number;
+    travel?: number;
   };
   pricingBreakdown?: {
     requiredBaristas?: number;

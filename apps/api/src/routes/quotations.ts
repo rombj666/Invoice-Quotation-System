@@ -1,11 +1,22 @@
 import { Prisma, QuotationStatus } from "@prisma/client";
+import {
+  CART_STYLE_LABELS,
+  PACKAGE_OPTION_LABELS,
+  PACKAGE_RULES,
+  calculateQuotationPricing as calculateFixedPackagePricing,
+  validatePricingInput,
+  type CartStyle,
+  type PackageCode,
+  type PackageOptionCode,
+  type PricingInput as FixedPricingInput
+} from "@hour-coffee/shared";
 import { Router } from "express";
-import { calculatePricing, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
-import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
+import { getServiceHoursExact } from "../utils/pricing";
 import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
+import { getFixedPackages } from "./packages";
 
 export const quotationRoutes = Router();
 
@@ -128,9 +139,76 @@ function isQuotationNoConflict(error: unknown): boolean {
   return Array.isArray(target) ? target.includes("quotationNo") : String(target ?? "").includes("quotationNo");
 }
 
+function minimumServiceDateIso(now = new Date()): string {
+  const date = new Date(now);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 6);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseFixedPricingInput(body: any): { error?: string; discountCode?: string; input?: FixedPricingInput } {
+  const totalCups = Number(body.totalCups);
+  const selectedDates = Array.isArray(body.selectedDates)
+    ? body.selectedDates.map((value: unknown) => String(value))
+    : Array.isArray(body.serviceDates)
+      ? body.serviceDates.map((date: any) => String(date?.serviceDate ?? ""))
+      : [];
+  const discountCode = String(body.discountCode ?? "").trim().toUpperCase();
+  if (discountCode && discountCode !== "FIRST") return { error: "Invalid discount code." };
+  if (selectedDates.some((date: string) => date < minimumServiceDateIso())) {
+    return { error: "One or more event dates are unavailable. Please choose a date at least 6 days from today." };
+  }
+
+  const input: FixedPricingInput = {
+    totalCups,
+    selectedDates,
+    packageCode: String(body.packageCode ?? "") as PackageCode,
+    extendToEightHours: Boolean(body.extendToEightHours),
+    ...(body.cartStyle ? { cartStyle: String(body.cartStyle) as CartStyle } : {}),
+    selectedOptions: Array.isArray(body.selectedOptions) ? body.selectedOptions.map(String) as PackageOptionCode[] : [],
+    discountPercent: discountCode === "FIRST" ? 5 : 0
+  };
+  const validation = validatePricingInput(input);
+  if (!validation.valid) return { error: validation.validationMessages[0] ?? "Invalid quotation configuration." };
+  return { input: validation.normalizedInput, discountCode };
+}
+
+function publicPricingPreview(pricing: ReturnType<typeof calculateFixedPackagePricing>, packageDisplay: Awaited<ReturnType<typeof getFixedPackages>>[number]) {
+  const selectedItems = [
+    ...packageDisplay.includedItems,
+    ...(pricing.cartStyle ? [CART_STYLE_LABELS[pricing.cartStyle]] : []),
+    ...pricing.selectedOptions.map((option) => PACKAGE_OPTION_LABELS[option]),
+    ...(pricing.extendedToEightHours ? ["Extended 8-hour service"] : [])
+  ].filter((item, index, items) => items.indexOf(item) === index);
+  return {
+    valid: true,
+    validationMessages: [],
+    finalTotal: pricing.finalTotal,
+    packageDisplay,
+    selectedItems,
+    averageCupsPerDay: pricing.averageCupsPerDay,
+    baristasPerDay: pricing.baristasPerDay,
+    standardServiceHours: pricing.standardServiceHours,
+    extendedToEightHours: pricing.extendedToEightHours
+  };
+}
+
 quotationRoutes.get("/next-number", async (_req, res, next) => {
   try {
     res.json({ quotationNo: await getNextQuotationNo() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+quotationRoutes.post("/preview", async (req, res, next) => {
+  try {
+    const parsed = parseFixedPricingInput(req.body);
+    if (parsed.error || !parsed.input) return res.status(400).json({ valid: false, validationMessages: [parsed.error ?? "Invalid quotation configuration."] });
+    const pricing = calculateFixedPackagePricing(parsed.input);
+    const packageDisplay = (await getFixedPackages()).find((item) => item.code === pricing.packageCode);
+    if (!packageDisplay) return res.status(400).json({ valid: false, validationMessages: ["Choose a valid package."] });
+    res.json(publicPricingPreview(pricing, packageDisplay));
   } catch (error) {
     next(error);
   }
@@ -171,35 +249,19 @@ quotationRoutes.post("/", async (req, res, next) => {
       success: true,
       bytes: quotationPdfFile.buffer.length
     });
-    if (!Array.isArray(incomingData.serviceDates) || !incomingData.serviceDates.length) {
-      return res.status(400).json({ error: "Select at least one service date." });
-    }
-    const totalCups = Number(incomingData.totalCups);
-    if (!Number.isInteger(totalCups) || totalCups < 50) {
-      return res.status(400).json({ error: "Minimum order is 50 cups." });
-    }
-    const serviceDuration = incomingData.serviceDuration;
-    if (serviceDuration !== "HALF_DAY" && serviceDuration !== "FULL_DAY") {
-      return res.status(400).json({ error: "Choose Half Day or Full Day service duration." });
-    }
-    incomingData.totalCups = totalCups;
-    incomingData.serviceDuration = serviceDuration;
-    incomingData.serviceDates = incomingData.serviceDates.map((date: any) => ({
-      ...date,
-      cups: totalCups,
-      durationMode: serviceDuration,
-      startTime: "09:00",
-      endTime: serviceDuration === "FULL_DAY" ? "17:00" : "13:00"
-    }));
-    if (!hasValidServiceDates(incomingData.serviceDates)) {
-      return res.status(400).json({ error: "Select at least one valid service date." });
-    }
-    const discountCode = String(incomingData.discountCode ?? "").trim().toUpperCase();
-    if (discountCode && discountCode !== "FIRST") {
-      return res.status(400).json({ error: "Invalid discount code." });
-    }
-    incomingData.discountCode = discountCode;
-    incomingData.discountPercent = discountCode === "FIRST" ? 5 : 0;
+    const parsedPricing = parseFixedPricingInput(incomingData);
+    if (parsedPricing.error || !parsedPricing.input) return res.status(400).json({ error: parsedPricing.error ?? "Invalid quotation configuration." });
+    const pricing = calculateFixedPackagePricing(parsedPricing.input);
+    const packageDisplay = (await getFixedPackages()).find((item) => item.code === pricing.packageCode);
+    if (!packageDisplay) return res.status(400).json({ error: "Choose a valid package." });
+
+    const customerName = String(incomingData.customer?.name ?? "").trim();
+    const customerPhone = String(incomingData.customer?.phone ?? "").trim();
+    const customerEmail = String(incomingData.customer?.email ?? "").trim();
+    if (!customerName) return res.status(400).json({ error: "Customer full name is required." });
+    if (!/^01\d{8,9}$/.test(normalizePhone(customerPhone))) return res.status(400).json({ error: "Enter a valid Malaysian phone number." });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) return res.status(400).json({ error: "Enter a valid email address." });
+
     const selectedLocation = String(incomingData.location ?? "").trim();
     const resolvedEventAddress = selectedLocation.startsWith("Others")
       ? String(incomingData.fullAddress ?? selectedLocation).trim()
@@ -207,33 +269,64 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!resolvedEventAddress) {
       return res.status(400).json({ error: "Event address is required." });
     }
-    if (hasCartAddonConflict(incomingData.selectedAddons)) {
-      return res.status(400).json({ error: CART_SELECTION_ERROR });
-    }
-    const selectedPackageId = String(incomingData.selectedPackageId ?? "").trim();
-    const selectedPackage = selectedPackageId
-      ? await prisma.quotationPackage.findUnique({ where: { id: selectedPackageId }, include: { perks: { orderBy: { displayOrder: "asc" } } } })
-      : null;
-    if (!selectedPackage) {
-      return res.status(400).json({ error: "Choose one of the available quotation packages." });
-    }
-    incomingData.selectedPackageId = selectedPackage.id;
-    incomingData.packageSnapshot = {
-      id: selectedPackage.id,
-      name: selectedPackage.name,
-      level: selectedPackage.level,
-      briefDescription: selectedPackage.briefDescription ?? undefined,
-      price: Number(selectedPackage.price),
-      perks: selectedPackage.perks.map((perk) => ({ id: perk.id, name: perk.name, displayOrder: perk.displayOrder }))
-    };
-    incomingData.selectedAddons = [];
-    incomingData.hasCupStickers = false;
-    incomingData.hasCupSleeves = false;
+    const rule = PACKAGE_RULES[pricing.packageCode];
+    const selectedAddons = [
+      ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 100 }] : []),
+      ...pricing.selectedOptions.map((option) => ({
+        name: PACKAGE_OPTION_LABELS[option],
+        price: option === "LATTE_ART" ? 200 : option === "FOAM_BOARD_STAND" ? 80 : option === "CUSTOM_SYRUP" ? 100 : pricing.sleeveCharge
+      }))
+    ];
+    const serviceDuration = pricing.standardServiceHours === 8 || pricing.extendedToEightHours ? "FULL_DAY" : "HALF_DAY";
+    const serviceDates = pricing.selectedDates.map((serviceDate, index) => ({
+      id: `service-date-${index + 1}-${serviceDate}`,
+      serviceDate,
+      cups: Math.round(pricing.averageCupsPerDay),
+      durationMode: serviceDuration,
+      startTime: "09:00",
+      endTime: serviceDuration === "FULL_DAY" ? "17:00" : "13:00"
+    }));
     const normalizedData = {
       ...incomingData,
-      drinkOrders: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, {}])),
-      drinkDistributionModeByDate: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, "HOUR_COFFEE_DECIDES"])),
-      excludedBeverageIdsByDate: Object.fromEntries(incomingData.serviceDates.map((date: any) => [date.id, []])),
+      customer: { ...incomingData.customer, name: customerName, phone: customerPhone, email: customerEmail },
+      totalCups: pricing.totalCups,
+      selectedDates: pricing.selectedDates,
+      serviceDates,
+      serviceDuration,
+      packageCode: pricing.packageCode,
+      extendToEightHours: pricing.extendedToEightHours,
+      cartStyle: pricing.cartStyle,
+      selectedOptions: pricing.selectedOptions,
+      selectedPackageId: packageDisplay.id,
+      discountCode: parsedPricing.discountCode,
+      discountPercent: pricing.discountPercent,
+      packageSnapshot: {
+        id: packageDisplay.id,
+        name: packageDisplay.name,
+        level: pricing.packageCode,
+        briefDescription: packageDisplay.shortDescription,
+        price: pricing.subtotal,
+        perks: publicPricingPreview(pricing, packageDisplay).selectedItems.map((name, displayOrder) => ({ id: `${pricing.packageCode}-${displayOrder}`, name, displayOrder })),
+        packageCode: pricing.packageCode,
+        packageName: packageDisplay.name,
+        shortDescription: packageDisplay.shortDescription,
+        totalCups: pricing.totalCups,
+        selectedDates: pricing.selectedDates,
+        averageCupsPerDay: pricing.averageCupsPerDay,
+        baristasPerDay: pricing.baristasPerDay,
+        standardServiceHours: pricing.standardServiceHours,
+        extendedToEightHours: pricing.extendedToEightHours,
+        cartStyle: pricing.cartStyle,
+        selectedOptions: pricing.selectedOptions,
+        includedItems: packageDisplay.includedItems,
+        finalTotal: pricing.finalTotal
+      },
+      selectedAddons,
+      hasCupStickers: false,
+      hasCupSleeves: rule.sleevesIncluded || pricing.selectedOptions.includes("CUP_SLEEVES"),
+      drinkOrders: Object.fromEntries(serviceDates.map((date) => [date.id, {}])),
+      drinkDistributionModeByDate: Object.fromEntries(serviceDates.map((date) => [date.id, "HOUR_COFFEE_DECIDES"])),
+      excludedBeverageIdsByDate: Object.fromEntries(serviceDates.map((date) => [date.id, []])),
       beverageSnapshots: {},
       letHourCoffeeDecideDrinks: true
     };
@@ -259,23 +352,29 @@ quotationRoutes.post("/", async (req, res, next) => {
       }
     }
     const pricedData = normalizedData;
-    const pricing = calculatePricing(pricedData);
     const data = {
       ...pricedData,
       pricingSnapshot: {
         subtotal: pricing.subtotal,
         discountAmount: pricing.discountAmount,
-        total: pricing.total
+        total: pricing.finalTotal,
+        cupRate: pricing.cupRate,
+        cupRevenue: pricing.cupRevenue,
+        sleeveCharge: pricing.sleeveCharge,
+        selectionCharge: pricing.selectionCharge,
+        extensionLabor: pricing.extensionLabor,
+        preTravelSubtotal: pricing.preTravelSubtotal,
+        travel: pricing.travel
       },
       pricingBreakdown: {
-        requiredBaristas: pricing.requiredBaristas,
-        extraBaristas: pricing.extraBaristas,
-        extraBaristaFee: pricing.extraBaristaFee,
-        fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate,
-        extraServingHoursByDate: pricing.extraServingHoursByDate,
-        extraServingHourRate: pricing.extraServingHourRate,
-        extraServingHourFeeByDate: pricing.extraServingHourFeeByDate,
-        totalExtraServingHourFee: pricing.totalExtraServingHourFee
+        requiredBaristas: pricing.baristasPerDay,
+        extraBaristas: 0,
+        extraBaristaFee: 0,
+        fullDayBaristaFeesByDate: [],
+        extraServingHoursByDate: [],
+        extraServingHourRate: 0,
+        extraServingHourFeeByDate: [],
+        totalExtraServingHourFee: pricing.extensionLabor
       }
     };
 
@@ -340,7 +439,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         subtotalAmount: pricing.subtotal,
         discountPercent: data.discountPercent || 0,
         discountAmount: pricing.discountAmount,
-        totalAmount: pricing.total,
+        totalAmount: pricing.finalTotal,
         quotationPdfUrl: quotationPdfUpload?.fileUrl ?? null,
         quotationPdfPublicId: quotationPdfUpload?.cloudinaryPublicId ?? null,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
@@ -352,7 +451,7 @@ quotationRoutes.post("/", async (req, res, next) => {
             serviceStartTime: date.startTime,
             serviceEndTime: date.endTime,
             serviceHours: getServiceHoursExact(date),
-            baristaCount: pricing.requiredBaristas,
+            baristaCount: pricing.baristasPerDay,
             extraBaristaFee: 0,
             distributionMode: data.drinkDistributionModeByDate[date.id],
             drinks: {
@@ -372,16 +471,12 @@ quotationRoutes.post("/", async (req, res, next) => {
           }))
         },
         addons: {
-          create: [
-            ...data.selectedAddons.map((addon: any) => ({
+          create: data.selectedAddons.map((addon: any) => ({
               name: addon.name,
               price: addon.price || 0,
               isIncluded: !!addon.isIncluded,
               metadata: toJsonValue(addon)
-            })),
-            ...(data.hasCupStickers ? [{ name: "Custom Cup Stickers", price: pricing.cupStickerFee, isIncluded: false, metadata: toJsonValue(data.customizationOptions?.sticker ?? {}) }] : []),
-            ...(data.hasCupSleeves ? [{ name: "Custom Cup Sleeves", price: pricing.cupSleeveFee, isIncluded: false, metadata: toJsonValue(data.customizationOptions?.sleeve ?? {}) }] : [])
-          ]
+            }))
         }
         },
         include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }

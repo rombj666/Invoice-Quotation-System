@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run build --workspace @hour-coffee/shared",
     "dev": "tsx watch src/server.ts",
+    "prebuild": "npm run build --workspace @hour-coffee/shared",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
-    ,"test": "tsx --test tests/pricing.test.ts tests/drink-selection.test.ts tests/dashboard.test.ts tests/scope-contracts.test.ts"
+    "pretypecheck": "npm run build --workspace @hour-coffee/shared",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/pricing.test.ts tests/drink-selection.test.ts tests/dashboard.test.ts tests/scope-contracts.test.ts"
   },
   "dependencies": {
+    "@hour-coffee/shared": "*",
     "@prisma/client": "^6.1.0",
     "cloudinary": "^2.5.1",
     "cors": "^2.8.5",

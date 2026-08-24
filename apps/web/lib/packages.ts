@@ -1,12 +1,9 @@
-import type { PackageLevel, QuotationPackage } from "../types/quotation";
+import type { FixedPackageDisplay, PackageCode } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
 
 export type PackageInput = {
   name: string;
-  level: PackageLevel;
-  briefDescription?: string;
-  price: number;
-  perks: string[];
+  shortDescription: string;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -22,22 +19,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function loadQuotationPackages(): Promise<QuotationPackage[]> {
-  return request<QuotationPackage[]>("/api/packages");
+export function loadQuotationPackages(): Promise<FixedPackageDisplay[]> {
+  return request<FixedPackageDisplay[]>("/api/packages");
 }
 
-export function loadAdminPackages(): Promise<QuotationPackage[]> {
-  return request<QuotationPackage[]>("/api/admin/packages");
+export function loadAdminPackages(): Promise<FixedPackageDisplay[]> {
+  return request<FixedPackageDisplay[]>("/api/admin/packages");
 }
 
-export function createPackage(data: PackageInput): Promise<QuotationPackage> {
-  return request<QuotationPackage>("/api/admin/packages", { method: "POST", body: JSON.stringify(data) });
-}
-
-export function updatePackage(id: string, data: PackageInput): Promise<QuotationPackage> {
-  return request<QuotationPackage>(`/api/admin/packages/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(data) });
-}
-
-export function deletePackage(id: string): Promise<void> {
-  return request<void>(`/api/admin/packages/${encodeURIComponent(id)}`, { method: "DELETE" });
+export function updatePackage(code: PackageCode, data: PackageInput): Promise<FixedPackageDisplay> {
+  return request<FixedPackageDisplay>(`/api/admin/packages/${encodeURIComponent(code)}`, { method: "PUT", body: JSON.stringify(data) });
 }

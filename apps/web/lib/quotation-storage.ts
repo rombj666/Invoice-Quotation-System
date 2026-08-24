@@ -1,5 +1,5 @@
 import type { InvoiceDetails } from "../types/invoice";
-import type { PreviousQuotationSummary, QuotationData } from "../types/quotation";
+import type { PreviousQuotationSummary, QuotationData, QuotationPricingPreview } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
 import { getQuotationAnalyticsSessionId } from "./quotation-analytics";
 import { generatePdfBlob } from "./pdf-document";
@@ -52,6 +52,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function loadAllQuotations(): Promise<QuotationData[]> {
   return request<QuotationData[]>("/api/quotations");
+}
+
+export function previewQuotationPricing(data: Pick<QuotationData, "totalCups" | "serviceDates" | "packageCode" | "extendToEightHours" | "cartStyle" | "selectedOptions" | "discountCode">): Promise<QuotationPricingPreview> {
+  return request<QuotationPricingPreview>("/api/quotations/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      totalCups: data.totalCups,
+      selectedDates: data.serviceDates.map((date) => date.serviceDate),
+      packageCode: data.packageCode,
+      extendToEightHours: data.extendToEightHours,
+      cartStyle: data.cartStyle,
+      selectedOptions: data.selectedOptions,
+      discountCode: data.discountCode
+    })
+  });
 }
 
 export function saveQuotationLocally(data: QuotationData, quotationPdf: Blob): Promise<QuotationData> {
