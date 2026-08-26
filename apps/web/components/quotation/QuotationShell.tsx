@@ -19,10 +19,10 @@ const draftStorageKey = "hourCoffeeQuotationDraft";
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 
 const PACKAGE_ICONS: Record<PackageCode, string> = {
-  CONFERENCE: "☕",
-  EXHIBITOR: "◇",
-  BRAND_LAUNCH: "✦",
-  CUSTOMIZE: "＋"
+  CONFERENCE: "01",
+  EXHIBITOR: "02",
+  BRAND_LAUNCH: "03",
+  CUSTOMIZE: "+"
 };
 
 const CART_DESCRIPTIONS: Record<CartStyle, string> = {
@@ -144,6 +144,15 @@ export function QuotationShell() {
   }, [data.extendToEightHours, standardServiceHours]);
 
   useEffect(() => {
+    if (!selectedPackage || selectedPackage.code === "CUSTOMIZE") return;
+    setData((current) => {
+      if (current.packageCode !== selectedPackage.code) return current;
+      const isAlreadyFixed = !(current.selectedOptions?.length) && !current.extendToEightHours && current.cartStyle === selectedPackage.defaultCart;
+      return isAlreadyFixed ? current : { ...current, selectedOptions: [], extendToEightHours: false, cartStyle: selectedPackage.defaultCart };
+    });
+  }, [selectedPackage]);
+
+  useEffect(() => {
     if (step !== 1 || !data.packageCode) { setPreview(null); setPreviewError(""); return; }
     let cancelled = false;
     const timer = window.setTimeout(() => {
@@ -221,9 +230,14 @@ export function QuotationShell() {
 
   function selectPackage(item: FixedPackageDisplay) {
     setData((current) => {
-      const preservedOptions = (current.selectedOptions ?? []).filter((option) => item.availableOptions.some((available) => available.code === option));
-      const preservedCart = current.cartStyle && item.availableCartStyles.some((available) => available.code === current.cartStyle) ? current.cartStyle : item.defaultCart;
-      return { ...current, packageCode: item.code, selectedPackageId: item.id, selectedOptions: preservedOptions, cartStyle: preservedCart };
+      const isCustomize = item.code === "CUSTOMIZE";
+      const selectedOptions = isCustomize
+        ? (current.selectedOptions ?? []).filter((option) => item.availableOptions.some((available) => available.code === option))
+        : [];
+      const cartStyle = isCustomize && current.cartStyle && item.availableCartStyles.some((available) => available.code === current.cartStyle)
+        ? current.cartStyle
+        : item.defaultCart;
+      return { ...current, packageCode: item.code, selectedPackageId: item.id, selectedOptions, cartStyle, extendToEightHours: isCustomize ? current.extendToEightHours : false };
     });
     setError("");
   }
@@ -276,9 +290,6 @@ export function QuotationShell() {
     setError("");
   }
 
-  const selectedOptionLabels = selectedPackage?.availableOptions.filter((item) => data.selectedOptions?.includes(item.code)).map((item) => item.label) ?? [];
-  const selectedCartLabel = selectedPackage?.availableCartStyles.find((item) => item.code === data.cartStyle)?.label;
-
   return <main className="hc-page quotation-workspace">
     <Card className="quotation-flow-card">
       <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info & Event Details", "Choose, Review & Submit"]} />
@@ -313,41 +324,37 @@ export function QuotationShell() {
         {error ? <p className="error">{error}</p> : null}
         <div className="hc-nav-row quotation-primary-action"><Button type="button" onClick={validateBasicInfo}>Continue to Packages</Button></div>
       </div> : <div className="quotation-package-step">
-        <div className="step-intro package-step-intro"><div><p className="quotation-kicker">Four ways to serve</p><h1>Choose Your Package</h1><p className="step-copy">Choose the service package that best suits your event.</p></div><button type="button" onClick={() => setStep(0)}>Edit basic info</button></div>
-        {packagesLoading ? <div className="package-loading">Loading packages…</div> : null}
-        <div className="quotation-package-grid fixed-package-choice-grid">{packages.map((item) => {
-          const selected = item.code === data.packageCode;
-          return <button className={`quotation-package-card fixed-package-choice ${selected ? "selected" : ""}`} type="button" key={item.code} onClick={() => selectPackage(item)} aria-pressed={selected}>
-            <span className="package-card-icon" aria-hidden="true">{PACKAGE_ICONS[item.code]}</span>
-            <span className="package-card-copy"><small>{item.perDayMoq} cups / service day</small><strong>{item.name}</strong><em>{item.shortDescription}</em><b>{selected ? "Selected · View details below" : "View details"}</b></span>
-            <span className="package-card-check" aria-hidden="true">{selected ? "✓" : "→"}</span>
-          </button>;
-        })}</div>
+        <div className="step-intro package-step-intro"><div><p className="quotation-kicker">Choose your service</p><h1>Packages</h1><p className="step-copy">Select a package to see what is included.</p></div><button type="button" onClick={() => setStep(0)}>Edit event</button></div>
+        {packagesLoading ? <div className="package-loading">Loading packages...</div> : null}
+        <div className="package-selection-layout">
+          <div className="quotation-package-grid fixed-package-choice-grid" aria-label="Quotation packages">{packages.map((item) => {
+            const selected = item.code === data.packageCode;
+            return <button className={`quotation-package-card fixed-package-choice ${selected ? "selected" : ""}`} type="button" key={item.code} onClick={() => selectPackage(item)} aria-pressed={selected}>
+              <span className="package-card-icon" aria-hidden="true">{PACKAGE_ICONS[item.code]}</span>
+              <span className="package-card-copy"><small>{item.code === "CUSTOMIZE" ? "Flexible" : "Fixed package"}</small><strong>{item.name}</strong><b>{selected ? "Selected" : "View details"}</b></span>
+              <span className="package-card-check" aria-hidden="true">{selected ? "✓" : "→"}</span>
+            </button>;
+          })}</div>
 
-        {selectedPackage ? <section className="selected-package-details package-builder-panel">
-          <div className="package-builder-intro"><span className="quotation-kicker">Selected package</span><h2>{selectedPackage.name}</h2><p>{selectedPackage.shortDescription}</p><div className="service-rule-note"><strong>{averageCupsPerDay.toLocaleString("en-MY", { maximumFractionDigits: 2 })} average cups / day</strong><span>{standardServiceHours === 4 ? "Standard 4-hour service" : "Up to 8 hours of standard service included"}</span></div></div>
-          <div className="package-builder-controls">
-            <section className="package-option-group"><h3>Included automatically</h3><ul>{selectedPackage.includedItems.map((item) => <li key={item}><span>✓</span>{item}</li>)}</ul></section>
-            {selectedPackage.availableCartStyles.length ? <fieldset className="package-option-group package-radio-group"><legend>Cart Style</legend>{selectedPackage.availableCartStyles.map((cart) => <label className={data.cartStyle === cart.code ? "selected" : ""} key={cart.code}><input type="radio" name="cart-style" checked={data.cartStyle === cart.code} onChange={() => setData((current) => ({ ...current, cartStyle: cart.code }))} /><span><strong>{cart.label}</strong><small>{CART_DESCRIPTIONS[cart.code]}</small></span></label>)}</fieldset> : null}
-            {selectedPackage.availableOptions.length ? <section className="package-option-group"><h3>{selectedPackage.code === "CUSTOMIZE" ? "Branding & Experience" : "Optional features"}</h3><div className="package-checkbox-grid">{selectedPackage.availableOptions.map((option) => <label className={data.selectedOptions?.includes(option.code) ? "selected" : ""} key={option.code}><input type="checkbox" checked={data.selectedOptions?.includes(option.code) ?? false} onChange={() => toggleOption(option.code)} /><span>{option.label}</span></label>)}</div></section> : null}
-            <section className="package-option-group service-length-option"><h3>Service Length</h3>{standardServiceHours === 4 ? <label className={data.extendToEightHours ? "selected" : ""}><input type="checkbox" checked={Boolean(data.extendToEightHours)} onChange={(event) => setData((current) => ({ ...current, extendToEightHours: event.target.checked }))} /><span><strong>Extend service to 8 hours</strong><small>Extend the standard 4-hour service to a full 8-hour service.</small></span></label> : <p>Up to 8 hours of standard service is included for this event volume.</p>}</section>
-          </div>
-        </section> : <div className="package-selection-prompt">Select one package above to expand its inclusions and available choices.</div>}
-
-        {previewError ? <div className="warn-summary package-validation-message">{previewError}</div> : null}
-        <section className="quotation-final-review"><div className="quotation-final-summary"><span className="quotation-kicker">Your event</span><h2>Review &amp; Submit</h2><div className="final-review-grid">
-          <div><small>Name</small><strong>{data.customer.name}</strong></div>
-          <div><small>Total Cups</small><strong>{data.totalCups}</strong></div>
-          <div><small>Event Address</small><strong>{data.location}</strong></div>
-          <div><small>Event Dates</small><strong>{data.serviceDates.map((date) => displayDate(date.serviceDate)).join(", ")}</strong></div>
-          <div><small>Average Cups / Day</small><strong>{averageCupsPerDay.toLocaleString("en-MY", { maximumFractionDigits: 2 })}</strong></div>
-          <div><small>Package</small><strong>{selectedPackage?.name ?? "Choose a package"}</strong></div>
-          {selectedPackage ? <div className="final-review-notes"><small>Included</small><strong>{selectedPackage.includedItems.join(" · ")}</strong></div> : null}
-          {selectedCartLabel || selectedOptionLabels.length || data.extendToEightHours ? <div className="final-review-notes"><small>Selected Options</small><strong>{[selectedCartLabel, ...selectedOptionLabels, ...(data.extendToEightHours ? ["Extended 8-hour service"] : [])].filter(Boolean).join(" · ")}</strong></div> : null}
-          {data.notes ? <div className="final-review-notes"><small>Notes</small><strong>{data.notes}</strong></div> : null}
-        </div></div>
-          <aside className="quotation-total-panel"><small>Quotation Total</small><strong>{previewLoading ? "Updating…" : preview ? formatMoney(preview.finalTotal) : "—"}</strong>{data.discountPercent ? <span>FIRST code applied</span> : <span>Final bundled quotation total</span>}<Button type="button" onClick={() => void submit()} disabled={!preview || previewLoading || submitting}>{submitting ? "Submitting…" : "Submit Quotation"}</Button></aside>
-        </section>
+          {selectedPackage ? <section className="package-detail-panel" key={selectedPackage.code} aria-live="polite" aria-label={`${selectedPackage.name} package details`}>
+            <header className="package-detail-heading"><div><span>{selectedPackage.code === "CUSTOMIZE" ? "Flexible package" : "Fixed package"}</span><h2>{selectedPackage.name}</h2><p>{selectedPackage.shortDescription}</p></div><strong aria-label="Selected">✓</strong></header>
+            <div className={`package-detail-content ${selectedPackage.code === "CUSTOMIZE" ? "is-custom" : "is-fixed"}`}>
+              <section className="package-option-group package-inclusions"><h3>Included</h3><ul>{selectedPackage.includedItems.map((item) => <li key={item}><span>✓</span>{item}</li>)}</ul></section>
+              {selectedPackage.code === "CUSTOMIZE" ? <div className="package-builder-controls">
+                {selectedPackage.availableCartStyles.length ? <fieldset className="package-option-group package-radio-group"><legend>Cart</legend>{selectedPackage.availableCartStyles.map((cart) => <label className={data.cartStyle === cart.code ? "selected" : ""} key={cart.code}><input type="radio" name="cart-style" checked={data.cartStyle === cart.code} onChange={() => setData((current) => ({ ...current, cartStyle: cart.code }))} /><span><strong>{cart.label}</strong><small>{CART_DESCRIPTIONS[cart.code]}</small></span></label>)}</fieldset> : null}
+                {selectedPackage.availableOptions.length ? <section className="package-option-group"><h3>Extras</h3><div className="package-checkbox-grid">{selectedPackage.availableOptions.map((option) => <label className={data.selectedOptions?.includes(option.code) ? "selected" : ""} key={option.code}><input type="checkbox" checked={data.selectedOptions?.includes(option.code) ?? false} onChange={() => toggleOption(option.code)} /><span>{option.label}</span></label>)}</div></section> : null}
+                <section className="package-option-group service-length-option"><h3>Service</h3>{standardServiceHours === 4 ? <label className={data.extendToEightHours ? "selected" : ""}><input type="checkbox" checked={Boolean(data.extendToEightHours)} onChange={(event) => setData((current) => ({ ...current, extendToEightHours: event.target.checked }))} /><span><strong>Extend to 8 hours</strong><small>Full-day service.</small></span></label> : <p>Up to 8 hours included.</p>}</section>
+              </div> : null}
+            </div>
+            <div className="package-event-strip">
+              <div><small>Cups</small><strong>{data.totalCups}</strong></div>
+              <div><small>Dates</small><strong>{data.serviceDates.length}</strong></div>
+              <div><small>Event</small><strong title={data.location}>{data.location}</strong></div>
+            </div>
+            {previewError ? <div className="warn-summary package-validation-message">{previewError}</div> : null}
+            <footer className="package-total-bar"><div><small>Total</small><strong>{previewLoading ? "Updating..." : preview ? formatMoney(preview.finalTotal) : "—"}</strong><span>{data.discountPercent ? "FIRST applied" : "Bundled quotation"}</span></div><Button type="button" onClick={() => void submit()} disabled={!preview || previewLoading || submitting}>{submitting ? "Submitting..." : "Submit Quotation"}</Button></footer>
+          </section> : <section className="package-detail-panel package-detail-empty" aria-live="polite"><div><span className="package-empty-mark" aria-hidden="true">→</span><h2>Select a package</h2><p>Details and total will appear here.</p></div><footer className="package-total-bar"><div><small>Total</small><strong>—</strong></div><Button type="button" disabled>Choose a package</Button></footer></section>}
+        </div>
         {error ? <p className="error">{error}</p> : null}
         <div className="hc-nav-row package-back-row"><Button type="button" variant="secondary" onClick={() => setStep(0)}>Back</Button><button type="button" className="start-over-link" onClick={resetForm}>Start over</button></div>
       </div>}
@@ -356,7 +363,7 @@ export function QuotationShell() {
     <div className="print-document quotation-print-document"><div className="invoice-card quotation-card package-quotation-document" id="quotationPreview">
       <div className="invoice-header"><div><div className="invoice-title">QUOTATION</div><div className="invoice-meta"><div><span>Quotation No</span><strong>{activeQuotationNo}</strong></div><div><span>Quote Date</span><strong>{formatCompactDate(new Date())}</strong></div><div><span>Status</span><strong>Preview</strong></div></div></div><div className="invoice-brand">Hour Coffee</div></div>
       <div className="invoice-two-col"><div><span className="label-small">Prepared By</span><strong>HOUR COFFEE</strong><p>21, Jalan SS22/40, Damansara Jaya, 47400, Petaling Jaya, Selangor</p><p>contact@hourcoffee.com.my</p></div><div><span className="label-small">Prepared For</span><strong>{data.customer.name}</strong><p>{data.customer.phone}</p><p>{data.customer.email}</p></div></div>
-      <div className="invoice-section"><h3>Event Summary</h3><div className="invoice-summary-grid"><div><span>Event address</span><strong>{data.location}</strong></div><div><span>Total cups</span><strong>{data.totalCups}</strong></div><div><span>Average cups / day</span><strong>{averageCupsPerDay.toLocaleString("en-MY", { maximumFractionDigits: 2 })}</strong></div><div><span>Service dates</span><strong>{data.serviceDates.map((date) => displayDate(date.serviceDate)).join(", ")}</strong></div>{data.notes ? <div><span>Notes</span><strong>{data.notes}</strong></div> : null}</div></div>
+      <div className="invoice-section"><h3>Event Summary</h3><div className="invoice-summary-grid"><div><span>Event address</span><strong>{data.location}</strong></div><div><span>Total cups</span><strong>{data.totalCups}</strong></div><div><span>Service dates</span><strong>{data.serviceDates.map((date) => displayDate(date.serviceDate)).join(", ")}</strong></div>{data.notes ? <div><span>Notes</span><strong>{data.notes}</strong></div> : null}</div></div>
       <div className="invoice-section"><h3>Selected Package</h3><strong>{selectedPackage?.name ?? "—"}</strong><p>{selectedPackage?.shortDescription}</p><ul>{preview?.selectedItems.map((item) => <li key={item}>{item}</li>)}</ul></div>
       <div className="invoice-totals"><div className="final"><span>Total RM</span><strong>{formatMoney(preview?.finalTotal ?? 0)}</strong></div></div><footer>Prepared by Hour Coffee.</footer>
     </div></div>
