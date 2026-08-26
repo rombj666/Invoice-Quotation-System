@@ -92,6 +92,7 @@ export type PricingInput = {
   totalCups: number;
   selectedDates: string[];
   packageCode: PackageCode;
+  packageFeatures?: string[];
   extendToEightHours?: boolean;
   cartStyle?: CartStyle;
   selectedOptions?: PackageOptionCode[];
@@ -129,6 +130,26 @@ export type PricingValidation = {
   normalizedInput?: PricingInput;
 };
 
+export const CUP_TIERS = [
+  { minimumCups: 350, rate: 8 },
+  { minimumCups: 200, rate: 8.5 },
+  { minimumCups: 150, rate: 9 },
+  { minimumCups: 100, rate: 9.5 },
+  { minimumCups: 50, rate: 10 }
+] as const;
+
+export const SLEEVE_RATE = 0.5;
+export const SLEEVE_MIN_QTY = 200;
+export const TRAVEL_THRESHOLD = 1500;
+export const TRAVEL_LOW = 150;
+export const TRAVEL_HIGH = 250;
+export const FEATURE_PRICES = {
+  "special print latte art": 200,
+  "foam board display cart": 100,
+  "foam board stand": 80,
+  "customizable syrup drink": 100
+} as const;
+
 function isPackageCode(value: unknown): value is PackageCode {
   return PACKAGE_CODES.includes(value as PackageCode);
 }
@@ -142,11 +163,7 @@ function isPackageOption(value: unknown): value is PackageOptionCode {
 }
 
 export function getCupRate(totalCups: number): number {
-  if (totalCups >= 400) return 7.5;
-  if (totalCups >= 300) return 8;
-  if (totalCups >= 200) return 8.5;
-  if (totalCups >= 100) return 9;
-  return 10;
+  return CUP_TIERS.find((tier) => totalCups >= tier.minimumCups)?.rate ?? 10;
 }
 
 export function getAverageCupsPerDay(totalCups: number, serviceDayCount: number): number {
@@ -162,11 +179,11 @@ export function getStandardServiceHours(averageCupsPerDay: number): 4 | 8 {
 }
 
 export function calculateSleeveCharge(totalCups: number): number {
-  return Math.max(totalCups, 200) * 0.5;
+  return Math.max(totalCups, SLEEVE_MIN_QTY) * SLEEVE_RATE;
 }
 
 export function calculateTravel(preTravelSubtotal: number): number {
-  return preTravelSubtotal <= 1500 ? 150 : 250;
+  return preTravelSubtotal <= TRAVEL_THRESHOLD ? TRAVEL_LOW : TRAVEL_HIGH;
 }
 
 export function validatePricingInput(input: PricingInput): PricingValidation {
@@ -195,10 +212,28 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
   return {
     valid: messages.length === 0,
     validationMessages: messages,
-    ...(messages.length === 0 ? { normalizedInput: { totalCups: input.totalCups, selectedDates, packageCode: input.packageCode, extendToEightHours: Boolean(input.extendToEightHours), ...(cartStyle ? { cartStyle } : {}), selectedOptions, discountPercent } } : {})
+    ...(messages.length === 0 ? { normalizedInput: {
+      totalCups: input.totalCups,
+      selectedDates,
+      packageCode: input.packageCode,
+      packageFeatures: Array.isArray(input.packageFeatures) ? input.packageFeatures.map(String) : undefined,
+      extendToEightHours: Boolean(input.extendToEightHours),
+      ...(cartStyle ? { cartStyle } : {}),
+      selectedOptions,
+      discountPercent
+    } } : {})
   };
 }
 
+function normalizeFeatureName(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  return normalized === "custom syrup drink" ? "customizable syrup drink" : normalized;
+}
+
+/**
+ * FINAL APPROVED QUOTATION PRICING RULES.
+ * Do not change these rules as part of unrelated quotation, package, or UI work.
+ */
 export function calculateQuotationPricing(input: PricingInput): PricingResult {
   const validation = validatePricingInput(input);
   if (!validation.valid || !validation.normalizedInput) throw new Error(validation.validationMessages[0] ?? "Invalid quotation pricing input.");
@@ -206,20 +241,19 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   const normalized = validation.normalizedInput;
   const rule = PACKAGE_RULES[normalized.packageCode];
   const serviceDayCount = normalized.selectedDates.length;
-  const averageCupsPerDay = getAverageCupsPerDay(normalized.totalCups, serviceDayCount);
-  const baristasPerDay = getBaristasPerDay(averageCupsPerDay);
-  const standardServiceHours = normalized.packageCode === "CUSTOMIZE" ? 4 : getStandardServiceHours(averageCupsPerDay);
-  const extendedToEightHours = standardServiceHours === 4 && Boolean(normalized.extendToEightHours);
+  const packageFeatures = normalized.packageFeatures ?? rule.includedItems;
+  const selectedFeatureNames = [
+    ...packageFeatures,
+    ...(normalized.cartStyle ? [CART_STYLE_LABELS[normalized.cartStyle]] : []),
+    ...(normalized.selectedOptions ?? []).map((option) => PACKAGE_OPTION_LABELS[option])
+  ];
+  const featureKeys = new Set(selectedFeatureNames.map(normalizeFeatureName));
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
-  const sleeveCharge = rule.sleevesIncluded || normalized.selectedOptions?.includes("CUP_SLEEVES") ? calculateSleeveCharge(normalized.totalCups) : 0;
-  const selectionCharge =
-    (normalized.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? 100 : 0) +
-    (normalized.selectedOptions?.includes("LATTE_ART") ? 200 : 0) +
-    (normalized.selectedOptions?.includes("FOAM_BOARD_STAND") ? 80 : 0) +
-    (normalized.selectedOptions?.includes("CUSTOM_SYRUP") ? 100 : 0);
-  const extensionLabor = extendedToEightHours ? 80 * baristasPerDay * serviceDayCount : 0;
-  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge + extensionLabor;
+  const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;
+  const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0);
+  const extensionLabor = 0;
+  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge;
   const travel = calculateTravel(preTravelSubtotal);
   const subtotal = preTravelSubtotal + travel;
   const discountPercent = normalized.discountPercent ?? 0;
@@ -231,10 +265,11 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     totalCups: normalized.totalCups,
     selectedDates: normalized.selectedDates,
     serviceDayCount,
-    averageCupsPerDay,
-    baristasPerDay,
-    standardServiceHours,
-    extendedToEightHours,
+    // Legacy response fields remain for stored-payload compatibility; they do not drive pricing.
+    averageCupsPerDay: 0,
+    baristasPerDay: 1,
+    standardServiceHours: 4,
+    extendedToEightHours: false,
     ...(normalized.cartStyle ? { cartStyle: normalized.cartStyle } : {}),
     selectedOptions: normalized.selectedOptions ?? [],
     cupRate,

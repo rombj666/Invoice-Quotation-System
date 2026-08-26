@@ -52,6 +52,7 @@ function packageDisplay(code: PackageCode, stored?: StoredPackageDisplay) {
     code,
     name: useStoredCopy ? stored!.name : rule.name,
     shortDescription: useStoredCopy && stored!.briefDescription ? stored!.briefDescription : rule.shortDescription,
+    // Compatibility/admin value only; canonical customer quotation pricing does not use package basePrice.
     price: Number(stored?.price ?? 0),
     perDayMoq: rule.perDayMoq,
     includedItems,

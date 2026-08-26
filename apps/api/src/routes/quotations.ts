@@ -2,7 +2,6 @@ import { Prisma, QuotationStatus } from "@prisma/client";
 import {
   CART_STYLE_LABELS,
   PACKAGE_OPTION_LABELS,
-  PACKAGE_RULES,
   calculateQuotationPricing as calculateFixedPackagePricing,
   validatePricingInput,
   type CartStyle,
@@ -180,12 +179,10 @@ function publicPricingPreview(pricing: ReturnType<typeof calculateFixedPackagePr
     ...pricing.selectedOptions.map((option) => PACKAGE_OPTION_LABELS[option]),
     ...(pricing.extendedToEightHours ? ["Extended 8-hour service"] : [])
   ].filter((item, index, items) => items.indexOf(item) === index);
-  const configuredSubtotal = packageDisplay.price + (pricing.packageCode === "CUSTOMIZE" ? pricing.sleeveCharge + pricing.selectionCharge : 0);
-  const discountAmount = configuredSubtotal * (pricing.discountPercent / 100);
   return {
     valid: true,
     validationMessages: [],
-    finalTotal: configuredSubtotal - discountAmount,
+    finalTotal: pricing.finalTotal,
     packageDisplay,
     selectedItems,
     averageCupsPerDay: pricing.averageCupsPerDay,
@@ -207,9 +204,10 @@ quotationRoutes.post("/preview", async (req, res, next) => {
   try {
     const parsed = parseFixedPricingInput(req.body);
     if (parsed.error || !parsed.input) return res.status(400).json({ valid: false, validationMessages: [parsed.error ?? "Invalid quotation configuration."] });
-    const pricing = calculateFixedPackagePricing(parsed.input);
-    const packageDisplay = (await getFixedPackages()).find((item) => item.code === pricing.packageCode);
+    const packageDisplay = (await getFixedPackages()).find((item) => req.body.selectedPackageId ? item.id === String(req.body.selectedPackageId) : item.code === parsed.input!.packageCode);
     if (!packageDisplay) return res.status(400).json({ valid: false, validationMessages: ["Choose a valid package."] });
+    if (packageDisplay.code !== parsed.input.packageCode) return res.status(400).json({ valid: false, validationMessages: ["The selected package details do not match."] });
+    const pricing = calculateFixedPackagePricing({ ...parsed.input, packageFeatures: packageDisplay.includedItems });
     res.json(publicPricingPreview(pricing, packageDisplay));
   } catch (error) {
     next(error);
@@ -253,9 +251,10 @@ quotationRoutes.post("/", async (req, res, next) => {
     });
     const parsedPricing = parseFixedPricingInput(incomingData);
     if (parsedPricing.error || !parsedPricing.input) return res.status(400).json({ error: parsedPricing.error ?? "Invalid quotation configuration." });
-    const pricing = calculateFixedPackagePricing(parsedPricing.input);
-    const packageDisplay = (await getFixedPackages()).find((item) => item.code === pricing.packageCode);
+    const packageDisplay = (await getFixedPackages()).find((item) => incomingData.selectedPackageId ? item.id === String(incomingData.selectedPackageId) : item.code === parsedPricing.input!.packageCode);
     if (!packageDisplay) return res.status(400).json({ error: "Choose a valid package." });
+    if (packageDisplay.code !== parsedPricing.input.packageCode) return res.status(400).json({ error: "The selected package details do not match." });
+    const pricing = calculateFixedPackagePricing({ ...parsedPricing.input, packageFeatures: packageDisplay.includedItems });
 
     const customerName = String(incomingData.customer?.name ?? "").trim();
     const customerPhone = String(incomingData.customer?.phone ?? "").trim();
@@ -271,7 +270,6 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!resolvedEventAddress) {
       return res.status(400).json({ error: "Event address is required." });
     }
-    const rule = PACKAGE_RULES[pricing.packageCode];
     const selectedAddons = [
       ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 100 }] : []),
       ...pricing.selectedOptions.map((option) => ({
@@ -325,7 +323,7 @@ quotationRoutes.post("/", async (req, res, next) => {
       },
       selectedAddons,
       hasCupStickers: false,
-      hasCupSleeves: rule.sleevesIncluded || pricing.selectedOptions.includes("CUP_SLEEVES"),
+      hasCupSleeves: packageDisplay.includedItems.some((item) => item.trim().toLowerCase() === "standard cup sleeves") || pricing.selectedOptions.includes("CUP_SLEEVES"),
       drinkOrders: Object.fromEntries(serviceDates.map((date) => [date.id, {}])),
       drinkDistributionModeByDate: Object.fromEntries(serviceDates.map((date) => [date.id, "HOUR_COFFEE_DECIDES"])),
       excludedBeverageIdsByDate: Object.fromEntries(serviceDates.map((date) => [date.id, []])),

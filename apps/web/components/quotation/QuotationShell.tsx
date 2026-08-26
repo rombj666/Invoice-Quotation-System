@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { openCustomerQuotationWhatsApp } from "../../lib/contact";
-import { formatCompactDate, formatMoney } from "../../lib/formatters";
+import { formatMoney, formatShortDate } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
 import { trackQuotationAnalytics } from "../../lib/quotation-analytics";
 import { previewQuotationPricing } from "../../lib/quotation-storage";
@@ -84,6 +84,7 @@ export function QuotationShell() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<QuotationPricingPreview | null>(null);
+  const [packageTotals, setPackageTotals] = useState<Partial<Record<PackageCode, number>>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const minimumDate = useMemo(() => toLocalIsoDate(getMinimumSelectableDate()), []);
@@ -163,6 +164,25 @@ export function QuotationShell() {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [data.cartStyle, data.discountCode, data.extendToEightHours, data.packageCode, data.selectedOptions, data.serviceDates, data.totalCups, step]);
 
+  useEffect(() => {
+    if (step !== 1 || !displayPackages.length) return;
+    let cancelled = false;
+    Promise.all(displayPackages.map(async (item) => {
+      const cartStyle = item.code === "CUSTOMIZE" ? getCustomizeDefaultCart(item) : undefined;
+      const result = await previewQuotationPricing({
+        ...data,
+        packageCode: item.code,
+        selectedPackageId: item.id,
+        cartStyle,
+        selectedOptions: []
+      });
+      return [item.code, result.finalTotal] as const;
+    }))
+      .then((totals) => { if (!cancelled) setPackageTotals(Object.fromEntries(totals)); })
+      .catch(() => { if (!cancelled) setPackageTotals({}); });
+    return () => { cancelled = true; };
+  }, [data.discountCode, data.serviceDates, data.totalCups, displayPackages, step]);
+
   function setCustomer(field: "name" | "phone" | "email", value: string) {
     setData((current) => ({ ...current, customer: { ...current.customer, [field]: value } }));
   }
@@ -212,9 +232,16 @@ export function QuotationShell() {
     });
   }
 
-  function packagePrice(item: FixedPackageDisplay) {
+  function packagePrice(item: FixedPackageDisplay): number | undefined {
     if (item.code === data.packageCode && selectedPreview) return selectedPreview.finalTotal;
-    return item.price * (discountApplied ? 0.95 : 1);
+    return packageTotals[item.code];
+  }
+
+  function compactSelectedDates() {
+    if (data.serviceDates.length > 3) {
+      return `${data.serviceDates.slice(0, 3).map((date) => formatShortDate(date.serviceDate)).join(", ")} +${data.serviceDates.length - 3} more`;
+    }
+    return data.serviceDates.map((date) => formatShortDate(date.serviceDate)).join(", ") || "—";
   }
 
   function continueToWhatsApp() {
@@ -252,6 +279,7 @@ export function QuotationShell() {
           {displayPackages.map((item) => {
             const selected = item.code === data.packageCode;
             const isCustomize = item.code === "CUSTOMIZE";
+            const displayedPrice = packagePrice(item);
             return <article
               className={`package-column-card ${selected ? "selected" : ""} ${isCustomize ? "custom-package-column" : ""}`}
               key={item.code}
@@ -274,8 +302,8 @@ export function QuotationShell() {
                 <p>{item.shortDescription}</p>
               </header>
               <div className="package-column-price">
-                <small>{isCustomize && !selected ? "From" : "Total"}</small>
-                <strong>{selected && previewLoading ? "…" : formatMoney(packagePrice(item))}</strong>
+                <small>Estimated total</small>
+                <strong>{selected && previewLoading ? "…" : displayedPrice === undefined ? "—" : formatMoney(displayedPrice)}</strong>
               </div>
               <section className="package-column-inclusions" aria-label={`${item.name} inclusions`}>
                 <h3>Includes</h3>
@@ -300,25 +328,17 @@ export function QuotationShell() {
           })}
         </div>
 
-        <section className="package-review-panel" aria-live="polite">
-          <div className="package-review-copy">
-            <div className="package-review-heading"><span>Review</span><h2>Your quotation</h2></div>
-            <dl className="package-review-grid">
-              <div><dt>Total cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
-              <div><dt>Event dates</dt><dd>{data.serviceDates.map((date) => formatCompactDate(date.serviceDate)).join(", ") || "—"}</dd></div>
-              <div><dt>Event address</dt><dd>{data.location.trim() || "—"}</dd></div>
-              <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
-              {data.discountCode.trim() ? <div><dt>Discount</dt><dd>{data.discountCode}</dd></div> : null}
-              {data.notes?.trim() ? <div><dt>Notes</dt><dd>{data.notes}</dd></div> : null}
-            </dl>
-          </div>
-          <div className="package-review-total">
-            <span>Estimated total</span>
-            <strong>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</strong>
-            {discountApplied ? <small>FIRST · 5% off</small> : null}
-            <Button type="button" onClick={continueToWhatsApp} disabled={!selectedPackage || !selectedPreview || previewLoading}>Continue to WhatsApp</Button>
-          </div>
+        <section className="quotation-summary-card" aria-live="polite">
+          <div className="quotation-summary-heading"><span>Review</span><h2>Your quotation</h2></div>
+          <dl className="quotation-summary-row">
+            <div><dt>Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
+            <div><dt>Dates</dt><dd>{compactSelectedDates()}</dd></div>
+            <div><dt>Address</dt><dd title={data.location}>{data.location.trim() || "—"}</dd></div>
+            <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
+            <div className="quotation-summary-total"><dt>Total</dt><dd>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</dd>{discountApplied ? <small>FIRST · 5% off</small> : null}</div>
+          </dl>
         </section>
+        <div className="quotation-submit-action"><Button type="button" onClick={continueToWhatsApp} disabled={!selectedPackage || !selectedPreview || previewLoading}>Submit</Button></div>
         {previewError ? <p className="error">{previewError}</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>}

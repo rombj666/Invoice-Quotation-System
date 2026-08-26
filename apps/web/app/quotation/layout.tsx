@@ -5,7 +5,7 @@ export default function QuotationLayout({ children }: Readonly<{ children: React
   return (
     <div className="customer-flow">
       {children}
-      <ContactUsButton />
+      <ContactUsButton iconOnly />
     </div>
   );
 }
