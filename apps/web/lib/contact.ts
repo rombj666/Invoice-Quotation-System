@@ -1,6 +1,6 @@
 import type { InvoiceDetails } from "../types/invoice";
 import type { QuotationData } from "../types/quotation";
-import { formatCompactDate } from "./formatters";
+import { formatCompactDate, formatMoney } from "./formatters";
 import { HOUR_COFFEE_CONTACT_URL, HOUR_COFFEE_WHATSAPP_NUMBER } from "./contact-config";
 
 export const PARTNER_WHATSAPP_NUMBER = HOUR_COFFEE_WHATSAPP_NUMBER;
@@ -83,6 +83,46 @@ export function openPartnerWhatsApp(quotationOrInvoiceData: PartnerContactData) 
   const encodedMessage = encodeURIComponent(message);
   const url = `${HOUR_COFFEE_CONTACT_URL}?text=${encodedMessage}`;
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+type CustomerQuotationWhatsAppInput = {
+  quotation: QuotationData;
+  packageName: string;
+  estimatedTotal: number;
+};
+
+function valueOrDash(value: string | number | undefined | null): string {
+  if (value === undefined || value === null) return "-";
+  return String(value).trim() || "-";
+}
+
+export function buildCustomerQuotationWhatsAppMessage({ quotation, packageName, estimatedTotal }: CustomerQuotationWhatsAppInput): string {
+  const eventDates = quotation.serviceDates.length
+    ? quotation.serviceDates.map((date) => `- ${formatCompactDate(date.serviceDate)}`).join("\n")
+    : "-";
+
+  return `Hello Hour Coffee, I would like to request a quotation.
+
+Name: ${valueOrDash(quotation.customer.name)}
+Phone: ${valueOrDash(quotation.customer.phone)}
+Email: ${valueOrDash(quotation.customer.email)}
+Event Address: ${valueOrDash(quotation.location)}
+Total Cups: ${valueOrDash(quotation.totalCups)}
+Event Dates:
+${eventDates}
+
+Selected Package: ${valueOrDash(packageName)}
+Estimated Total: ${formatMoney(estimatedTotal)}
+
+Discount Code: ${valueOrDash(quotation.discountCode)}
+Notes: ${valueOrDash(quotation.notes)}
+
+Please contact me regarding this quotation. Thank you.`;
+}
+
+export function openCustomerQuotationWhatsApp(input: CustomerQuotationWhatsAppInput) {
+  const message = encodeURIComponent(buildCustomerQuotationWhatsAppMessage(input));
+  window.open(`${HOUR_COFFEE_CONTACT_URL}?text=${message}`, "_blank", "noopener,noreferrer");
 }
 
 export function normalizeMalaysiaWhatsAppNumber(phone: string | undefined | null): string {

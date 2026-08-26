@@ -46,7 +46,7 @@ export type QuotationAddon = {
 
 export type PackageLevel = "LOW_SPEC" | "MIDDLE_SPEC" | "HIGH_SPEC" | "CUSTOMIZED";
 export type PackageCode = "CONFERENCE" | "EXHIBITOR" | "BRAND_LAUNCH" | "CUSTOMIZE";
-export type CartStyle = "EQUIPMENT_CART" | "FOAM_BOARD_DISPLAY_CART";
+export type CartStyle = "NO_CART" | "EQUIPMENT_CART" | "FOAM_BOARD_DISPLAY_CART";
 export type PackageOptionCode = "CUP_SLEEVES" | "LATTE_ART" | "FOAM_BOARD_STAND" | "CUSTOM_SYRUP";
 
 export type FixedPackageDisplay = {
@@ -54,6 +54,7 @@ export type FixedPackageDisplay = {
   code: PackageCode;
   name: string;
   shortDescription: string;
+  price: number;
   perDayMoq: number;
   includedItems: string[];
   availableOptions: Array<{ code: PackageOptionCode; label: string }>;

@@ -67,7 +67,7 @@ export function previewQuotationPricing(data: Pick<QuotationData, "totalCups" | 
       extendToEightHours: data.extendToEightHours,
       cartStyle: data.cartStyle,
       selectedOptions: data.selectedOptions,
-      discountCode: data.discountCode
+      discountCode: data.discountCode.trim().toUpperCase() === "FIRST" ? "FIRST" : ""
     })
   });
 }

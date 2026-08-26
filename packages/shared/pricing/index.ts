@@ -1,7 +1,7 @@
 export const PACKAGE_CODES = ["CONFERENCE", "EXHIBITOR", "BRAND_LAUNCH", "CUSTOMIZE"] as const;
 export type PackageCode = (typeof PACKAGE_CODES)[number];
 
-export const CART_STYLES = ["EQUIPMENT_CART", "FOAM_BOARD_DISPLAY_CART"] as const;
+export const CART_STYLES = ["NO_CART", "EQUIPMENT_CART", "FOAM_BOARD_DISPLAY_CART"] as const;
 export type CartStyle = (typeof CART_STYLES)[number];
 
 export const PACKAGE_OPTION_CODES = ["CUP_SLEEVES", "LATTE_ART", "FOAM_BOARD_STAND", "CUSTOM_SYRUP"] as const;
@@ -69,7 +69,7 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     perDayMoq: 50,
     sleevesIncluded: false,
     cartSelectionRequired: true,
-    availableCartStyles: ["EQUIPMENT_CART", "FOAM_BOARD_DISPLAY_CART"],
+    availableCartStyles: ["NO_CART", "EQUIPMENT_CART", "FOAM_BOARD_DISPLAY_CART"],
     availableOptions: ["CUP_SLEEVES", "LATTE_ART", "FOAM_BOARD_STAND", "CUSTOM_SYRUP"],
     includedItems: STANDARD_INCLUDED
   }
@@ -83,6 +83,7 @@ export const PACKAGE_OPTION_LABELS: Record<PackageOptionCode, string> = {
 };
 
 export const CART_STYLE_LABELS: Record<CartStyle, string> = {
+  NO_CART: "No Cart",
   EQUIPMENT_CART: "Equipment Cart",
   FOAM_BOARD_DISPLAY_CART: "Foam Board Display Cart"
 };
@@ -178,9 +179,6 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
   if (messages.length || !isPackageCode(input.packageCode)) return { valid: false, validationMessages: messages };
 
   const rule = PACKAGE_RULES[input.packageCode];
-  const average = getAverageCupsPerDay(input.totalCups, selectedDates.length);
-  if (average < rule.perDayMoq) messages.push(`${rule.name} requires an average minimum of ${rule.perDayMoq} cups per service day.`);
-
   const requestedOptions = Array.isArray(input.selectedOptions) ? input.selectedOptions : [];
   const selectedOptions = [...new Set(requestedOptions.filter(isPackageOption))];
   if (selectedOptions.length !== requestedOptions.length || selectedOptions.some((option) => !rule.availableOptions.includes(option))) {
@@ -188,7 +186,6 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
   }
 
   let cartStyle = input.cartStyle;
-  if (input.packageCode === "BRAND_LAUNCH" && !cartStyle) cartStyle = rule.defaultCart;
   if (rule.cartSelectionRequired && !isCartStyle(cartStyle)) messages.push("Choose one cart style for Customize.");
   if (cartStyle && (!isCartStyle(cartStyle) || !rule.availableCartStyles.includes(cartStyle))) messages.push("The selected cart style is not available for this package.");
 
@@ -211,7 +208,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   const serviceDayCount = normalized.selectedDates.length;
   const averageCupsPerDay = getAverageCupsPerDay(normalized.totalCups, serviceDayCount);
   const baristasPerDay = getBaristasPerDay(averageCupsPerDay);
-  const standardServiceHours = getStandardServiceHours(averageCupsPerDay);
+  const standardServiceHours = normalized.packageCode === "CUSTOMIZE" ? 4 : getStandardServiceHours(averageCupsPerDay);
   const extendedToEightHours = standardServiceHours === 4 && Boolean(normalized.extendToEightHours);
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;

@@ -20,21 +20,41 @@ const levelByCode: Record<PackageCode, PackageLevel> = {
 };
 
 const legacyNames = new Set(["Low Spec", "Middle Spec", "High Spec", "Customized Package"]);
+const cartLabelByPersistedPerk = new Map([
+  ["Classic coffee cart setup", CART_STYLE_LABELS.EQUIPMENT_CART],
+  ["Branded coffee cart", CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART],
+  ["Premium branded cart setup", CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART]
+]);
+
+type StoredPackageDisplay = {
+  id: string;
+  name: string;
+  briefDescription: string | null;
+  price: Prisma.Decimal;
+  perks: Array<{ name: string }>;
+};
 
 function isPackageCode(value: string): value is PackageCode {
   return PACKAGE_CODES.includes(value as PackageCode);
 }
 
-function packageDisplay(code: PackageCode, stored?: { id: string; name: string; briefDescription: string | null }) {
+function packageDisplay(code: PackageCode, stored?: StoredPackageDisplay) {
   const rule = PACKAGE_RULES[code];
   const useStoredCopy = Boolean(stored && !legacyNames.has(stored.name));
+  const includedCart = code === "CUSTOMIZE"
+    ? undefined
+    : stored?.perks.map((perk) => cartLabelByPersistedPerk.get(perk.name)).find(Boolean);
+  const includedItems = includedCart && !rule.includedItems.includes(includedCart)
+    ? [rule.includedItems[0], includedCart, ...rule.includedItems.slice(1)]
+    : rule.includedItems;
   return {
     id: stored?.id ?? `fixed-${code.toLowerCase()}`,
     code,
     name: useStoredCopy ? stored!.name : rule.name,
     shortDescription: useStoredCopy && stored!.briefDescription ? stored!.briefDescription : rule.shortDescription,
+    price: Number(stored?.price ?? 0),
     perDayMoq: rule.perDayMoq,
-    includedItems: rule.includedItems,
+    includedItems,
     availableOptions: rule.availableOptions.map((option) => ({ code: option, label: PACKAGE_OPTION_LABELS[option] })),
     availableCartStyles: rule.availableCartStyles.map((cart) => ({ code: cart, label: CART_STYLE_LABELS[cart] })),
     cartSelectionRequired: rule.cartSelectionRequired,
@@ -44,7 +64,7 @@ function packageDisplay(code: PackageCode, stored?: { id: string; name: string; 
 
 export async function getFixedPackages() {
   const stored = await prisma.quotationPackage.findMany({
-    select: { id: true, level: true, name: true, briefDescription: true }
+    select: { id: true, level: true, name: true, briefDescription: true, price: true, perks: { select: { name: true } } }
   });
   return PACKAGE_CODES.map((code) => packageDisplay(code, stored.find((item) => item.level === levelByCode[code])));
 }
@@ -80,7 +100,7 @@ adminPackageRoutes.put("/:code", async (req, res, next) => {
       where: { level },
       create: { name, level, briefDescription: shortDescription, price: 0 },
       update: { name, briefDescription: shortDescription },
-      select: { id: true, name: true, briefDescription: true }
+      select: { id: true, name: true, briefDescription: true, price: true, perks: { select: { name: true } } }
     });
     res.json(packageDisplay(codeText, stored));
   } catch (error) {

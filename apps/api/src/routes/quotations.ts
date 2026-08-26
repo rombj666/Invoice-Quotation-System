@@ -180,10 +180,12 @@ function publicPricingPreview(pricing: ReturnType<typeof calculateFixedPackagePr
     ...pricing.selectedOptions.map((option) => PACKAGE_OPTION_LABELS[option]),
     ...(pricing.extendedToEightHours ? ["Extended 8-hour service"] : [])
   ].filter((item, index, items) => items.indexOf(item) === index);
+  const configuredSubtotal = packageDisplay.price + (pricing.packageCode === "CUSTOMIZE" ? pricing.sleeveCharge + pricing.selectionCharge : 0);
+  const discountAmount = configuredSubtotal * (pricing.discountPercent / 100);
   return {
     valid: true,
     validationMessages: [],
-    finalTotal: pricing.finalTotal,
+    finalTotal: configuredSubtotal - discountAmount,
     packageDisplay,
     selectedItems,
     averageCupsPerDay: pricing.averageCupsPerDay,
