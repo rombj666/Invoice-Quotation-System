@@ -135,6 +135,11 @@ export function QuotationShell() {
         if (hasValidCart && !current.extendToEightHours) return current;
         return { ...current, cartStyle: hasValidCart ? current.cartStyle : getCustomizeDefaultCart(selectedPackage), extendToEightHours: false };
       }
+      if (selectedPackage.code === "EXHIBITOR") {
+        const selectedOptions = (current.selectedOptions ?? []).filter((option) => selectedPackage.availableOptions.some((available) => available.code === option));
+        const isAlreadyExhibitor = selectedOptions.length === (current.selectedOptions?.length ?? 0) && !current.extendToEightHours && !current.cartStyle;
+        return isAlreadyExhibitor ? current : { ...current, selectedOptions, extendToEightHours: false, cartStyle: undefined };
+      }
       const isAlreadyFixed = !(current.selectedOptions?.length) && !current.extendToEightHours && !current.cartStyle;
       return isAlreadyFixed ? current : { ...current, selectedOptions: [], extendToEightHours: false, cartStyle: undefined };
     });
@@ -213,8 +218,11 @@ export function QuotationShell() {
     setPreviewLoading(true);
     setData((current) => {
       const isCustomize = item.code === "CUSTOMIZE";
-      const selectedOptions = isCustomize
-        ? (current.selectedOptions ?? []).filter((option) => item.availableOptions.some((available) => available.code === option))
+      const canSelectOptions = isCustomize || item.code === "EXHIBITOR";
+      const selectedOptions = canSelectOptions
+        ? item.code === "EXHIBITOR" && current.packageCode !== "EXHIBITOR"
+          ? []
+          : (current.selectedOptions ?? []).filter((option) => item.availableOptions.some((available) => available.code === option))
         : [];
       const cartStyle = isCustomize && current.cartStyle && item.availableCartStyles.some((available) => available.code === current.cartStyle)
         ? current.cartStyle
@@ -309,6 +317,13 @@ export function QuotationShell() {
                 <h3>Includes</h3>
                 <ul>{item.includedItems.map((included) => <li key={included}><span>✓</span>{included}</li>)}</ul>
               </section>
+
+              {item.code === "EXHIBITOR" && selected && item.availableOptions.length ? <div className="package-column-custom-controls" key={`${item.code}-controls`} onClick={(event) => event.stopPropagation()}>
+                <fieldset><legend>Optional add-on</legend>{item.availableOptions.map((option) => <label className={data.selectedOptions?.includes(option.code) ? "selected" : ""} key={option.code}>
+                  <input type="checkbox" checked={data.selectedOptions?.includes(option.code) ?? false} onChange={() => toggleOption(option.code)} />
+                  <span><strong>{option.label}</strong><small>+ RM200</small></span>
+                </label>)}</fieldset>
+              </div> : null}
 
               {isCustomize && selected ? <div className="package-column-custom-controls" key={`${item.code}-controls`} onClick={(event) => event.stopPropagation()}>
                 {item.availableCartStyles.length ? <fieldset><legend>Cart</legend>{item.availableCartStyles.map((cart) => <label className={data.cartStyle === cart.code ? "selected" : ""} key={cart.code}>

@@ -47,7 +47,7 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     sleevesIncluded: true,
     cartSelectionRequired: false,
     availableCartStyles: [],
-    availableOptions: [],
+    availableOptions: ["LATTE_ART"],
     includedItems: ["Coffee Catering", "Standard Tabletop Setup", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
   },
   BRAND_LAUNCH: {
@@ -59,7 +59,16 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     cartSelectionRequired: false,
     availableCartStyles: [],
     availableOptions: [],
-    includedItems: ["Coffee Catering", "Equipment Cart", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
+    includedItems: [
+      "Coffee Catering",
+      "Equipment Cart",
+      "Standard Cup Sleeves",
+      "Required Barista Team",
+      "Setup + Logistics",
+      "Foam Board Display Cart",
+      "Foam Board Stand",
+      "Customizable Syrup Drink"
+    ]
   },
   CUSTOMIZE: {
     code: "CUSTOMIZE",
