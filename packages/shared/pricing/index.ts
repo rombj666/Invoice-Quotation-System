@@ -47,7 +47,7 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     sleevesIncluded: true,
     cartSelectionRequired: false,
     availableCartStyles: [],
-    availableOptions: ["LATTE_ART"],
+    availableOptions: [],
     includedItems: ["Coffee Catering", "Standard Tabletop Setup", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
   },
   BRAND_LAUNCH: {
@@ -57,10 +57,9 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     perDayMoq: 200,
     sleevesIncluded: true,
     cartSelectionRequired: false,
-    defaultCart: "EQUIPMENT_CART",
-    availableCartStyles: ["EQUIPMENT_CART", "FOAM_BOARD_DISPLAY_CART"],
-    availableOptions: ["FOAM_BOARD_STAND", "CUSTOM_SYRUP"],
-    includedItems: ["Coffee Catering", "Standard Tabletop Setup", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
+    availableCartStyles: [],
+    availableOptions: [],
+    includedItems: ["Coffee Catering", "Equipment Cart", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
   },
   CUSTOMIZE: {
     code: "CUSTOMIZE",
@@ -131,10 +130,10 @@ export type PricingValidation = {
 };
 
 export const CUP_TIERS = [
-  { minimumCups: 350, rate: 8 },
+  { minimumCups: 400, rate: 7.5 },
+  { minimumCups: 300, rate: 8 },
   { minimumCups: 200, rate: 8.5 },
-  { minimumCups: 150, rate: 9 },
-  { minimumCups: 100, rate: 9.5 },
+  { minimumCups: 100, rate: 9 },
   { minimumCups: 50, rate: 10 }
 ] as const;
 

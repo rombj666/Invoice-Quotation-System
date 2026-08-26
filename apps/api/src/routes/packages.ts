@@ -20,10 +20,13 @@ const levelByCode: Record<PackageCode, PackageLevel> = {
 };
 
 const legacyNames = new Set(["Low Spec", "Middle Spec", "High Spec", "Customized Package"]);
-const cartLabelByPersistedPerk = new Map([
-  ["Classic coffee cart setup", CART_STYLE_LABELS.EQUIPMENT_CART],
-  ["Branded coffee cart", CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART],
-  ["Premium branded cart setup", CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART]
+const canonicalPaidPerkLabels = new Map([
+  ["standard cup sleeves", "Standard Cup Sleeves"],
+  ["special print latte art", "Special Print Latte Art"],
+  ["foam board display cart", "Foam Board Display Cart"],
+  ["foam board stand", "Foam Board Stand"],
+  ["customizable syrup drink", "Customizable Syrup Drink"],
+  ["custom syrup drink", "Customizable Syrup Drink"]
 ]);
 
 type StoredPackageDisplay = {
@@ -41,12 +44,10 @@ function isPackageCode(value: string): value is PackageCode {
 function packageDisplay(code: PackageCode, stored?: StoredPackageDisplay) {
   const rule = PACKAGE_RULES[code];
   const useStoredCopy = Boolean(stored && !legacyNames.has(stored.name));
-  const includedCart = code === "CUSTOMIZE"
-    ? undefined
-    : stored?.perks.map((perk) => cartLabelByPersistedPerk.get(perk.name)).find(Boolean);
-  const includedItems = includedCart && !rule.includedItems.includes(includedCart)
-    ? [rule.includedItems[0], includedCart, ...rule.includedItems.slice(1)]
-    : rule.includedItems;
+  const configuredPaidPerks = code === "CUSTOMIZE" ? [] : stored?.perks
+    .map((perk) => canonicalPaidPerkLabels.get(perk.name.trim().toLowerCase()))
+    .filter((perk): perk is string => Boolean(perk)) ?? [];
+  const includedItems = [...new Set([...rule.includedItems, ...configuredPaidPerks])];
   return {
     id: stored?.id ?? `fixed-${code.toLowerCase()}`,
     code,
