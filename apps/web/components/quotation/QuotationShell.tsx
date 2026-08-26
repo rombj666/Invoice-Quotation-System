@@ -76,6 +76,12 @@ function openNativeDatePicker(input: HTMLInputElement | null) {
   catch { input.focus(); input.click(); }
 }
 
+function getCustomizeDefaultCart(item: FixedPackageDisplay): CartStyle | undefined {
+  return item.availableCartStyles.find((cart) => cart.code === "EQUIPMENT_CART")?.code
+    ?? item.defaultCart
+    ?? item.availableCartStyles[0]?.code;
+}
+
 export function QuotationShell() {
   const router = useRouter();
   const newDateInputRef = useRef<HTMLInputElement>(null);
@@ -144,9 +150,13 @@ export function QuotationShell() {
   }, [data.extendToEightHours, standardServiceHours]);
 
   useEffect(() => {
-    if (!selectedPackage || selectedPackage.code === "CUSTOMIZE") return;
+    if (!selectedPackage) return;
     setData((current) => {
       if (current.packageCode !== selectedPackage.code) return current;
+      if (selectedPackage.code === "CUSTOMIZE") {
+        const hasValidCart = selectedPackage.availableCartStyles.some((cart) => cart.code === current.cartStyle);
+        return hasValidCart ? current : { ...current, cartStyle: getCustomizeDefaultCart(selectedPackage) };
+      }
       const isAlreadyFixed = !(current.selectedOptions?.length) && !current.extendToEightHours && current.cartStyle === selectedPackage.defaultCart;
       return isAlreadyFixed ? current : { ...current, selectedOptions: [], extendToEightHours: false, cartStyle: selectedPackage.defaultCart };
     });
@@ -236,7 +246,7 @@ export function QuotationShell() {
         : [];
       const cartStyle = isCustomize && current.cartStyle && item.availableCartStyles.some((available) => available.code === current.cartStyle)
         ? current.cartStyle
-        : item.defaultCart;
+        : isCustomize ? getCustomizeDefaultCart(item) : item.defaultCart;
       return { ...current, packageCode: item.code, selectedPackageId: item.id, selectedOptions, cartStyle, extendToEightHours: isCustomize ? current.extendToEightHours : false };
     });
     setError("");

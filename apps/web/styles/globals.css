@@ -2801,21 +2801,22 @@ p {
 .compact-date-error { margin-bottom: 0; }
 
 .package-selection-layout {
-  align-items: stretch;
+  align-items: start;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(310px, .72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(440px, .86fr) minmax(0, 1.14fr);
 }
 .fixed-package-choice-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(132px, 1fr));
+  grid-template-rows: repeat(2, 142px);
 }
 .fixed-package-choice {
   align-content: center;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  min-height: 132px;
-  overflow: hidden;
-  padding: 17px;
+  gap: 10px;
+  grid-template-columns: 40px minmax(0, 1fr) 26px;
+  height: 100%;
+  min-height: 142px;
+  padding: 14px;
   position: relative;
 }
 .package-card-icon {
@@ -2826,14 +2827,20 @@ p {
   display: inline-flex;
   font-size: 13px;
   font-weight: 800;
-  height: 42px;
+  height: 40px;
   justify-content: center;
   letter-spacing: .04em;
-  width: 42px;
+  width: 40px;
 }
 .fixed-package-choice.selected .package-card-icon { background: #dcefe2; color: #205d3a; }
 .fixed-package-choice .package-card-copy { gap: 4px; }
-.fixed-package-choice .package-card-copy strong { font-size: 19px; line-height: 1.1; }
+.fixed-package-choice .package-card-copy strong {
+  font-size: 18px;
+  line-height: 1.15;
+  min-height: 2.3em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .fixed-package-choice .package-card-copy b { color: #2d7a4f; font-size: 10px; margin-top: 5px; }
 .fixed-package-choice .package-card-check { height: 26px; width: 26px; }
 
@@ -2960,8 +2967,13 @@ p {
 .fixed-pricing-notice strong { color: #205d3a; }
 .fixed-pricing-notice span { color: #5e6f64; font-size: 12px; }
 
-@media (max-width: 820px) {
+@media (max-width: 920px) {
   .package-selection-layout,
+  .quotation-package-grid { grid-template-columns: 1fr; }
+  .fixed-package-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
   .quotation-package-grid,
   .admin-package-grid,
   .selected-package-details,

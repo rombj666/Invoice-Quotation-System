@@ -43,7 +43,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
+    const validationMessage = Array.isArray(payload?.validationMessages)
+      ? payload.validationMessages.find((message: unknown) => typeof message === "string" && message.trim())
+      : undefined;
+    throw new ApiRequestError(payload?.error ?? validationMessage ?? "Request failed", response.status, payload ?? undefined);
   }
 
   if (response.status === 204) return undefined as T;
