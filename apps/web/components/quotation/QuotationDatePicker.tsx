@@ -193,11 +193,11 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
 
       <aside className="quotation-selected-dates" aria-live="polite">
         <div><span>Selected dates</span><strong>{serviceDates.length || "—"}</strong></div>
-        {sideContent}
         {serviceDates.length ? <div className="quotation-date-chips">{serviceDates.map((date) => <span className="quotation-date-chip" key={date.id}>
           <strong>{formatDateLabel(date.serviceDate)}</strong>
           <button type="button" aria-label={`Remove ${formatDateLabel(date.serviceDate)}`} onClick={() => removeDate(date.id)}>×</button>
         </span>)}</div> : <p className="selected-dates-empty">Choose one or more dates from the calendar.</p>}
+        {sideContent}
         <button type="button" className="quotation-add-date" onClick={() => calendarRef.current?.focus()}>+ Add another date</button>
       </aside>
     </div>

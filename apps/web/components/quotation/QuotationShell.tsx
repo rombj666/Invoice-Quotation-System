@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { openCustomerQuotationWhatsApp } from "../../lib/contact";
-import { formatMoney, formatShortDate } from "../../lib/formatters";
+import { formatDateLabel, formatMoney } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
 import { getQuotationBaristaPricing } from "../../lib/pricing";
 import { trackQuotationAnalytics } from "../../lib/quotation-analytics";
@@ -98,6 +98,10 @@ export function QuotationShell() {
   const selectedPackage = useMemo(
     () => packages.find((item) => item.code === data.packageCode),
     [packages, data.packageCode]
+  );
+  const sortedServiceDates = useMemo(
+    () => [...data.serviceDates].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)),
+    [data.serviceDates]
   );
   const selectedPreview = preview?.packageDisplay.code === data.packageCode ? preview : null;
   const discountApplied = data.discountCode.trim().toUpperCase() === "FIRST";
@@ -209,6 +213,7 @@ export function QuotationShell() {
   }
 
   function setTotalCups(value: string) {
+    if (value && !/^\d+$/.test(value)) return;
     setData((current) => ({ ...current, totalCups: value === "" ? undefined : Number(value) }));
     setError("");
   }
@@ -262,13 +267,6 @@ export function QuotationShell() {
     return packageTotals[item.code];
   }
 
-  function compactSelectedDates() {
-    if (data.serviceDates.length > 3) {
-      return `${data.serviceDates.slice(0, 3).map((date) => formatShortDate(date.serviceDate)).join(", ")} +${data.serviceDates.length - 3} more`;
-    }
-    return data.serviceDates.map((date) => formatShortDate(date.serviceDate)).join(", ") || "—";
-  }
-
   function continueToWhatsApp() {
     if (!selectedPackage) return setError("Choose a package first.");
     if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
@@ -293,7 +291,7 @@ export function QuotationShell() {
         <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
           <label className="quotation-cups-control">
             <span>Total cups</span>
-            <input type="number" min={50} step={1} required value={data.totalCups ?? ""} onChange={(event) => setTotalCups(event.target.value)} />
+            <input type="text" inputMode="numeric" pattern="[0-9]*" required value={data.totalCups ?? ""} onChange={(event) => setTotalCups(event.target.value)} />
             <small>Minimum 50 cups.</small>
           </label>
           <fieldset className="quotation-duration-control">
@@ -309,13 +307,6 @@ export function QuotationShell() {
               </label>
             </div>
           </fieldset>
-          <dl className="quotation-barista-summary">
-            <div><dt>Total cups</dt><dd>{Number.isFinite(data.totalCups) ? data.totalCups : "—"}</dd></div>
-            <div><dt>Selected duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
-            <div><dt>Baristas provided</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
-            <div><dt>Extra barista charge</dt><dd>{formatMoney(baristaPricing.extraBaristaFee)}</dd></div>
-          </dl>
-          {Number.isFinite(data.totalCups) && Number(data.totalCups) < 50 ? <p className="quotation-cups-error">Minimum order is 50 cups.</p> : null}
         </div>} />
 
         <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => setData((current) => ({ ...current, notes: event.target.value }))} />
@@ -392,11 +383,19 @@ export function QuotationShell() {
             <div><dt>Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
             <div><dt>Duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
             <div><dt>Baristas</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
-            <div><dt>Dates</dt><dd>{compactSelectedDates()}</dd></div>
-            <div><dt>Address</dt><dd title={data.location}>{data.location.trim() || "—"}</dd></div>
             <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
             <div className="quotation-summary-total"><dt>Total</dt><dd>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</dd>{discountApplied ? <small>FIRST · 5% off</small> : null}</div>
           </dl>
+          <div className="quotation-summary-details">
+            <div className="quotation-summary-detail">
+              <span>Event dates</span>
+              {sortedServiceDates.length ? <div className="quotation-summary-date-list">{sortedServiceDates.map((date) => <strong key={date.id}>{formatDateLabel(date.serviceDate)}</strong>)}</div> : <p>—</p>}
+            </div>
+            <div className="quotation-summary-detail">
+              <span>Event address</span>
+              <p>{data.location.trim() || "—"}</p>
+            </div>
+          </div>
         </section>
         <div className="quotation-submit-action"><Button type="button" onClick={continueToWhatsApp} disabled={!selectedPackage || !selectedPreview || previewLoading}>Submit</Button></div>
         {previewError ? <p className="error">{previewError}</p> : null}
