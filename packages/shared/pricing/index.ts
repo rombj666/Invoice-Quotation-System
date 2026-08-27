@@ -162,6 +162,7 @@ export const FEATURE_PRICES = {
   "foam board stand": 200,
   "customizable syrup drink": 100
 } as const;
+const CUSTOMIZE_EQUIPMENT_CART_PRICE = 200;
 
 function isPackageCode(value: unknown): value is PackageCode {
   return PACKAGE_CODES.includes(value as PackageCode);
@@ -271,7 +272,11 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
   const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;
-  const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0);
+  const customizeEquipmentCartCharge = normalized.packageCode === "CUSTOMIZE" && normalized.cartStyle === "EQUIPMENT_CART"
+    ? CUSTOMIZE_EQUIPMENT_CART_PRICE
+    : 0;
+  const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0)
+    + customizeEquipmentCartCharge;
   const extensionLabor = 0;
   const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge + extraBaristaFee;
   const travel = calculateTravel(preTravelSubtotal);

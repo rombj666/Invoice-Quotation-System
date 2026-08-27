@@ -262,6 +262,11 @@ export function QuotationShell() {
     });
   }
 
+  function selectCartStyle(cartStyle: CartStyle) {
+    setPreviewLoading(true);
+    setData((current) => ({ ...current, cartStyle }));
+  }
+
   function packagePrice(item: FixedPackageDisplay): number | undefined {
     if (item.code === data.packageCode && selectedPreview) return selectedPreview.finalTotal;
     return packageTotals[item.code];
@@ -361,7 +366,7 @@ export function QuotationShell() {
 
               {isCustomize && selected ? <div className="package-column-custom-controls" key={`${item.code}-controls`} onClick={(event) => event.stopPropagation()}>
                 {item.availableCartStyles.length ? <fieldset><legend>Cart</legend>{item.availableCartStyles.map((cart) => <label className={data.cartStyle === cart.code ? "selected" : ""} key={cart.code}>
-                  <input type="radio" name="cart-style" checked={data.cartStyle === cart.code} onChange={() => setData((current) => ({ ...current, cartStyle: cart.code }))} />
+                  <input type="radio" name="cart-style" checked={data.cartStyle === cart.code} onChange={() => selectCartStyle(cart.code)} />
                   <span><strong>{cart.label}</strong><small>{CART_DESCRIPTIONS[cart.code]}</small></span>
                 </label>)}</fieldset> : null}
                 {item.availableOptions.length ? <fieldset><legend>Extras</legend>{item.availableOptions.map((option) => <label className={data.selectedOptions?.includes(option.code) ? "selected" : ""} key={option.code}>
