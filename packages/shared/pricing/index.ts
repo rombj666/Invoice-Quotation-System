@@ -99,6 +99,7 @@ export const CART_STYLE_LABELS: Record<CartStyle, string> = {
 export type PricingInput = {
   totalCups: number;
   selectedDates: string[];
+  serviceDuration?: "HALF_DAY" | "FULL_DAY";
   packageCode: PackageCode;
   packageFeatures?: string[];
   extendToEightHours?: boolean;
@@ -113,8 +114,12 @@ export type PricingResult = {
   totalCups: number;
   selectedDates: string[];
   serviceDayCount: number;
+  serviceDuration: "HALF_DAY" | "FULL_DAY";
   averageCupsPerDay: number;
   baristasPerDay: number;
+  requiredBaristas: number;
+  extraBaristas: number;
+  extraBaristaFee: number;
   standardServiceHours: 4 | 8;
   extendedToEightHours: boolean;
   cartStyle?: CartStyle;
@@ -153,8 +158,8 @@ export const TRAVEL_LOW = 150;
 export const TRAVEL_HIGH = 250;
 export const FEATURE_PRICES = {
   "special print latte art": 200,
-  "foam board display cart": 100,
-  "foam board stand": 80,
+  "foam board display cart": 300,
+  "foam board stand": 200,
   "customizable syrup drink": 100
 } as const;
 
@@ -201,6 +206,7 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
   const selectedDates = [...new Set((input.selectedDates ?? []).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort();
   if (selectedDates.length !== (input.selectedDates ?? []).length) messages.push("Event dates must be valid and cannot be duplicated.");
   if (!isPackageCode(input.packageCode)) messages.push("Choose a valid package.");
+  if (input.serviceDuration && input.serviceDuration !== "HALF_DAY" && input.serviceDuration !== "FULL_DAY") messages.push("Choose Half Day or Full Day.");
   if (messages.length || !isPackageCode(input.packageCode)) return { valid: false, validationMessages: messages };
 
   const rule = PACKAGE_RULES[input.packageCode];
@@ -223,6 +229,7 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
     ...(messages.length === 0 ? { normalizedInput: {
       totalCups: input.totalCups,
       selectedDates,
+      serviceDuration: input.serviceDuration ?? "HALF_DAY",
       packageCode: input.packageCode,
       packageFeatures: Array.isArray(input.packageFeatures) ? input.packageFeatures.map(String) : undefined,
       extendToEightHours: Boolean(input.extendToEightHours),
@@ -256,12 +263,17 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     ...(normalized.selectedOptions ?? []).map((option) => PACKAGE_OPTION_LABELS[option])
   ];
   const featureKeys = new Set(selectedFeatureNames.map(normalizeFeatureName));
+  const serviceDuration = normalized.serviceDuration ?? "HALF_DAY";
+  const cupsPerBarista = serviceDuration === "FULL_DAY" ? 200 : 100;
+  const requiredBaristas = Math.ceil(normalized.totalCups / cupsPerBarista);
+  const extraBaristas = Math.max(requiredBaristas - 1, 0);
+  const extraBaristaFee = extraBaristas * 100;
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
   const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;
   const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0);
   const extensionLabor = 0;
-  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge;
+  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge + extraBaristaFee;
   const travel = calculateTravel(preTravelSubtotal);
   const subtotal = preTravelSubtotal + travel;
   const discountPercent = normalized.discountPercent ?? 0;
@@ -273,11 +285,15 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     totalCups: normalized.totalCups,
     selectedDates: normalized.selectedDates,
     serviceDayCount,
+    serviceDuration,
     // Legacy response fields remain for stored-payload compatibility; they do not drive pricing.
     averageCupsPerDay: 0,
-    baristasPerDay: 1,
-    standardServiceHours: 4,
-    extendedToEightHours: false,
+    baristasPerDay: requiredBaristas,
+    requiredBaristas,
+    extraBaristas,
+    extraBaristaFee,
+    standardServiceHours: serviceDuration === "FULL_DAY" ? 8 : 4,
+    extendedToEightHours: serviceDuration === "FULL_DAY",
     ...(normalized.cartStyle ? { cartStyle: normalized.cartStyle } : {}),
     selectedOptions: normalized.selectedOptions ?? [],
     cupRate,

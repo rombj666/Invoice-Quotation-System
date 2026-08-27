@@ -3115,6 +3115,55 @@ p {
 .quotation-selected-dates .quotation-date-chip { background: rgb(255 255 255 / 9%); border-color: rgb(255 255 255 / 16%); color: #fff; }
 .quotation-selected-dates .quotation-date-chip button { color: #a7deb9; }
 .quotation-selected-dates .selected-dates-empty { color: #c9c2bb; margin: 22px 0; }
+.quotation-event-controls {
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 18px 0;
+}
+.quotation-cups-control { display: grid; gap: 6px; }
+.quotation-cups-control > span,
+.quotation-duration-control legend {
+  color: #d3c3b3;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.quotation-cups-control input {
+  background: rgb(255 255 255 / 9%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  padding: 11px 12px;
+  width: 100%;
+}
+.quotation-cups-control input:focus { border-color: #8cdaa8; outline: 2px solid rgb(140 218 168 / 18%); }
+.quotation-cups-control small { color: #aaa199; font-size: 10px; }
+.quotation-duration-control { border: 0; margin: 0; padding: 0; }
+.quotation-duration-control > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin-top: 8px; }
+.quotation-duration-control label {
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 10px;
+}
+.quotation-duration-control label.active { background: #edf7f0; border-color: #8cdaa8; color: #225f3d; }
+.quotation-duration-control input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.quotation-duration-control label span { display: grid; gap: 2px; }
+.quotation-duration-control label strong { font-size: 12px; }
+.quotation-duration-control label small { color: #bdb4ac; font-size: 9px; line-height: 1.3; }
+.quotation-duration-control label.active small { color: #5f7868; }
+.quotation-barista-summary { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin: 0; }
+.quotation-barista-summary > div { background: rgb(255 255 255 / 6%); border-radius: 8px; padding: 9px; }
+.quotation-barista-summary dt { color: #bdb4ac; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.quotation-barista-summary dd { color: #fff; font-size: 12px; font-weight: 800; margin: 4px 0 0; }
+.quotation-cups-error { color: #ffd3c9; font-size: 11px; font-weight: 700; margin: -4px 0 0; }
 .quotation-add-date {
   background: transparent;
   border: 1px solid rgb(255 255 255 / 22%);
@@ -3153,6 +3202,30 @@ p {
   border-color: #2d7a4f;
   box-shadow: 0 18px 40px rgb(45 122 79 / 15%);
 }
+.package-column-card.most-picked {
+  background: linear-gradient(180deg, #fffaf0, #fffdf9 42%);
+  border-color: #c9a45e;
+  box-shadow: 0 16px 36px rgb(133 96 34 / 13%);
+}
+.package-column-card.most-picked:hover,
+.package-column-card.most-picked:focus-visible { border-color: #a9792d; box-shadow: 0 20px 42px rgb(133 96 34 / 18%); }
+.package-column-card.most-picked.selected { background: linear-gradient(180deg, #f3faf4, #fffaf0 46%, #fffdf9); border-color: #2d7a4f; }
+.package-most-picked-badge {
+  background: linear-gradient(135deg, #a9792d, #d6b56f);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 5px 12px rgb(109 73 19 / 18%);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .11em;
+  padding: 7px 11px;
+  position: absolute;
+  right: 18px;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 2;
+}
+.package-column-card.most-picked .package-column-heading { padding-top: 12px; }
 .package-column-card.selected::before {
   animation: package-column-reveal .42s cubic-bezier(.22, 1, .36, 1) both;
   background: #2d7a4f;
@@ -3291,7 +3364,7 @@ p {
 .quotation-summary-row {
   display: grid;
   gap: 0;
-  grid-template-columns: .55fr 1.35fr 1.55fr 1fr 1fr;
+  grid-template-columns: .5fr .7fr .55fr 1.25fr 1.4fr .85fr 1fr;
   margin: 0;
 }
 .quotation-summary-row > div {

@@ -5,9 +5,10 @@ import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { openCustomerQuotationWhatsApp } from "../../lib/contact";
 import { formatMoney, formatShortDate } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
+import { getQuotationBaristaPricing } from "../../lib/pricing";
 import { trackQuotationAnalytics } from "../../lib/quotation-analytics";
 import { previewQuotationPricing } from "../../lib/quotation-storage";
-import type { CartStyle, FixedPackageDisplay, PackageCode, PackageOptionCode, QuotationData, QuotationPricingPreview, ServiceDate } from "../../types/quotation";
+import type { CartStyle, FixedPackageDisplay, PackageCode, PackageOptionCode, QuotationData, QuotationPricingPreview, ServiceDate, ServiceDurationMode } from "../../types/quotation";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { TextArea, TextInput } from "../common/FormField";
@@ -48,6 +49,7 @@ function initialQuotation(): QuotationData {
     selectedOptions: [],
     extendToEightHours: false,
     totalCups: 50,
+    serviceDuration: "HALF_DAY",
     location: "",
     fullAddress: "",
     eventType: "Coffee Catering",
@@ -99,6 +101,8 @@ export function QuotationShell() {
   );
   const selectedPreview = preview?.packageDisplay.code === data.packageCode ? preview : null;
   const discountApplied = data.discountCode.trim().toUpperCase() === "FIRST";
+  const selectedDuration: ServiceDurationMode = data.serviceDuration === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
+  const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration);
 
   useEffect(() => {
     trackQuotationAnalytics("OPEN", 0);
@@ -107,7 +111,10 @@ export function QuotationShell() {
       try {
         const parsed = JSON.parse(savedDraft) as { version?: number; step?: number; data?: QuotationData };
         if (parsed.version === 7 && parsed.data?.customer && Array.isArray(parsed.data.serviceDates)) {
-          setData(parsed.data);
+          const savedDuration = parsed.data.serviceDuration === "FULL_DAY" || parsed.data.serviceDuration === "HALF_DAY"
+            ? parsed.data.serviceDuration
+            : parsed.data.serviceDates[0]?.durationMode === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
+          setData({ ...parsed.data, serviceDuration: savedDuration });
           setStep(parsed.step === 1 ? 1 : 0);
         }
       } catch {
@@ -167,7 +174,7 @@ export function QuotationShell() {
         .finally(() => { if (!cancelled) setPreviewLoading(false); });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [data.cartStyle, data.discountCode, data.extendToEightHours, data.packageCode, data.selectedOptions, data.serviceDates, data.totalCups, step]);
+  }, [data.cartStyle, data.discountCode, data.extendToEightHours, data.packageCode, data.selectedOptions, data.serviceDates, data.serviceDuration, data.totalCups, step]);
 
   useEffect(() => {
     if (step !== 1 || !displayPackages.length) return;
@@ -186,7 +193,7 @@ export function QuotationShell() {
       .then((totals) => { if (!cancelled) setPackageTotals(Object.fromEntries(totals)); })
       .catch(() => { if (!cancelled) setPackageTotals({}); });
     return () => { cancelled = true; };
-  }, [data.discountCode, data.serviceDates, data.totalCups, displayPackages, step]);
+  }, [data.discountCode, data.serviceDates, data.serviceDuration, data.totalCups, displayPackages, step]);
 
   function setCustomer(field: "name" | "phone" | "email", value: string) {
     setData((current) => ({ ...current, customer: { ...current.customer, [field]: value } }));
@@ -201,8 +208,18 @@ export function QuotationShell() {
     setError("");
   }
 
+  function setTotalCups(value: string) {
+    setData((current) => ({ ...current, totalCups: value === "" ? undefined : Number(value) }));
+    setError("");
+  }
+
+  function setServiceDuration(serviceDuration: ServiceDurationMode) {
+    setData((current) => ({ ...current, serviceDuration }));
+    setError("");
+  }
+
   function validateBasicInfo() {
-    if (!Number.isInteger(data.totalCups) || Number(data.totalCups) < 50) return setError("Enter at least 50 total cups.");
+    if (!Number.isInteger(data.totalCups) || Number(data.totalCups) < 50) return setError("Minimum order is 50 cups for both Half Day and Full Day.");
     if (!data.serviceDates.length) return setError("Choose at least one event date.");
     if (data.serviceDates.some((date) => !date.serviceDate || date.serviceDate < minimumDate)) return setError("One or more selected event dates are unavailable.");
     if (new Set(data.serviceDates.map((date) => date.serviceDate)).size !== data.serviceDates.length) return setError("Each event date can only be selected once.");
@@ -271,10 +288,35 @@ export function QuotationShell() {
           <TextInput label="Email Address" type="email" autoComplete="email" value={data.customer.email} onChange={(event) => setCustomer("email", event.target.value)} />
           <TextArea className="basic-info-address" label="Event Address" rows={3} value={data.location} onChange={(event) => setAddress(event.target.value)} />
           <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => setData((current) => ({ ...current, discountCode: event.target.value }))} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
-          <TextInput label="Total Cups" required type="number" min={50} step={1} value={data.totalCups ?? ""} onChange={(event) => setData((current) => ({ ...current, totalCups: event.target.value === "" ? undefined : Number(event.target.value) }))} hint="Minimum 50 cups." />
         </div>
 
-        <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} onChange={setServiceDates} />
+        <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
+          <label className="quotation-cups-control">
+            <span>Total cups</span>
+            <input type="number" min={50} step={1} required value={data.totalCups ?? ""} onChange={(event) => setTotalCups(event.target.value)} />
+            <small>Minimum 50 cups.</small>
+          </label>
+          <fieldset className="quotation-duration-control">
+            <legend>Service duration</legend>
+            <div>
+              <label className={selectedDuration === "HALF_DAY" ? "active" : ""}>
+                <input type="radio" name="service-duration" checked={selectedDuration === "HALF_DAY"} onChange={() => setServiceDuration("HALF_DAY")} />
+                <span><strong>Half Day</strong><small>Up to 4 hours</small></span>
+              </label>
+              <label className={selectedDuration === "FULL_DAY" ? "active" : ""}>
+                <input type="radio" name="service-duration" checked={selectedDuration === "FULL_DAY"} onChange={() => setServiceDuration("FULL_DAY")} />
+                <span><strong>Full Day</strong><small>More than 4 hours</small></span>
+              </label>
+            </div>
+          </fieldset>
+          <dl className="quotation-barista-summary">
+            <div><dt>Total cups</dt><dd>{Number.isFinite(data.totalCups) ? data.totalCups : "—"}</dd></div>
+            <div><dt>Selected duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
+            <div><dt>Baristas provided</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
+            <div><dt>Extra barista charge</dt><dd>{formatMoney(baristaPricing.extraBaristaFee)}</dd></div>
+          </dl>
+          {Number.isFinite(data.totalCups) && Number(data.totalCups) < 50 ? <p className="quotation-cups-error">Minimum order is 50 cups.</p> : null}
+        </div>} />
 
         <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => setData((current) => ({ ...current, notes: event.target.value }))} />
         {error ? <p className="error">{error}</p> : null}
@@ -289,7 +331,7 @@ export function QuotationShell() {
             const isCustomize = item.code === "CUSTOMIZE";
             const displayedPrice = packagePrice(item);
             return <article
-              className={`package-column-card ${selected ? "selected" : ""} ${isCustomize ? "custom-package-column" : ""}`}
+              className={`package-column-card ${selected ? "selected" : ""} ${isCustomize ? "custom-package-column" : ""} ${item.code === "BRAND_LAUNCH" ? "most-picked" : ""}`}
               key={item.code}
               role="radio"
               aria-checked={selected}
@@ -303,6 +345,7 @@ export function QuotationShell() {
                 }
               }}
             >
+              {item.code === "BRAND_LAUNCH" ? <span className="package-most-picked-badge">Most Picked</span> : null}
               <header className="package-column-heading">
                 <span className="package-column-index">{PACKAGE_ICONS[item.code]}</span>
                 <span className="package-column-kind">{isCustomize ? "Flexible" : "Fixed"}</span>
@@ -347,6 +390,8 @@ export function QuotationShell() {
           <div className="quotation-summary-heading"><span>Review</span><h2>Your quotation</h2></div>
           <dl className="quotation-summary-row">
             <div><dt>Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
+            <div><dt>Duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
+            <div><dt>Baristas</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
             <div><dt>Dates</dt><dd>{compactSelectedDates()}</dd></div>
             <div><dt>Address</dt><dd title={data.location}>{data.location.trim() || "—"}</dd></div>
             <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>

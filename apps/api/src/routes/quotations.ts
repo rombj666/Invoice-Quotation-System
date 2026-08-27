@@ -153,7 +153,9 @@ function parseFixedPricingInput(body: any): { error?: string; discountCode?: str
       ? body.serviceDates.map((date: any) => String(date?.serviceDate ?? ""))
       : [];
   const discountCode = String(body.discountCode ?? "").trim().toUpperCase();
+  const requestedDuration = String(body.serviceDuration ?? "HALF_DAY").toUpperCase();
   if (discountCode && discountCode !== "FIRST") return { error: "Invalid discount code." };
+  if (requestedDuration !== "HALF_DAY" && requestedDuration !== "FULL_DAY") return { error: "Choose Half Day or Full Day." };
   if (selectedDates.some((date: string) => date < minimumServiceDateIso())) {
     return { error: "One or more event dates are unavailable. Please choose a date at least 6 days from today." };
   }
@@ -161,6 +163,7 @@ function parseFixedPricingInput(body: any): { error?: string; discountCode?: str
   const input: FixedPricingInput = {
     totalCups,
     selectedDates,
+    serviceDuration: requestedDuration,
     packageCode: String(body.packageCode ?? "") as PackageCode,
     extendToEightHours: Boolean(body.extendToEightHours),
     ...(body.cartStyle ? { cartStyle: String(body.cartStyle) as CartStyle } : {}),
@@ -187,6 +190,9 @@ function publicPricingPreview(pricing: ReturnType<typeof calculateFixedPackagePr
     selectedItems,
     averageCupsPerDay: pricing.averageCupsPerDay,
     baristasPerDay: pricing.baristasPerDay,
+    requiredBaristas: pricing.requiredBaristas,
+    extraBaristas: pricing.extraBaristas,
+    extraBaristaFee: pricing.extraBaristaFee,
     standardServiceHours: pricing.standardServiceHours,
     extendedToEightHours: pricing.extendedToEightHours
   };
@@ -271,13 +277,13 @@ quotationRoutes.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Event address is required." });
     }
     const selectedAddons = [
-      ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 100 }] : []),
+      ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 300 }] : []),
       ...pricing.selectedOptions.map((option) => ({
         name: PACKAGE_OPTION_LABELS[option],
-        price: option === "LATTE_ART" ? 200 : option === "FOAM_BOARD_STAND" ? 80 : option === "CUSTOM_SYRUP" ? 100 : pricing.sleeveCharge
+        price: option === "LATTE_ART" ? 200 : option === "FOAM_BOARD_STAND" ? 200 : option === "CUSTOM_SYRUP" ? 100 : pricing.sleeveCharge
       }))
     ];
-    const serviceDuration = pricing.standardServiceHours === 8 || pricing.extendedToEightHours ? "FULL_DAY" : "HALF_DAY";
+    const serviceDuration = pricing.serviceDuration;
     const serviceDates = pricing.selectedDates.map((serviceDate, index) => ({
       id: `service-date-${index + 1}-${serviceDate}`,
       serviceDate,
@@ -367,9 +373,9 @@ quotationRoutes.post("/", async (req, res, next) => {
         travel: pricing.travel
       },
       pricingBreakdown: {
-        requiredBaristas: pricing.baristasPerDay,
-        extraBaristas: 0,
-        extraBaristaFee: 0,
+        requiredBaristas: pricing.requiredBaristas,
+        extraBaristas: pricing.extraBaristas,
+        extraBaristaFee: pricing.extraBaristaFee,
         fullDayBaristaFeesByDate: [],
         extraServingHoursByDate: [],
         extraServingHourRate: 0,

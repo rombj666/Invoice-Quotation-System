@@ -69,12 +69,12 @@ export function getServiceHoursBilled(date: ServiceDate): number {
 }
 
 export function getBaristasNeeded(date: ServiceDate): number {
-  if (date.durationMode) return Math.max(1, Math.ceil(date.cups / 100));
+  if (date.durationMode) return Math.max(1, Math.ceil(date.cups / (date.durationMode === "FULL_DAY" ? 200 : 100)));
   return Math.ceil(date.cups / (50 * getServiceHoursExact(date)));
 }
 
 export function getExtraBaristaFee(date: ServiceDate): number {
-  if (date.durationMode) return date.durationMode === "FULL_DAY" ? getBaristasNeeded(date) * 100 : 0;
+  if (date.durationMode) return Math.max(getBaristasNeeded(date) - 1, 0) * 100;
   const extraBaristas = Math.max(0, getBaristasNeeded(date) - 1);
   return extraBaristas * getServiceHoursBilled(date) * 30;
 }
@@ -149,13 +149,15 @@ export function calculatePricing(data: QuotationData): PricingBreakdown {
   if (data.packageSnapshot && Number.isFinite(Number(data.packageSnapshot.price))) {
     const subtotal = Number(data.packageSnapshot.price);
     const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
-    const baristaPricing = getQuotationBaristaPricing(totalCups, data.serviceDuration ?? "HALF_DAY");
+    const baristaPricing = hasQuotationLevelSettings
+      ? getQuotationBaristaPricing(totalCups, data.serviceDuration!)
+      : { requiredBaristas: 0, extraBaristas: 0, extraBaristaFee: 0 };
     return {
       totalCups,
-      baseAmount: subtotal,
+      baseAmount: subtotal - baristaPricing.extraBaristaFee,
       requiredBaristas: baristaPricing.requiredBaristas,
       extraBaristas: baristaPricing.extraBaristas,
-      extraBaristaFee: 0,
+      extraBaristaFee: baristaPricing.extraBaristaFee,
       fullDayBaristaFeesByDate: [],
       machineRentalFee: 0,
       addonTotal: 0,

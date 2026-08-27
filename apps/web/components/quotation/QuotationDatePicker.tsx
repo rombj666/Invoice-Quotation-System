@@ -1,6 +1,6 @@
 "use client";
 
-import type { PointerEvent } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { formatDateLabel } from "../../lib/formatters";
 import { toLocalIsoDate } from "../../lib/calendar";
@@ -10,6 +10,7 @@ type Props = {
   serviceDates: ServiceDate[];
   minimumDate: string;
   onChange: (dates: ServiceDate[]) => void;
+  sideContent?: ReactNode;
 };
 
 type DragSession = {
@@ -30,7 +31,7 @@ function newServiceDate(value: string): ServiceDate {
   return { id, serviceDate: value, cups: 0, startTime: "", endTime: "" };
 }
 
-export function QuotationDatePicker({ serviceDates, minimumDate, onChange }: Props) {
+export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideContent }: Props) {
   const datesRef = useRef(serviceDates);
   const calendarRef = useRef<HTMLDivElement>(null);
   const pointerSessionRef = useRef<DragSession | null>(null);
@@ -192,6 +193,7 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange }: Pro
 
       <aside className="quotation-selected-dates" aria-live="polite">
         <div><span>Selected dates</span><strong>{serviceDates.length || "—"}</strong></div>
+        {sideContent}
         {serviceDates.length ? <div className="quotation-date-chips">{serviceDates.map((date) => <span className="quotation-date-chip" key={date.id}>
           <strong>{formatDateLabel(date.serviceDate)}</strong>
           <button type="button" aria-label={`Remove ${formatDateLabel(date.serviceDate)}`} onClick={() => removeDate(date.id)}>×</button>

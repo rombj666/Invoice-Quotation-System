@@ -129,7 +129,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <div><span>Service dates</span><strong>{data.serviceDates.length}</strong></div>
             {selectedPackage ? <div><span>Package</span><strong>{selectedPackage.name}</strong></div> : null}
             {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
-            {hasQuotationLevelSettings ? <div><span>Required baristas</span><strong>{pricing.requiredBaristas}</strong></div> : null}
+            <div><span>Baristas Provided</span><strong>{totalBaristasRequired}</strong></div>
             {hasQuotationLevelSettings ? <div><span>Extra baristas</span><strong>{pricing.extraBaristas}</strong></div> : null}
             {hasQuotationLevelSettings ? <div><span>Extra barista fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
           </div>
@@ -192,7 +192,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           </div>
           <div className="review-summary-rows">
             <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
-            <div><span>Total Baristas Required</span><strong>{totalBaristasRequired}</strong></div>
+            <div><span>Baristas Provided</span><strong>{totalBaristasRequired}</strong></div>
             <div className="review-fee-start"><span>Coffee Catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
             <div><span>Extra Barista Fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
             <div><span>Add-on Fee</span><strong>{formatMoney(addonAmount)}</strong></div>

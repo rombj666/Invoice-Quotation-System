@@ -71,6 +71,9 @@ export type QuotationPricingPreview = {
   selectedItems: string[];
   averageCupsPerDay: number;
   baristasPerDay: number;
+  requiredBaristas: number;
+  extraBaristas: number;
+  extraBaristaFee: number;
   standardServiceHours: 4 | 8;
   extendedToEightHours: boolean;
 };

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
-import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
+import { calculateQuotationPricing, getBaristasNeeded, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
@@ -50,6 +50,10 @@ export default function AdminQuotationDetailPage() {
   }
 
   const pricing = calculateQuotationPricing(quotation);
+  const hasQuotationDuration = Number.isFinite(quotation.totalCups) && (quotation.serviceDuration === "HALF_DAY" || quotation.serviceDuration === "FULL_DAY");
+  const baristasProvided = hasQuotationDuration
+    ? pricing.requiredBaristas
+    : Math.max(0, ...quotation.serviceDates.map((date) => getBaristasNeeded(date)));
   const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
   const currentQuotation = quotation;
@@ -215,6 +219,7 @@ export default function AdminQuotationDetailPage() {
           <section>
             <h3>Service Dates</h3>
             <p><strong>Total cups: {quotation.totalCups ?? quotation.serviceDates[0]?.cups ?? 0}</strong></p>
+            <p><strong>Baristas Provided: {baristasProvided}</strong></p>
             {quotation.serviceDates.map((date) => (
               <p key={date.id}>
                 {formatDateLabel(date.serviceDate)} - {date.cups} cups - {date.durationMode ? getDurationLabel(date) : `${formatTime(date.startTime)} to ${formatTime(date.endTime)}`}

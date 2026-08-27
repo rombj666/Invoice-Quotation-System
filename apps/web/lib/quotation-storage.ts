@@ -57,11 +57,12 @@ export function loadAllQuotations(): Promise<QuotationData[]> {
   return request<QuotationData[]>("/api/quotations");
 }
 
-export function previewQuotationPricing(data: Pick<QuotationData, "totalCups" | "serviceDates" | "selectedPackageId" | "packageCode" | "extendToEightHours" | "cartStyle" | "selectedOptions" | "discountCode">): Promise<QuotationPricingPreview> {
+export function previewQuotationPricing(data: Pick<QuotationData, "totalCups" | "serviceDuration" | "serviceDates" | "selectedPackageId" | "packageCode" | "extendToEightHours" | "cartStyle" | "selectedOptions" | "discountCode">): Promise<QuotationPricingPreview> {
   return request<QuotationPricingPreview>("/api/quotations/preview", {
     method: "POST",
     body: JSON.stringify({
       totalCups: data.totalCups,
+      serviceDuration: data.serviceDuration,
       selectedDates: data.serviceDates.map((date) => date.serviceDate),
       selectedPackageId: data.selectedPackageId,
       packageCode: data.packageCode,
