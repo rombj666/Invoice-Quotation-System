@@ -380,7 +380,7 @@ export function QuotationShell() {
         <section className="quotation-summary-card" aria-live="polite">
           <div className="quotation-summary-heading"><span>Review</span><h2>Your quotation</h2></div>
           <dl className="quotation-summary-row">
-            <div><dt>Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
+            <div><dt>Total Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
             <div><dt>Duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
             <div><dt>Baristas</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
             <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
