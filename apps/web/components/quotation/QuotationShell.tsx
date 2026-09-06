@@ -127,7 +127,9 @@ export function QuotationShell() {
     }
 
     loadQuotationPackages()
-      .then(setPackages)
+      .then((items) => setPackages(items.map((item) =>
+        item.name.trim().toLowerCase() === "conference" ? { ...item, availableOptions: [] } : item
+      )))
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load packages."))
       .finally(() => { setPackagesLoading(false); setReady(true); });
   }, []);
