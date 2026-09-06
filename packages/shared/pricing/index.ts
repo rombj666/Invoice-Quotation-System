@@ -37,7 +37,14 @@ export const PACKAGE_RULES: Record<PackageCode, PackageRule> = {
     cartSelectionRequired: false,
     availableCartStyles: [],
     availableOptions: [],
-    includedItems: ["Coffee Catering", "Standard Tabletop Setup", "Standard Cup Sleeves", "Required Barista Team", "Setup + Logistics"]
+    includedItems: [
+      "Coffee Catering",
+      "Standard Tabletop Setup",
+      "Standard Cup Sleeves",
+      "Required Barista Team",
+      "Setup + Logistics",
+      "Special Print Latte Art"
+    ]
   },
   EXHIBITOR: {
     code: "EXHIBITOR",
@@ -260,6 +267,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   const packageFeatures = normalized.packageFeatures ?? rule.includedItems;
   const selectedFeatureNames = [
     ...packageFeatures,
+    ...(normalized.packageCode === "CONFERENCE" ? [PACKAGE_OPTION_LABELS.LATTE_ART] : []),
     ...(normalized.cartStyle ? [CART_STYLE_LABELS[normalized.cartStyle]] : []),
     ...(normalized.selectedOptions ?? []).map((option) => PACKAGE_OPTION_LABELS[option])
   ];

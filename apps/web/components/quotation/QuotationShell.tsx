@@ -327,7 +327,7 @@ export function QuotationShell() {
             const isCustomize = item.code === "CUSTOMIZE";
             const displayedPrice = packagePrice(item);
             return <article
-              className={`package-column-card ${selected ? "selected" : ""} ${isCustomize ? "custom-package-column" : ""} ${item.code === "BRAND_LAUNCH" ? "most-picked" : ""}`}
+              className={`package-column-card ${selected ? "selected" : ""} ${isCustomize ? "custom-package-column" : ""} ${item.code === "CONFERENCE" ? "most-picked" : ""}`}
               key={item.code}
               role="radio"
               aria-checked={selected}
@@ -341,7 +341,7 @@ export function QuotationShell() {
                 }
               }}
             >
-              {item.code === "BRAND_LAUNCH" ? <span className="package-most-picked-badge">Most Picked</span> : null}
+              {item.code === "CONFERENCE" ? <span className="package-most-picked-badge">Most Picked</span> : null}
               <header className="package-column-heading">
                 <span className="package-column-index">{PACKAGE_ICONS[item.code]}</span>
                 <span className="package-column-kind">{isCustomize ? "Flexible" : "Fixed"}</span>
