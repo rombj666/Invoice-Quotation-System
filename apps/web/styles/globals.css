@@ -4371,6 +4371,31 @@ p {
 .admin-quotation-trend circle { fill: #fff; stroke: #8c6b4a; stroke-width: 3; }
 .admin-quotation-trend text { fill: #493b31; font-size: 12px; font-weight: 800; }
 
+/* Lock Dates */
+.admin-lock-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, 1fr); gap: 28px; margin-top: 24px; }
+.admin-lock-calendar { align-self: start; border: 1px solid #e7e1db; border-radius: 12px; padding: 18px; }
+.admin-lock-calendar-heading { align-items: center; display: flex; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.admin-lock-calendar-heading h2 { font-size: 21px; margin: 0; }
+.admin-lock-calendar .admin-lock-day { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 62px; gap: 5px; }
+.admin-lock-day small { font-size: 8px; font-weight: 800; letter-spacing: .3px; }
+.admin-lock-day.locked { background: #eee6dd; color: #6c4d32; border-color: #c9b39c; }
+.admin-lock-day.selected { background: #8c6b4a; border-color: #8c6b4a; color: white; }
+.admin-lock-day.inspected { outline: 2px solid #493b31; outline-offset: -3px; }
+.admin-lock-information { background: #fcfaf7; border: 1px solid #e7e1db; border-radius: 12px; padding: 22px; min-width: 0; }
+.admin-lock-information h2 { font-size: 22px; }
+.admin-lock-information .admin-field { display: grid; gap: 7px; margin: 16px 0; }
+.admin-lock-information .admin-field input,
+.admin-lock-information .admin-field textarea { width: 100%; border: 1px solid #ded5cc; border-radius: 7px; background: white; padding: 10px; }
+.admin-lock-information dt { color: #756c63; font-size: 12px; margin-top: 16px; }
+.admin-lock-information dd { margin: 5px 0 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-lock-selected { color: #5c5148; line-height: 1.8; padding-left: 20px; }
+.admin-lock-badge { background: #eee6dd; border-radius: 5px; color: #6c4d32; font-size: 11px; font-weight: 800; padding: 5px 9px; }
+@media (max-width: 900px) {
+  .admin-lock-layout { grid-template-columns: minmax(0, 1fr); }
+  .admin-lock-calendar { padding: 12px; }
+  .admin-lock-calendar .admin-lock-day { min-height: 50px; }
+}
+
 /* Quotation Traffic */
 .admin-traffic-panel { overflow: hidden; }
 .admin-traffic-metrics { border: 1px solid #e7e1db; border-radius: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; }

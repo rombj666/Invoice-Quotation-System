@@ -106,7 +106,6 @@ model Quotation {
   invoices             Invoice[]
   internalNotes        InternalNote[]
   statusHistory        StatusHistory[]
-  analyticsSession     QuotationAnalyticsSession?
   createdAt            DateTime                   @default(now())
   updatedAt            DateTime                   @updatedAt
 
@@ -342,38 +341,40 @@ model StatusHistory {
   @@index([createdAt])
 }
 
-model QuotationAnalyticsSession {
-  id                 String     @id @default(cuid())
-  anonymousSessionId String     @unique
-  firstVisitedAt     DateTime   @default(now())
-  lastActivityAt     DateTime   @default(now())
-  startedAt          DateTime?
-  step1EngagedAt      DateTime?
-  step2VisitedAt      DateTime?
-  packageSelectedAt  DateTime?
-  submittedAt        DateTime?
-  lastStep           Int?
-  quotationId        String?    @unique
-  quotation          Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+model QuotationTrackingSession {
+  id                String   @id @default(cuid())
+  sessionId         String   @unique
+  visitorId         String
+  visitDate         DateTime @db.Date
+  firstVisitedAt    DateTime @default(now())
+  lastActivityAt    DateTime @default(now())
+  step1EngagedAt    DateTime?
+  step2VisitedAt    DateTime?
+  packageSelectedAt DateTime?
+  submittedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  @@index([firstVisitedAt])
-  @@index([lastActivityAt])
-  @@index([startedAt])
+  @@unique([visitorId, visitDate])
+  @@index([visitDate])
+  @@index([visitorId])
+  @@index([step1EngagedAt])
+  @@index([step2VisitedAt])
+  @@index([packageSelectedAt])
   @@index([submittedAt])
 }
 
-model PublicPageVisit {
-  id                 String   @id @default(cuid())
-  anonymousVisitorId String
-  visitDate          DateTime @db.Date
-  pagePath           String
-  createdAt          DateTime @default(now())
+model LockedDate {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  customerName String?
+  reference    String?
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@unique([anonymousVisitorId, visitDate, pagePath])
-  @@index([visitDate])
-  @@index([pagePath])
+  @@unique([date])
+  @@index([date])
 }
 
 model Beverage {

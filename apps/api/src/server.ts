@@ -5,7 +5,8 @@ import { adminProductAvailabilityRoutes } from "./routes/admin-product-availabil
 import { fileRoutes } from "./routes/files";
 import { invoiceRoutes } from "./routes/invoices";
 import { quotationRoutes } from "./routes/quotations";
-import { quotationAnalyticsRoutes } from "./routes/quotation-analytics";
+import { quotationTrackingRoutes } from "./routes/quotation-tracking";
+import { adminLockedDateRoutes, lockedDateRoutes } from "./routes/locked-dates";
 import { adminDashboardRoutes } from "./routes/admin-dashboard";
 import { adminRecordRoutes } from "./routes/admin-records";
 import { adminQuotationExtraChargeRoutes } from "./routes/admin-quotation-extra-charges";
@@ -24,7 +25,8 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/quotations", quotationRoutes);
-app.use("/api/quotation-analytics", quotationAnalyticsRoutes);
+app.use("/api/quotation-tracking", quotationTrackingRoutes);
+app.use("/api/locked-dates", lockedDateRoutes);
 app.use("/api/beverages", beverageRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/invoices", invoiceRoutes);
@@ -33,6 +35,7 @@ app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);
 app.use("/api/admin/beverages", adminBeverageRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
+app.use("/api/admin/lock-dates", adminLockedDateRoutes);
 app.use("/api/admin/quotations", adminQuotationExtraChargeRoutes);
 app.use("/api/admin", adminRecordRoutes);
 

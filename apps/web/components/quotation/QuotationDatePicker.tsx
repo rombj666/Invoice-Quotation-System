@@ -11,6 +11,8 @@ type Props = {
   minimumDate: string;
   onChange: (dates: ServiceDate[]) => void;
   sideContent?: ReactNode;
+  lockedDates?: string[];
+  availabilityLoading?: boolean;
 };
 
 type DragSession = {
@@ -31,7 +33,7 @@ function newServiceDate(value: string): ServiceDate {
   return { id, serviceDate: value, cups: 0, startTime: "", endTime: "" };
 }
 
-export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideContent }: Props) {
+export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideContent, lockedDates = [], availabilityLoading = false }: Props) {
   const datesRef = useRef(serviceDates);
   const calendarRef = useRef<HTMLDivElement>(null);
   const pointerSessionRef = useRef<DragSession | null>(null);
@@ -60,6 +62,10 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
   const minimumMonth = minimumDate.slice(0, 7);
   const currentMonth = toLocalIsoDate(calendarMonth).slice(0, 7);
 
+  function isUnavailable(value: string) {
+    return availabilityLoading || value < minimumDate || lockedDates.includes(value);
+  }
+
   function commit(next: ServiceDate[]) {
     const sorted = [...next].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
     datesRef.current = sorted;
@@ -67,12 +73,12 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
   }
 
   function addDate(value: string, dates = datesRef.current) {
-    if (!value || value < minimumDate || dates.some((date) => date.serviceDate === value)) return dates;
+    if (!value || isUnavailable(value) || dates.some((date) => date.serviceDate === value)) return dates;
     return [...dates, newServiceDate(value)];
   }
 
   function toggleDate(value: string) {
-    if (value < minimumDate) return;
+    if (isUnavailable(value)) return;
     const existing = datesRef.current.find((date) => date.serviceDate === value);
     commit(existing
       ? datesRef.current.filter((date) => date.id !== existing.id)
@@ -84,7 +90,7 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
   }
 
   function applyDragDate(value: string, mode: "select" | "remove") {
-    if (value < minimumDate) return;
+    if (isUnavailable(value)) return;
     const current = datesRef.current;
     const next = mode === "select"
       ? addDate(value, current)
@@ -93,7 +99,7 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
   }
 
   function startDrag(value: string, event: PointerEvent<HTMLButtonElement>) {
-    if (value < minimumDate || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (isUnavailable(value) || (event.pointerType === "mouse" && event.button !== 0)) return;
     const mode = datesRef.current.some((date) => date.serviceDate === value) ? "remove" : "select";
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerSessionRef.current = {
@@ -111,11 +117,11 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
   function dateUnderPointer(clientX: number, clientY: number) {
     const element = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-calendar-date]");
     const value = element?.dataset.calendarDate ?? "";
-    return value >= minimumDate ? value : null;
+    return value && !isUnavailable(value) ? value : null;
   }
 
   function handleCrossedDate(value: string, session: DragSession) {
-    if (session.handled.has(value) || value < minimumDate) return;
+    if (session.handled.has(value) || isUnavailable(value)) return;
     session.handled.add(value);
     applyDragDate(value, session.mode);
     setDragPreview({ mode: session.mode, dates: new Set(session.handled) });
@@ -170,7 +176,7 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
         <div className="hc-cal-grid">
           {calendarCells.map((value, index) => {
             if (!value) return <div className="hc-cal-cell hc-cal-empty" key={`empty-${index}`} />;
-            const unavailable = value < minimumDate;
+            const unavailable = isUnavailable(value);
             const selected = selectedValues.has(value);
             const previewed = !unavailable && Boolean(dragPreview?.dates.has(value));
             return <button
@@ -180,7 +186,7 @@ export function QuotationDatePicker({ serviceDates, minimumDate, onChange, sideC
               data-calendar-date={value}
               disabled={unavailable}
               aria-pressed={selected}
-              aria-label={`${Number(value.slice(-2))} ${calendarMonth.toLocaleDateString("en-US", { month: "long" })}${selected ? ", selected" : ""}`}
+              aria-label={`${Number(value.slice(-2))} ${calendarMonth.toLocaleDateString("en-US", { month: "long" })}${unavailable ? ", unavailable" : selected ? ", selected" : ""}`}
               onPointerDown={(event) => startDrag(value, event)}
               onPointerMove={trackPointerMove}
               onPointerUp={(event) => finishPointer(event)}

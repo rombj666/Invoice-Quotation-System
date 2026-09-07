@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../utils/prisma";
+import { malaysiaVisitDate } from "../services/quotation-tracking";
 
 export const adminDashboardRoutes = Router();
 
@@ -82,7 +83,7 @@ export function dashboardQuotationAnalytics(quotations: DashboardQuotation[], pe
 }
 
 type TrafficCounts = {
-  visitors: number;
+  sessions: number;
   step1Engaged: number;
   step2Visitors: number;
   packageSelected: number;
@@ -93,10 +94,8 @@ type TrafficCounts = {
 };
 
 type DashboardTrafficSession = {
+  visitDate: Date;
   firstVisitedAt: Date;
-  lastActivityAt: Date;
-  startedAt: Date | null;
-  lastStep: number | null;
   step1EngagedAt: Date | null;
   step2VisitedAt: Date | null;
   packageSelectedAt: Date | null;
@@ -104,7 +103,7 @@ type DashboardTrafficSession = {
 };
 
 function emptyTrafficCounts(): TrafficCounts {
-  return { visitors: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 };
+  return { sessions: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 };
 }
 
 function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from: Date, to: Date, now: Date) {
@@ -120,32 +119,28 @@ function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from
     }
   }
 
-  // Every milestone belongs to the session's first-visit cohort, counted once.
+  function count(metric: keyof TrafficCounts, timestamp: Date | null) {
+    if (!timestamp || timestamp < from || timestamp >= to) return;
+    const bucket = buckets.get(trendKey(timestamp, period));
+    if (!bucket) return;
+    totals[metric] += 1;
+    bucket[metric] += 1;
+  }
+  const today = malaysiaVisitDate(now);
   for (const session of sessions) {
-    if (session.firstVisitedAt < from || session.firstVisitedAt >= to) continue;
-    const bucket = buckets.get(trendKey(session.firstVisitedAt, period));
-    if (!bucket) continue;
+    count("sessions", session.firstVisitedAt);
+    count("step1Engaged", session.step1EngagedAt);
+    count("step2Visitors", session.step2VisitedAt);
+    count("packageSelected", session.packageSelectedAt);
+    count("submitted", session.submittedAt);
+    if (session.visitDate >= today) continue;
+    const visitDayStart = new Date(session.visitDate.getTime() - MALAYSIA_OFFSET_MS);
     const engaged = session.step1EngagedAt !== null;
     const reachedStep2 = session.step2VisitedAt !== null;
     const submitted = session.submittedAt !== null;
-    const inactive = now.getTime() - session.lastActivityAt.getTime() > 30 * 60 * 1000;
-    // Older records lack the new milestones; existing progress rules out an exit
-    // without inventing historical interactions or modifying stored sessions.
-    const legacyStep2Progress = (session.lastStep ?? 0) >= 1;
-    const values: TrafficCounts = {
-      visitors: 1,
-      step1Engaged: Number(engaged),
-      step2Visitors: Number(reachedStep2),
-      packageSelected: Number(session.packageSelectedAt !== null),
-      submitted: Number(submitted),
-      directExit: Number(!engaged && !reachedStep2 && !submitted && inactive && !session.startedAt && !legacyStep2Progress),
-      step1Abandoned: Number(engaged && !reachedStep2 && !submitted && inactive && !legacyStep2Progress),
-      step2Abandoned: Number(reachedStep2 && !submitted && inactive)
-    };
-    for (const key of Object.keys(values) as Array<keyof TrafficCounts>) {
-      totals[key] += values[key];
-      bucket[key] += values[key];
-    }
+    if (!engaged && !reachedStep2 && !submitted) count("directExit", visitDayStart);
+    if (engaged && !reachedStep2 && !submitted) count("step1Abandoned", visitDayStart);
+    if (reachedStep2 && !submitted) count("step2Abandoned", visitDayStart);
   }
   return { from: from.toISOString(), to: to.toISOString(), totals, points: [...buckets].map(([label, values]) => ({ label, values })) };
 }
@@ -186,20 +181,25 @@ adminDashboardRoutes.get("/metrics", async (req, res, next) => {
     // passed submission validation and is therefore a lead, regardless of its
     // later operational status.
     const quotationWhere = createdAt ? { createdAt } : {};
-    const [quotations, pageVisitors, trafficSessions] = await Promise.all([
+    const trafficDateRange = dateWhere({ from: trafficFrom, to: range.to });
+    const [quotations, trafficSessions] = await Promise.all([
       prisma.quotation.findMany({
         where: quotationWhere,
         select: { createdAt: true, status: true, invoices: { select: { id: true }, take: 1 } },
         orderBy: { createdAt: "asc" }
       }),
-      prisma.publicPageVisit.count({ where: { pagePath: "/quotation", ...(createdAt ? { createdAt } : {}) } }),
-      prisma.quotationAnalyticsSession.findMany({
-        where: { firstVisitedAt: dateWhere({ from: trafficFrom, to: range.to }) },
+      prisma.quotationTrackingSession.findMany({
+        where: trafficDateRange ? {
+          OR: [
+            { firstVisitedAt: trafficDateRange }, { step1EngagedAt: trafficDateRange },
+            { step2VisitedAt: trafficDateRange }, { packageSelectedAt: trafficDateRange },
+            { submittedAt: trafficDateRange },
+            { visitDate: { gte: new Date(trafficFrom!.getTime() + MALAYSIA_OFFSET_MS), lt: new Date(range.to!.getTime() + MALAYSIA_OFFSET_MS) } }
+          ]
+        } : {},
         select: {
+          visitDate: true,
           firstVisitedAt: true,
-          lastActivityAt: true,
-          startedAt: true,
-          lastStep: true,
           step1EngagedAt: true,
           step2VisitedAt: true,
           packageSelectedAt: true,
@@ -208,6 +208,7 @@ adminDashboardRoutes.get("/metrics", async (req, res, next) => {
       })
     ]);
     const analytics = dashboardQuotationAnalytics(quotations, period);
-    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completedConverted, pageVisitors), ...analytics, traffic: dashboardTrafficAnalytics(trafficSessions, period, now) });
+    const traffic = dashboardTrafficAnalytics(trafficSessions, period, now);
+    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completedConverted, traffic.current.totals.sessions), ...analytics, traffic });
   } catch (error) { next(error); }
 });

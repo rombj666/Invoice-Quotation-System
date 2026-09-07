@@ -120,9 +120,11 @@ Notes: ${valueOrDash(quotation.notes)}
 Please contact me regarding this quotation. Thank you.`;
 }
 
-export function openCustomerQuotationWhatsApp(input: CustomerQuotationWhatsAppInput) {
+export function openCustomerQuotationWhatsApp(input: CustomerQuotationWhatsAppInput, targetWindow?: Window | null) {
   const message = encodeURIComponent(buildCustomerQuotationWhatsAppMessage(input));
-  window.open(`${HOUR_COFFEE_CONTACT_URL}?text=${message}`, "_blank", "noopener,noreferrer");
+  const url = `${HOUR_COFFEE_CONTACT_URL}?text=${message}`;
+  if (targetWindow && !targetWindow.closed) targetWindow.location.replace(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function normalizeMalaysiaWhatsAppNumber(phone: string | undefined | null): string {

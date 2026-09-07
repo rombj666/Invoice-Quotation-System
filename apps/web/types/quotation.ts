@@ -67,6 +67,7 @@ export type QuotationPricingPreview = {
   valid: boolean;
   validationMessages: string[];
   finalTotal: number;
+  subtotal: number;
   packageDisplay: FixedPackageDisplay;
   selectedItems: string[];
   averageCupsPerDay: number;
@@ -143,7 +144,6 @@ export type CustomerDetails = {
 export type QuotationData = {
   id?: string;
   quotationNo: string;
-  anonymousSessionId?: string;
   status?:
     | "DRAFT"
     | "PENDING_APPROVAL"

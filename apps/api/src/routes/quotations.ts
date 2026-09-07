@@ -16,8 +16,10 @@ import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
 import { getFixedPackages } from "./packages";
+import { isTrackingId, recordQuotationTracking } from "../services/quotation-tracking";
 
 export const quotationRoutes = Router();
+const LOCKED_DATE_MESSAGE = "One or more selected dates are no longer available. Please choose another date.";
 
 type QuotationPdfLogDetails = {
   quotationId: string | null;
@@ -186,6 +188,7 @@ function publicPricingPreview(pricing: ReturnType<typeof calculateFixedPackagePr
     valid: true,
     validationMessages: [],
     finalTotal: pricing.finalTotal,
+    subtotal: pricing.subtotal,
     packageDisplay,
     selectedItems,
     averageCupsPerDay: pricing.averageCupsPerDay,
@@ -226,8 +229,9 @@ quotationRoutes.post("/", async (req, res, next) => {
     const multipart = isMultipart ? await parseMultipartRequest(req, 30 * 1024 * 1024) : null;
     const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
     const submittedQuotationNo = String(incomingData.quotationNo ?? "").trim().toUpperCase() || null;
-    if (incomingData.anonymousSessionId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingData.anonymousSessionId)) {
-      return res.status(400).json({ error: "Invalid anonymous quotation session." });
+    const tracking = incomingData.quotationTracking;
+    if (!isTrackingId(tracking?.visitorId) || !isTrackingId(tracking?.sessionId)) {
+      return res.status(400).json({ error: "A valid daily quotation session is required." });
     }
     const quotationPdfFile = multipart?.files.find((file) => file.fieldName === "quotationPdf");
     if (!quotationPdfFile) {
@@ -261,6 +265,10 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!packageDisplay) return res.status(400).json({ error: "Choose a valid package." });
     if (packageDisplay.code !== parsedPricing.input.packageCode) return res.status(400).json({ error: "The selected package details do not match." });
     const pricing = calculateFixedPackagePricing({ ...parsedPricing.input, packageFeatures: packageDisplay.includedItems });
+    const selectedLockDates = pricing.selectedDates.map((date) => new Date(`${date}T00:00:00.000Z`));
+    if (await prisma.lockedDate.findFirst({ where: { date: { in: selectedLockDates } }, select: { id: true } })) {
+      return res.status(409).json({ error: LOCKED_DATE_MESSAGE });
+    }
 
     const customerName = String(incomingData.customer?.name ?? "").trim();
     const customerPhone = String(incomingData.customer?.phone ?? "").trim();
@@ -336,27 +344,6 @@ quotationRoutes.post("/", async (req, res, next) => {
       beverageSnapshots: {},
       letHourCoffeeDecideDrinks: true
     };
-    if (incomingData.anonymousSessionId) {
-      const trackedSubmission = await prisma.quotationAnalyticsSession.findUnique({
-        where: { anonymousSessionId: incomingData.anonymousSessionId },
-        include: { quotation: { include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" } } } } }
-      });
-      if (trackedSubmission?.quotation) {
-        const storedPdf = Boolean(trackedSubmission.quotation.quotationPdfUrl && trackedSubmission.quotation.quotationPdfPublicId);
-        logQuotationPdf("database_save", {
-          quotationId: trackedSubmission.quotation.id,
-          quotationNo: trackedSubmission.quotation.quotationNo,
-          success: storedPdf,
-          secureUrl: trackedSubmission.quotation.quotationPdfUrl,
-          publicId: trackedSubmission.quotation.quotationPdfPublicId,
-          ...(!storedPdf ? { error: "Existing submission has no stored quotation PDF." } : {})
-        });
-        if (!storedPdf) {
-          return res.status(409).json({ error: "This quotation exists without a stored PDF and cannot be reported as fully submitted." });
-        }
-        return res.json(toQuotationPayload(trackedSubmission.quotation));
-      }
-    }
     const pricedData = normalizedData;
     const data = {
       ...pricedData,
@@ -435,7 +422,13 @@ quotationRoutes.post("/", async (req, res, next) => {
         return res.status(502).json({ error: "Quotation submission failed while uploading the PDF. Please try again." });
       }
 
-      quotation = await prisma.quotation.create({
+      quotation = await prisma.$transaction(async (tx) => {
+        // Keep a concurrent manual lock from being inserted between this check and save.
+        await tx.$executeRaw`LOCK TABLE "LockedDate" IN SHARE MODE`;
+        if (await tx.lockedDate.findFirst({ where: { date: { in: selectedLockDates } }, select: { id: true } })) {
+          throw new Error(LOCKED_DATE_MESSAGE);
+        }
+        const savedQuotation = await tx.quotation.create({
         data: {
         quotationNo,
         customerId: customer.id,
@@ -449,7 +442,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         quotationPdfUrl: quotationPdfUpload?.fileUrl ?? null,
         quotationPdfPublicId: quotationPdfUpload?.cloudinaryPublicId ?? null,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        metadata: toJsonValue({ ...data, anonymousSessionId: undefined, extraCharges: undefined, quotationNo }),
+        metadata: toJsonValue({ ...data, quotationTracking: undefined, extraCharges: undefined, quotationNo }),
         dates: {
           create: data.serviceDates.map((date: any) => ({
             serviceDate: new Date(`${date.serviceDate}T12:00:00`),
@@ -486,6 +479,9 @@ quotationRoutes.post("/", async (req, res, next) => {
         }
         },
         include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }
+        });
+        await recordQuotationTracking(tx, tracking, "submittedAt");
+        return savedQuotation;
       });
       logQuotationPdf("database_save", {
         quotationId: quotation.id,
@@ -513,6 +509,9 @@ quotationRoutes.post("/", async (req, res, next) => {
           });
         });
       }
+      if (error instanceof Error && error.message === LOCKED_DATE_MESSAGE) {
+        return res.status(409).json({ error: LOCKED_DATE_MESSAGE });
+      }
       if (isQuotationNoConflict(error)) {
         return res.status(409).json({
           code: "QUOTATION_NUMBER_CONFLICT",
@@ -521,27 +520,6 @@ quotationRoutes.post("/", async (req, res, next) => {
         });
       }
       return res.status(500).json({ error: "Quotation submission failed while saving the PDF. No successful submission was recorded. Please try again." });
-    }
-
-    if (data.anonymousSessionId) {
-      const submittedAt = new Date();
-      await prisma.quotationAnalyticsSession.upsert({
-        where: { anonymousSessionId: data.anonymousSessionId },
-        create: {
-          anonymousSessionId: data.anonymousSessionId,
-          firstVisitedAt: submittedAt,
-          lastActivityAt: submittedAt,
-          startedAt: submittedAt,
-          submittedAt,
-          lastStep: 1,
-          quotationId: quotation.id
-        },
-        update: { submittedAt, lastActivityAt: submittedAt, quotationId: quotation.id }
-      });
-      await prisma.quotationAnalyticsSession.updateMany({
-        where: { anonymousSessionId: data.anonymousSessionId, startedAt: null },
-        data: { startedAt: submittedAt }
-      });
     }
 
     res.status(201).json(toQuotationPayload(quotation));

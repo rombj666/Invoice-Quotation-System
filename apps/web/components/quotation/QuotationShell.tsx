@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { openCustomerQuotationWhatsApp } from "../../lib/contact";
 import { formatDateLabel, formatMoney } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
 import { getQuotationBaristaPricing } from "../../lib/pricing";
-import { trackQuotationAnalytics } from "../../lib/quotation-analytics";
-import { previewQuotationPricing } from "../../lib/quotation-storage";
+import { getQuotationTrackingSession, trackQuotationEvent } from "../../lib/quotation-tracking";
+import { getNextQuotationNo, previewQuotationPricing, submitQuotationWithPdf } from "../../lib/quotation-storage";
+import { loadLockedDates } from "../../lib/locked-dates";
 import type { CartStyle, FixedPackageDisplay, PackageCode, PackageOptionCode, QuotationData, QuotationPricingPreview, ServiceDate, ServiceDurationMode } from "../../types/quotation";
 import { Button } from "../common/Button";
 import { Card } from "../common/Card";
 import { TextArea, TextInput } from "../common/FormField";
 import { ProgressHeader } from "./ProgressHeader";
 import { QuotationDatePicker } from "./QuotationDatePicker";
+import { QuotationReviewStep } from "./QuotationReviewStep";
 
 const totalSteps = 2;
 const draftStorageKey = "hourCoffeeQuotationDraft";
@@ -89,6 +91,12 @@ export function QuotationShell() {
   const [packageTotals, setPackageTotals] = useState<Partial<Record<PackageCode, number>>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [lockedDates, setLockedDates] = useState<string[]>([]);
+  const [locksLoading, setLocksLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pdfData, setPdfData] = useState<QuotationData | null>(null);
+  const engagedVisitDate = useRef("");
+  const submitting = useRef(false);
   const minimumDate = useMemo(() => toLocalIsoDate(getMinimumSelectableDate()), []);
 
   const displayPackages = useMemo(
@@ -126,8 +134,10 @@ export function QuotationShell() {
         window.localStorage.removeItem(draftStorageKey);
       }
     }
-    trackQuotationAnalytics("OPEN", 0);
-    if (restoredStep === 1) trackQuotationAnalytics("STEP2", 1);
+    trackQuotationEvent("OPEN");
+    if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
+    loadLockedDates().then((dates) => { setLockedDates(dates); setLocksLoading(false); })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load date availability. Please reload the page."));
 
     loadQuotationPackages()
       .then((items) => setPackages(items.map((item) =>
@@ -205,35 +215,37 @@ export function QuotationShell() {
   }, [data.discountCode, data.serviceDates, data.serviceDuration, data.totalCups, displayPackages, step]);
 
   function setCustomer(field: "name" | "phone" | "email", value: string) {
-    trackQuotationAnalytics("START", 0);
+    trackStep1Engagement();
     setData((current) => ({ ...current, customer: { ...current.customer, [field]: value } }));
   }
 
   function setAddress(value: string) {
-    trackQuotationAnalytics("START", 0);
+    trackStep1Engagement();
     setData((current) => ({ ...current, location: value, fullAddress: value, customer: { ...current.customer, billingAddress: value } }));
   }
 
   function setServiceDates(serviceDates: ServiceDate[]) {
-    trackQuotationAnalytics("START", 0);
+    trackStep1Engagement();
     setData((current) => ({ ...current, serviceDates, selectedDates: serviceDates.map((date) => date.serviceDate) }));
     setError("");
   }
 
   function setTotalCups(value: string) {
     if (value && !/^\d+$/.test(value)) return;
-    trackQuotationAnalytics("START", 0);
+    trackStep1Engagement();
     setData((current) => ({ ...current, totalCups: value === "" ? undefined : Number(value) }));
     setError("");
   }
 
   function setServiceDuration(serviceDuration: ServiceDurationMode) {
-    trackQuotationAnalytics("START", 0);
+    trackStep1Engagement();
     setData((current) => ({ ...current, serviceDuration }));
     setError("");
   }
 
   function validateBasicInfo() {
+    if (locksLoading) return setError("Date availability is not ready. Please reload the page.");
+    if (data.serviceDates.some((date) => lockedDates.includes(date.serviceDate))) return setError("One or more selected dates are no longer available. Please choose another date.");
     if (!Number.isInteger(data.totalCups) || Number(data.totalCups) < 50) return setError("Minimum order is 50 cups for both Half Day and Full Day.");
     if (!data.serviceDates.length) return setError("Choose at least one event date.");
     if (data.serviceDates.some((date) => !date.serviceDate || date.serviceDate < minimumDate)) return setError("One or more selected event dates are unavailable.");
@@ -241,12 +253,12 @@ export function QuotationShell() {
     setData((current) => ({ ...current, discountPercent: discountApplied ? 5 : 0 }));
     setError("");
     setStep(1);
-    trackQuotationAnalytics("STEP2", 1);
+    trackQuotationEvent("STEP2_VISITED");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function selectPackage(item: FixedPackageDisplay) {
-    trackQuotationAnalytics("PACKAGE_SELECTED", 1);
+    trackQuotationEvent("PACKAGE_SELECTED");
     setPreview(null);
     setPreviewLoading(true);
     setData((current) => {
@@ -283,14 +295,68 @@ export function QuotationShell() {
     return packageTotals[item.code];
   }
 
-  function continueToWhatsApp() {
-    if (!selectedPackage) return setError("Choose a package first.");
-    if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
-    setError("");
-    openCustomerQuotationWhatsApp({ quotation: data, packageName: selectedPackage.name, estimatedTotal: selectedPreview.finalTotal });
+  function trackStep1Engagement() {
+    const { visitDate } = getQuotationTrackingSession();
+    if (engagedVisitDate.current === visitDate) { trackQuotationEvent("ACTIVITY"); return; }
+    engagedVisitDate.current = visitDate;
+    trackQuotationEvent("STEP1_ENGAGED");
   }
 
-  return <main className="hc-page quotation-workspace" onClickCapture={() => trackQuotationAnalytics("ACTIVITY", step)} onKeyDownCapture={() => trackQuotationAnalytics("ACTIVITY", step)}>
+  function afterPdfPaint(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }
+
+  async function continueToWhatsApp() {
+    if (submitting.current) return;
+    if (!selectedPackage) return setError("Choose a package first.");
+    if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
+    if (!data.customer.name.trim()) return setError("Customer full name is required.");
+    const phoneDigits = data.customer.phone.replace(/\D/g, "");
+    const phone = phoneDigits.startsWith("60") ? `0${phoneDigits.slice(2)}` : phoneDigits;
+    if (!/^01\d{8,9}$/.test(phone)) return setError("Enter a valid Malaysian phone number.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer.email.trim())) return setError("Enter a valid email address.");
+    if (!data.location.trim()) return setError("Event address is required.");
+    submitting.current = true;
+    setIsSubmitting(true);
+    setError("");
+    // Reserve a tab during the click; navigate to WhatsApp only after a successful save.
+    const whatsappWindow = window.open("about:blank", "_blank");
+    if (whatsappWindow) whatsappWindow.opener = null;
+    try {
+      const [dates, validated, quotationNo] = await Promise.all([loadLockedDates(), previewQuotationPricing(data), getNextQuotationNo()]);
+      setLockedDates(dates);
+      if (data.serviceDates.some((date) => dates.includes(date.serviceDate))) throw new Error("One or more selected dates are no longer available. Please choose another date.");
+      const quotationForSubmission: QuotationData = {
+        ...data, quotationNo, status: "PENDING_APPROVAL",
+        expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
+        discountPercent: discountApplied ? 5 : 0,
+        packageSnapshot: {
+          id: selectedPackage.id, name: selectedPackage.name,
+          level: selectedPackage.code as unknown as NonNullable<QuotationData["packageSnapshot"]>["level"],
+          briefDescription: selectedPackage.shortDescription, price: validated.subtotal,
+          perks: validated.selectedItems.map((name, displayOrder) => ({ id: `${selectedPackage.code}-${displayOrder}`, name, displayOrder }))
+        }
+      };
+      setPdfData(quotationForSubmission);
+      await afterPdfPaint();
+      const saved = await submitQuotationWithPdf(quotationForSubmission, async (nextQuotationNo) => {
+        setPdfData((current) => current ? { ...current, quotationNo: nextQuotationNo } : current);
+        await afterPdfPaint();
+      });
+      setData(saved);
+      window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({ quotationNo: saved.quotationNo, status: "submitted", submittedAt: new Date().toISOString() }));
+      openCustomerQuotationWhatsApp({ quotation: data, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal }, whatsappWindow);
+    } catch (reason) {
+      whatsappWindow?.close();
+      setError(reason instanceof Error ? reason.message : "Unable to submit quotation. Please try again.");
+    } finally {
+      submitting.current = false;
+      setIsSubmitting(false);
+      setPdfData(null);
+    }
+  }
+
+  return <main className="hc-page quotation-workspace" onClickCapture={() => trackQuotationEvent("ACTIVITY")} onKeyDownCapture={() => trackQuotationEvent("ACTIVITY")}>
     <Card className="quotation-flow-card">
       <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info & Event Details", "Choose, Review & Submit"]} />
 
@@ -301,10 +367,10 @@ export function QuotationShell() {
           <TextInput label="Phone Number" type="tel" autoComplete="tel" value={data.customer.phone} onChange={(event) => setCustomer("phone", event.target.value)} />
           <TextInput label="Email Address" type="email" autoComplete="email" value={data.customer.email} onChange={(event) => setCustomer("email", event.target.value)} />
           <TextArea className="basic-info-address" label="Event Address" rows={3} value={data.location} onChange={(event) => setAddress(event.target.value)} />
-          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => { trackQuotationAnalytics("START", 0); setData((current) => ({ ...current, discountCode: event.target.value })); }} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
+          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => { trackStep1Engagement(); setData((current) => ({ ...current, discountCode: event.target.value })); }} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
         </div>
 
-        <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
+        <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} lockedDates={lockedDates} availabilityLoading={locksLoading} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
           <label className="quotation-cups-control">
             <span>Total cups</span>
             <input type="text" inputMode="numeric" pattern="[0-9]*" required value={data.totalCups ?? ""} onChange={(event) => setTotalCups(event.target.value)} />
@@ -325,7 +391,7 @@ export function QuotationShell() {
           </fieldset>
         </div>} />
 
-        <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => { trackQuotationAnalytics("START", 0); setData((current) => ({ ...current, notes: event.target.value })); }} />
+        <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => { trackStep1Engagement(); setData((current) => ({ ...current, notes: event.target.value })); }} />
         {error ? <p className="error">{error}</p> : null}
         <div className="hc-nav-row quotation-primary-action"><Button type="button" onClick={validateBasicInfo}>Continue to Packages</Button></div>
       </div> : <div className="quotation-package-step">
@@ -413,10 +479,11 @@ export function QuotationShell() {
             </div>
           </div>
         </section>
-        <div className="quotation-submit-action"><Button type="button" onClick={continueToWhatsApp} disabled={!selectedPackage || !selectedPreview || previewLoading}>Submit</Button></div>
+        <div className="quotation-submit-action"><Button type="button" onClick={continueToWhatsApp} disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : "Submit"}</Button></div>
         {previewError ? <p className="error">{previewError}</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>}
     </Card>
+    {pdfData ? <div hidden aria-hidden="true"><QuotationReviewStep data={pdfData} readOnly /></div> : null}
   </main>;
 }

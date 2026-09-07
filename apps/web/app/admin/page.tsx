@@ -13,7 +13,7 @@ const emptyDashboard: DashboardMetrics = {
   quotationStats: { submitted: 0, pendingApproval: 0, approved: 0, completedConverted: 0 },
   traffic: {
     grouping: "day",
-    current: { from: "", to: "", totals: { visitors: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 }, points: [] },
+    current: { from: "", to: "", totals: { sessions: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 }, points: [] },
     previous: null
   },
   graphs: { grouping: "day", submissions: [], submittedVsConverted: { submitted: 0, converted: 0 }, statusBreakdown: [] }
@@ -26,7 +26,7 @@ function EmptyChart() {
 type TrafficMetric = Exclude<keyof TrafficCounts, "step1Abandoned" | "step2Abandoned">;
 
 const trafficMetrics: Array<{ key: TrafficMetric; label: string; tab: string }> = [
-  { key: "visitors", label: "Quotation Visitors", tab: "Visitors" },
+  { key: "sessions", label: "Quotation Sessions", tab: "Sessions" },
   { key: "step1Engaged", label: "Step 1 Engaged", tab: "Engaged" },
   { key: "step2Visitors", label: "Step 2 Visitors", tab: "Step 2" },
   { key: "packageSelected", label: "Package Selected", tab: "Package Selected" },
@@ -83,7 +83,7 @@ function TrafficTrend({ traffic, metric }: { traffic: DashboardMetrics["traffic"
 }
 
 function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["traffic"]; loading: boolean }) {
-  const [metric, setMetric] = useState<TrafficMetric>("visitors");
+  const [metric, setMetric] = useState<TrafficMetric>("sessions");
   return <section className="admin-dashboard-chart-panel admin-traffic-panel" aria-labelledby="quotation-traffic-heading" aria-busy={loading}>
     <h2 id="quotation-traffic-heading">Quotation Traffic</h2>
     <div className="admin-traffic-metrics">{trafficMetrics.filter((item) => item.key !== "packageSelected" && item.key !== "directExit").map((item) => <button key={item.key} type="button" aria-pressed={metric === item.key} onClick={() => setMetric(item.key)}>
@@ -94,7 +94,7 @@ function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["tra
     {loading ? <div className="admin-chart-empty">Loading quotation traffic…</div> : <>
       <TrafficTrend traffic={traffic} metric={metric} />
       <div className="admin-traffic-abandonment"><span>Step 1 Abandoned <strong>{traffic.current.totals.step1Abandoned.toLocaleString()}</strong></span><span>Step 2 Abandoned <strong>{traffic.current.totals.step2Abandoned.toLocaleString()}</strong></span></div>
-      <p className="admin-traffic-note">Traffic counts sessions grouped by their first visit. Direct exits and abandonment count sessions inactive for more than 30 minutes.</p>
+      <p className="admin-traffic-note">One session per visitor per Malaysia calendar day. Milestones use their event times. Direct exits and abandonment are counted only after the visit day ends.</p>
     </>}
   </section>;
 }

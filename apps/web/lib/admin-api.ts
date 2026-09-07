@@ -5,7 +5,7 @@ import { apiBaseUrl } from "./api-client";
 export type DashboardPeriod = "today" | "week" | "month" | "all";
 export type DashboardPoint = { label: string; value: number };
 export type TrafficCounts = {
-  visitors: number;
+  sessions: number;
   step1Engaged: number;
   step2Visitors: number;
   packageSelected: number;

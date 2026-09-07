@@ -1,7 +1,7 @@
 import type { InvoiceDetails } from "../types/invoice";
 import type { PreviousQuotationSummary, QuotationData, QuotationPricingPreview } from "../types/quotation";
 import { apiBaseUrl } from "./api-client";
-import { getQuotationAnalyticsSessionId } from "./quotation-analytics";
+import { getQuotationTrackingSession } from "./quotation-tracking";
 import { generatePdfBlob } from "./pdf-document";
 
 type FindQuotationInput = {
@@ -75,7 +75,7 @@ export function previewQuotationPricing(data: Pick<QuotationData, "totalCups" | 
 }
 
 export function saveQuotationLocally(data: QuotationData, quotationPdf: Blob): Promise<QuotationData> {
-  const trackedData = { ...data, anonymousSessionId: getQuotationAnalyticsSessionId() };
+  const trackedData = { ...data, quotationTracking: getQuotationTrackingSession() };
   const formData = new FormData();
   formData.append("payload", JSON.stringify({ ...trackedData, status: data.status ?? "PENDING_APPROVAL" }));
   formData.append("quotationPdf", quotationPdf, `${data.quotationNo}.pdf`);
