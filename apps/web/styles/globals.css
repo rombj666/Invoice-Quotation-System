@@ -4371,6 +4371,50 @@ p {
 .admin-quotation-trend circle { fill: #fff; stroke: #8c6b4a; stroke-width: 3; }
 .admin-quotation-trend text { fill: #493b31; font-size: 12px; font-weight: 800; }
 
+/* Quotation Traffic */
+.admin-traffic-panel { overflow: hidden; }
+.admin-traffic-metrics { border: 1px solid #e7e1db; border-radius: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; }
+.admin-traffic-metrics button { background: #fff; border: 0; border-right: 1px solid #e7e1db; color: #493b31; cursor: pointer; display: flex; flex-direction: column; gap: 8px; padding: 20px; text-align: left; }
+.admin-traffic-metrics button:last-child { border-right: 0; }
+.admin-traffic-metrics button[aria-pressed="true"] { background: #8c6b4a; color: #fff; }
+.admin-traffic-metrics button > span { font-size: 12px; font-weight: 700; }
+.admin-traffic-metrics strong { font-family: "Playfair Display", Georgia, serif; font-size: 34px; line-height: 1.2; }
+.admin-traffic-metrics small { font-size: 11px; }
+.admin-traffic-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+.admin-traffic-tabs button { background: #fff; border: 1px solid #ded5cc; border-radius: 7px; color: #5c5148; cursor: pointer; font-size: 12px; font-weight: 700; padding: 8px 12px; }
+.admin-traffic-tabs button[aria-pressed="true"] { background: #f1ece7; border-color: #8c6b4a; color: #493b31; }
+.admin-traffic-metrics button:focus-visible,
+.admin-traffic-tabs button:focus-visible { outline: 2px solid #251c16; outline-offset: -3px; }
+.admin-traffic-chart-heading { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.admin-traffic-chart-heading h3 { font-family: "DM Sans", Arial, sans-serif; font-size: 14px; font-weight: 700; margin: 0; }
+.admin-traffic-chart-heading > span { color: #7b7169; font-size: 12px; }
+.admin-traffic-chart { margin: 10px 0; overflow-x: auto; }
+.admin-traffic-chart svg { display: block; height: auto; min-width: 600px; width: 100%; }
+.admin-traffic-gridline { stroke: #e7e1db; stroke-width: 1; }
+.admin-traffic-axis { fill: #6b625b; font-size: 12px; }
+.admin-traffic-series path { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 3; }
+.admin-traffic-series.current { stroke: #8c6b4a; }
+.admin-traffic-series.previous { stroke: #71818c; }
+.admin-traffic-series.previous path { stroke-dasharray: 7 6; }
+.admin-traffic-series circle { fill: #fff; stroke-width: 2; }
+.admin-traffic-legend { color: #6b625b; display: flex; flex-wrap: wrap; font-size: 12px; gap: 12px 24px; }
+.admin-traffic-legend > span { align-items: center; display: flex; gap: 8px; }
+.admin-traffic-legend i { border-top: 3px solid #8c6b4a; display: inline-block; flex: 0 0 28px; }
+.admin-traffic-legend i.previous { border-color: #71818c; border-top-style: dashed; }
+.admin-traffic-abandonment { border-top: 1px solid #eee9e4; color: #6b625b; display: flex; flex-wrap: wrap; font-size: 12px; gap: 12px 28px; margin-top: 24px; padding-top: 18px; }
+.admin-traffic-abandonment strong { color: #493b31; margin-left: 8px; }
+.admin-traffic-note { color: #7b7169; font-size: 11px; margin: 10px 0 0; }
+@media (max-width: 1100px) {
+  .admin-traffic-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-traffic-metrics button:nth-child(2) { border-right: 0; }
+  .admin-traffic-metrics button:nth-child(-n + 2) { border-bottom: 1px solid #e7e1db; }
+}
+@media (max-width: 640px) {
+  .admin-traffic-metrics button { gap: 6px; padding: 14px; }
+  .admin-traffic-metrics strong { font-size: 28px; }
+  .admin-traffic-tabs { gap: 6px; margin: 18px 0; }
+}
+
 .admin-comparison-chart,
 .admin-status-chart {
   display: grid;

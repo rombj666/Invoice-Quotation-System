@@ -28,7 +28,7 @@ quotationAnalyticsRoutes.post("/session", async (req, res, next) => {
     if (!isAnonymousSessionId(anonymousSessionId)) {
       return res.status(400).json({ error: "A valid anonymous session ID is required." });
     }
-    if (!["OPEN", "START", "ACTIVITY"].includes(event)) {
+    if (!["OPEN", "START", "ACTIVITY", "STEP2", "PACKAGE_SELECTED"].includes(event)) {
       return res.status(400).json({ error: "Invalid analytics event." });
     }
 
@@ -55,7 +55,17 @@ quotationAnalyticsRoutes.post("/session", async (req, res, next) => {
       }
     });
 
-    if (event === "START" || event === "ACTIVITY") {
+    const milestoneField = event === "START" ? "step1EngagedAt"
+      : event === "STEP2" ? "step2VisitedAt"
+      : event === "PACKAGE_SELECTED" ? "packageSelectedAt" : null;
+    if (milestoneField) {
+      await prisma.quotationAnalyticsSession.updateMany({
+        where: { anonymousSessionId, [milestoneField]: null },
+        data: { [milestoneField]: now }
+      });
+    }
+
+    if (event === "START" || event === "STEP2") {
       await prisma.quotationAnalyticsSession.updateMany({
         where: { anonymousSessionId, startedAt: null },
         data: { startedAt: now }

@@ -81,23 +81,133 @@ export function dashboardQuotationAnalytics(quotations: DashboardQuotation[], pe
   };
 }
 
+type TrafficCounts = {
+  visitors: number;
+  step1Engaged: number;
+  step2Visitors: number;
+  packageSelected: number;
+  submitted: number;
+  directExit: number;
+  step1Abandoned: number;
+  step2Abandoned: number;
+};
+
+type DashboardTrafficSession = {
+  firstVisitedAt: Date;
+  lastActivityAt: Date;
+  startedAt: Date | null;
+  lastStep: number | null;
+  step1EngagedAt: Date | null;
+  step2VisitedAt: Date | null;
+  packageSelectedAt: Date | null;
+  submittedAt: Date | null;
+};
+
+function emptyTrafficCounts(): TrafficCounts {
+  return { visitors: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 };
+}
+
+function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from: Date, to: Date, now: Date) {
+  const totals = emptyTrafficCounts();
+  const buckets = new Map<string, TrafficCounts>();
+  for (let cursor = from; cursor < to;) {
+    buckets.set(trendKey(cursor, period), emptyTrafficCounts());
+    if (period === "all") {
+      const malaysiaDate = new Date(cursor.getTime() + MALAYSIA_OFFSET_MS);
+      cursor = new Date(Date.UTC(malaysiaDate.getUTCFullYear(), malaysiaDate.getUTCMonth() + 1, 1) - MALAYSIA_OFFSET_MS);
+    } else {
+      cursor = new Date(cursor.getTime() + (period === "today" ? 1 : 24) * 60 * 60 * 1000);
+    }
+  }
+
+  // Every milestone belongs to the session's first-visit cohort, counted once.
+  for (const session of sessions) {
+    if (session.firstVisitedAt < from || session.firstVisitedAt >= to) continue;
+    const bucket = buckets.get(trendKey(session.firstVisitedAt, period));
+    if (!bucket) continue;
+    const engaged = session.step1EngagedAt !== null;
+    const reachedStep2 = session.step2VisitedAt !== null;
+    const submitted = session.submittedAt !== null;
+    const inactive = now.getTime() - session.lastActivityAt.getTime() > 30 * 60 * 1000;
+    // Older records lack the new milestones; existing progress rules out an exit
+    // without inventing historical interactions or modifying stored sessions.
+    const legacyStep2Progress = (session.lastStep ?? 0) >= 1;
+    const values: TrafficCounts = {
+      visitors: 1,
+      step1Engaged: Number(engaged),
+      step2Visitors: Number(reachedStep2),
+      packageSelected: Number(session.packageSelectedAt !== null),
+      submitted: Number(submitted),
+      directExit: Number(!engaged && !reachedStep2 && !submitted && inactive && !session.startedAt && !legacyStep2Progress),
+      step1Abandoned: Number(engaged && !reachedStep2 && !submitted && inactive && !legacyStep2Progress),
+      step2Abandoned: Number(reachedStep2 && !submitted && inactive)
+    };
+    for (const key of Object.keys(values) as Array<keyof TrafficCounts>) {
+      totals[key] += values[key];
+      bucket[key] += values[key];
+    }
+  }
+  return { from: from.toISOString(), to: to.toISOString(), totals, points: [...buckets].map(([label, values]) => ({ label, values })) };
+}
+
+export function dashboardTrafficAnalytics(sessions: DashboardTrafficSession[], period: Period, now = new Date()) {
+  let from: Date;
+  let to: Date;
+  if (period === "all") {
+    const firstVisit = sessions.reduce((earliest, session) => session.firstVisitedAt < earliest ? session.firstVisitedAt : earliest, now);
+    const malaysiaFirstVisit = new Date(firstVisit.getTime() + MALAYSIA_OFFSET_MS);
+    const malaysiaNow = new Date(now.getTime() + MALAYSIA_OFFSET_MS);
+    from = new Date(Date.UTC(malaysiaFirstVisit.getUTCFullYear(), malaysiaFirstVisit.getUTCMonth(), 1) - MALAYSIA_OFFSET_MS);
+    to = new Date(Date.UTC(malaysiaNow.getUTCFullYear(), malaysiaNow.getUTCMonth() + 1, 1) - MALAYSIA_OFFSET_MS);
+  } else {
+    const range = periodRange(period, now);
+    from = range.from!;
+    to = range.to!;
+  }
+  return {
+    grouping: period === "today" ? "hour" : period === "all" ? "month" : "day",
+    current: trafficPeriod(sessions, period, from, to, now),
+    previous: period === "week" || period === "month"
+      ? trafficPeriod(sessions, period, new Date(from.getTime() - (to.getTime() - from.getTime())), from, now)
+      : null
+  };
+}
+
 adminDashboardRoutes.get("/metrics", async (req, res, next) => {
   try {
-    const range = periodRange(parsePeriod(req.query.period));
+    const period = parsePeriod(req.query.period);
+    const now = new Date();
+    const range = periodRange(period, now);
     const createdAt = dateWhere(range);
+    const trafficFrom = range.from && range.to && (period === "week" || period === "month")
+      ? new Date(range.from.getTime() - (range.to.getTime() - range.from.getTime()))
+      : range.from;
     // Browser drafts live only in local storage; every persisted quotation has
     // passed submission validation and is therefore a lead, regardless of its
     // later operational status.
     const quotationWhere = createdAt ? { createdAt } : {};
-    const [quotations, pageVisitors] = await Promise.all([
+    const [quotations, pageVisitors, trafficSessions] = await Promise.all([
       prisma.quotation.findMany({
         where: quotationWhere,
         select: { createdAt: true, status: true, invoices: { select: { id: true }, take: 1 } },
         orderBy: { createdAt: "asc" }
       }),
-      prisma.publicPageVisit.count({ where: { pagePath: "/quotation", ...(createdAt ? { createdAt } : {}) } })
+      prisma.publicPageVisit.count({ where: { pagePath: "/quotation", ...(createdAt ? { createdAt } : {}) } }),
+      prisma.quotationAnalyticsSession.findMany({
+        where: { firstVisitedAt: dateWhere({ from: trafficFrom, to: range.to }) },
+        select: {
+          firstVisitedAt: true,
+          lastActivityAt: true,
+          startedAt: true,
+          lastStep: true,
+          step1EngagedAt: true,
+          step2VisitedAt: true,
+          packageSelectedAt: true,
+          submittedAt: true
+        }
+      })
     ]);
-    const analytics = dashboardQuotationAnalytics(quotations, parsePeriod(req.query.period));
-    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completedConverted, pageVisitors), ...analytics });
+    const analytics = dashboardQuotationAnalytics(quotations, period);
+    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completedConverted, pageVisitors), ...analytics, traffic: dashboardTrafficAnalytics(trafficSessions, period, now) });
   } catch (error) { next(error); }
 });

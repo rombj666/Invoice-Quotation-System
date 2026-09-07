@@ -348,6 +348,9 @@ model QuotationAnalyticsSession {
   firstVisitedAt     DateTime   @default(now())
   lastActivityAt     DateTime   @default(now())
   startedAt          DateTime?
+  step1EngagedAt      DateTime?
+  step2VisitedAt      DateTime?
+  packageSelectedAt  DateTime?
   submittedAt        DateTime?
   lastStep           Int?
   quotationId        String?    @unique

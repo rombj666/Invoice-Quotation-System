@@ -4,12 +4,33 @@ import { apiBaseUrl } from "./api-client";
 
 export type DashboardPeriod = "today" | "week" | "month" | "all";
 export type DashboardPoint = { label: string; value: number };
+export type TrafficCounts = {
+  visitors: number;
+  step1Engaged: number;
+  step2Visitors: number;
+  packageSelected: number;
+  submitted: number;
+  directExit: number;
+  step1Abandoned: number;
+  step2Abandoned: number;
+};
+export type TrafficPeriod = {
+  from: string;
+  to: string;
+  totals: TrafficCounts;
+  points: Array<{ label: string; values: TrafficCounts }>;
+};
 export type DashboardMetrics = {
   totalLeads: number;
   convertedLeads: number;
   pageVisitors: number;
   conversionRate: number;
   quotationStats: { submitted: number; pendingApproval: number; approved: number; completedConverted: number };
+  traffic: {
+    grouping: "hour" | "day" | "month";
+    current: TrafficPeriod;
+    previous: TrafficPeriod | null;
+  };
   graphs: {
     grouping: "hour" | "day" | "month";
     submissions: DashboardPoint[];

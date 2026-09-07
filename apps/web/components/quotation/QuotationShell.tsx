@@ -109,7 +109,7 @@ export function QuotationShell() {
   const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration);
 
   useEffect(() => {
-    trackQuotationAnalytics("OPEN", 0);
+    let restoredStep = 0;
     const savedDraft = window.localStorage.getItem(draftStorageKey);
     if (savedDraft) {
       try {
@@ -120,11 +120,14 @@ export function QuotationShell() {
             : parsed.data.serviceDates[0]?.durationMode === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
           setData({ ...parsed.data, serviceDuration: savedDuration });
           setStep(parsed.step === 1 ? 1 : 0);
+          restoredStep = parsed.step === 1 ? 1 : 0;
         }
       } catch {
         window.localStorage.removeItem(draftStorageKey);
       }
     }
+    trackQuotationAnalytics("OPEN", 0);
+    if (restoredStep === 1) trackQuotationAnalytics("STEP2", 1);
 
     loadQuotationPackages()
       .then((items) => setPackages(items.map((item) =>
@@ -202,25 +205,30 @@ export function QuotationShell() {
   }, [data.discountCode, data.serviceDates, data.serviceDuration, data.totalCups, displayPackages, step]);
 
   function setCustomer(field: "name" | "phone" | "email", value: string) {
+    trackQuotationAnalytics("START", 0);
     setData((current) => ({ ...current, customer: { ...current.customer, [field]: value } }));
   }
 
   function setAddress(value: string) {
+    trackQuotationAnalytics("START", 0);
     setData((current) => ({ ...current, location: value, fullAddress: value, customer: { ...current.customer, billingAddress: value } }));
   }
 
   function setServiceDates(serviceDates: ServiceDate[]) {
+    trackQuotationAnalytics("START", 0);
     setData((current) => ({ ...current, serviceDates, selectedDates: serviceDates.map((date) => date.serviceDate) }));
     setError("");
   }
 
   function setTotalCups(value: string) {
     if (value && !/^\d+$/.test(value)) return;
+    trackQuotationAnalytics("START", 0);
     setData((current) => ({ ...current, totalCups: value === "" ? undefined : Number(value) }));
     setError("");
   }
 
   function setServiceDuration(serviceDuration: ServiceDurationMode) {
+    trackQuotationAnalytics("START", 0);
     setData((current) => ({ ...current, serviceDuration }));
     setError("");
   }
@@ -233,11 +241,12 @@ export function QuotationShell() {
     setData((current) => ({ ...current, discountPercent: discountApplied ? 5 : 0 }));
     setError("");
     setStep(1);
-    trackQuotationAnalytics("ACTIVITY", 1);
+    trackQuotationAnalytics("STEP2", 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function selectPackage(item: FixedPackageDisplay) {
+    trackQuotationAnalytics("PACKAGE_SELECTED", 1);
     setPreview(null);
     setPreviewLoading(true);
     setData((current) => {
@@ -281,7 +290,7 @@ export function QuotationShell() {
     openCustomerQuotationWhatsApp({ quotation: data, packageName: selectedPackage.name, estimatedTotal: selectedPreview.finalTotal });
   }
 
-  return <main className="hc-page quotation-workspace">
+  return <main className="hc-page quotation-workspace" onClickCapture={() => trackQuotationAnalytics("ACTIVITY", step)} onKeyDownCapture={() => trackQuotationAnalytics("ACTIVITY", step)}>
     <Card className="quotation-flow-card">
       <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info & Event Details", "Choose, Review & Submit"]} />
 
@@ -292,7 +301,7 @@ export function QuotationShell() {
           <TextInput label="Phone Number" type="tel" autoComplete="tel" value={data.customer.phone} onChange={(event) => setCustomer("phone", event.target.value)} />
           <TextInput label="Email Address" type="email" autoComplete="email" value={data.customer.email} onChange={(event) => setCustomer("email", event.target.value)} />
           <TextArea className="basic-info-address" label="Event Address" rows={3} value={data.location} onChange={(event) => setAddress(event.target.value)} />
-          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => setData((current) => ({ ...current, discountCode: event.target.value }))} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
+          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => { trackQuotationAnalytics("START", 0); setData((current) => ({ ...current, discountCode: event.target.value })); }} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
         </div>
 
         <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
@@ -316,7 +325,7 @@ export function QuotationShell() {
           </fieldset>
         </div>} />
 
-        <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => setData((current) => ({ ...current, notes: event.target.value }))} />
+        <TextArea label="Notes" rows={3} placeholder="Preferences or special requests" value={data.notes ?? ""} onChange={(event) => { trackQuotationAnalytics("START", 0); setData((current) => ({ ...current, notes: event.target.value })); }} />
         {error ? <p className="error">{error}</p> : null}
         <div className="hc-nav-row quotation-primary-action"><Button type="button" onClick={validateBasicInfo}>Continue to Packages</Button></div>
       </div> : <div className="quotation-package-step">
