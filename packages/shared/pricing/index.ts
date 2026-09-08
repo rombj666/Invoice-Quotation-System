@@ -151,10 +151,10 @@ export type PricingValidation = {
 };
 
 export const CUP_TIERS = [
-  { minimumCups: 400, rate: 7.5 },
-  { minimumCups: 300, rate: 8 },
+  { minimumCups: 350, rate: 8 },
   { minimumCups: 200, rate: 8.5 },
-  { minimumCups: 100, rate: 9 },
+  { minimumCups: 150, rate: 9 },
+  { minimumCups: 100, rate: 9.5 },
   { minimumCups: 50, rate: 10 }
 ] as const;
 
@@ -195,14 +195,16 @@ export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DA
   const remainder = dates.length ? cups % dates.length : 0;
   const perDate = dates.map((date, index) => {
     const cupsForDate = base + (index < remainder ? 1 : 0);
-    const requiredBaristas = Math.ceil(cupsForDate / ((durationsByDate[date] ?? duration) === "FULL_DAY" ? 150 : 100));
+    const isFullDay = (durationsByDate[date] ?? duration) === "FULL_DAY";
+    const requiredBaristas = Math.ceil(cupsForDate / (isFullDay ? 150 : 100));
     const extraBaristas = Math.max(requiredBaristas - 1, 0);
-    return { date, cupsForDate, requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
+    return { date, cupsForDate, requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * (isFullDay ? 150 : 100) };
   });
   const requiredBaristas = Math.max(0, ...perDate.map((date) => date.requiredBaristas));
   const minimumBaristas = perDate.length ? Math.min(...perDate.map((date) => date.requiredBaristas)) : 0;
   const extraBaristas = perDate.reduce((sum, date) => sum + date.extraBaristas, 0);
-  return { perDate, requiredBaristas, minimumBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
+  const extraBaristaFee = perDate.reduce((sum, date) => sum + date.extraBaristaFee, 0);
+  return { perDate, requiredBaristas, minimumBaristas, extraBaristas, extraBaristaFee };
 }
 
 
