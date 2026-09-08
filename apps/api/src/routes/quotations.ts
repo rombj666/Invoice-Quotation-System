@@ -4,6 +4,7 @@ import {
   PACKAGE_OPTION_LABELS,
   calculateQuotationPricing as calculateFixedPackagePricing,
   validatePricingInput,
+  getQuotationBaristaPricing,
   type CartStyle,
   type PackageCode,
   type PackageOptionCode,
@@ -76,6 +77,11 @@ export function toQuotationPayload(record: any) {
       title: charge.title,
       description: charge.description ?? undefined,
       amount: Number(charge.amount),
+      appliesToAllDates: !charge.dates?.length,
+      serviceDateIds: (charge.dates ?? []).map((mapping: any) => {
+        const iso = new Date(mapping.quotationDate.serviceDate).toISOString().slice(0, 10);
+        return (metadata.serviceDates ?? []).find((date: any) => date.serviceDate === iso)?.id;
+      }).filter(Boolean),
       createdAt: charge.createdAt?.toISOString?.() ?? charge.createdAt,
       updatedAt: charge.updatedAt?.toISOString?.() ?? charge.updatedAt
     })) ?? [],
@@ -292,10 +298,11 @@ quotationRoutes.post("/", async (req, res, next) => {
       }))
     ];
     const serviceDuration = pricing.serviceDuration;
+    const manpower = getQuotationBaristaPricing(pricing.totalCups, serviceDuration, pricing.selectedDates);
     const serviceDates = pricing.selectedDates.map((serviceDate, index) => ({
       id: `service-date-${index + 1}-${serviceDate}`,
       serviceDate,
-      cups: Math.round(pricing.averageCupsPerDay),
+      cups: manpower.perDate[index].cupsForDate,
       durationMode: serviceDuration,
       startTime: "09:00",
       endTime: serviceDuration === "FULL_DAY" ? "17:00" : "13:00"
@@ -320,6 +327,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         level: pricing.packageCode,
         briefDescription: packageDisplay.shortDescription,
         price: pricing.subtotal,
+        includedBaristaFee: pricing.extraBaristaFee,
         perks: publicPricingPreview(pricing, packageDisplay).selectedItems.map((name, displayOrder) => ({ id: `${pricing.packageCode}-${displayOrder}`, name, displayOrder })),
         packageCode: pricing.packageCode,
         packageName: packageDisplay.name,
@@ -450,8 +458,8 @@ quotationRoutes.post("/", async (req, res, next) => {
             serviceStartTime: date.startTime,
             serviceEndTime: date.endTime,
             serviceHours: getServiceHoursExact(date),
-            baristaCount: pricing.baristasPerDay,
-            extraBaristaFee: 0,
+            baristaCount: manpower.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? 0,
+            extraBaristaFee: manpower.perDate.find((entry) => entry.date === date.serviceDate)?.extraBaristaFee ?? 0,
             distributionMode: data.drinkDistributionModeByDate[date.id],
             drinks: {
               create: Object.entries(data.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({
@@ -478,7 +486,7 @@ quotationRoutes.post("/", async (req, res, next) => {
             }))
         }
         },
-        include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" } } }
+        include: { customer: true, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
         });
         await recordQuotationTracking(tx, tracking, "submittedAt");
         return savedQuotation;
@@ -532,7 +540,7 @@ quotationRoutes.get("/", async (_req, res, next) => {
   try {
     const quotations = await prisma.quotation.findMany({
       orderBy: { createdAt: "desc" },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     res.json(quotations.map(toQuotationPayload));
   } catch (error) {
@@ -544,7 +552,7 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     res.json(toQuotationPayload(quotation));
@@ -562,7 +570,7 @@ quotationRoutes.post("/find", async (req, res, next) => {
       include: {
         customer: true,
         dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } },
-        extraCharges: { orderBy: { createdAt: "asc" } },
+        extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } },
         invoices: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -630,7 +638,7 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
   try {
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
-      include: { customer: true, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { customer: true, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     if (!quotation || !customerIdentityMatches(quotation.customer, req.body, true)) {
       return res.status(404).json({ access: "NOT_FOUND" });
@@ -652,7 +660,7 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
     const quotation = await prisma.quotation.update({
       where: { quotationNo: req.params.quotationNo },
       data: { status: "APPROVED" },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     res.json(toQuotationPayload(quotation));
   } catch (error) {

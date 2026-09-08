@@ -96,9 +96,11 @@ export type QuotationPackage = {
   updatedAt?: string;
 };
 
-export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt">;
+export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt"> & { includedBaristaFee?: number };
 
 export type QuotationExtraCharge = {
+  serviceDateIds?: string[];
+  appliesToAllDates?: boolean;
   id: string;
   title: string;
   description?: string;

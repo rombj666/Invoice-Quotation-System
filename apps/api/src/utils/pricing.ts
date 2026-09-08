@@ -1,8 +1,10 @@
+import { getQuotationBaristaPricing as calculateDateManpower } from "@hour-coffee/shared";
 import { DEFAULT_SLEEVE_PRICING, DEFAULT_STICKER_PRICING, calculateSelectedAddonTotal, type CupSleevePricingConfig, type CupStickerPricingConfig } from "./addons";
 
 type ServiceDate = {
   id: string;
   cups: number;
+  serviceDate?: string;
   durationMode?: "HALF_DAY" | "FULL_DAY";
   startTime: string;
   endTime: string;
@@ -34,7 +36,8 @@ type QuotationPayload = {
     cupSticker?: CupStickerPricingConfig;
     cupSleeve?: CupSleevePricingConfig;
   };
-  packageSnapshot?: { price: number };
+  packageSnapshot?: { price: number; includedBaristaFee?: number };
+  pricingBreakdown?: { extraBaristaFee?: number };
 };
 
 type ManualExtraCharge = {
@@ -121,7 +124,7 @@ export function getFullDayBaristaFeeBreakdown(serviceDates: ServiceDate[]) {
     }));
 }
 
-export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY") {
+function getLegacyInvoiceBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY") {
   if (!Number.isInteger(totalCups) || totalCups < 50) {
     return { requiredBaristas: 0, extraBaristas: 0, extraBaristaFee: 0 };
   }
@@ -131,13 +134,7 @@ export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DA
   return { requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
 }
 
-export function getQuotationExtraBaristas(totalCups: number, duration: "HALF_DAY" | "FULL_DAY"): number {
-  return getQuotationBaristaPricing(totalCups, duration).extraBaristas;
-}
-
-export function getQuotationExtraBaristaFee(totalCups: number, duration: "HALF_DAY" | "FULL_DAY"): number {
-  return getQuotationBaristaPricing(totalCups, duration).extraBaristaFee;
-}
+export const getQuotationBaristaPricing = calculateDateManpower;
 
 function getCaffeinatedCupsForDate(dateId: string, drinkOrders: Record<string, Record<string, DrinkQuantity>>): number {
   const order = drinkOrders[dateId] ?? {};
@@ -162,7 +159,7 @@ export function calculatePricing(data: QuotationPayload) {
     const subtotal = Number(data.packageSnapshot.price);
     const discountAmount = subtotal * ((data.discountPercent || 0) / 100);
     const baristaPricing = hasQuotationLevelSettings
-      ? getQuotationBaristaPricing(totalCups, data.serviceDuration!)
+      ? getLegacyInvoiceBaristaPricing(totalCups, data.serviceDuration!)
       : { requiredBaristas: 0, extraBaristas: 0, extraBaristaFee: 0 };
     return {
       totalCups,
@@ -185,7 +182,7 @@ export function calculatePricing(data: QuotationPayload) {
     };
   }
   const baseAmount = totalCups * getCoffeeCateringRate(totalCups);
-  const quotationBaristaPricing = hasQuotationLevelSettings ? getQuotationBaristaPricing(totalCups, data.serviceDuration!) : null;
+  const quotationBaristaPricing = hasQuotationLevelSettings ? getLegacyInvoiceBaristaPricing(totalCups, data.serviceDuration!) : null;
   const requiredBaristas = quotationBaristaPricing?.requiredBaristas ?? 0;
   const extraBaristas = quotationBaristaPricing?.extraBaristas ?? 0;
   const extraBaristaFee = quotationBaristaPricing?.extraBaristaFee ?? data.serviceDates.reduce((sum, date) => sum + getExtraBaristaFee(date), 0);
@@ -226,7 +223,15 @@ export function calculatePricing(data: QuotationPayload) {
 }
 
 export function calculateQuotationPricing(data: QuotationPayload, extraCharges: ManualExtraCharge[] = []) {
-  const pricing = calculatePricing(data);
+  const legacy = calculatePricing(data);
+  const manpower = calculateDateManpower(legacy.totalCups, data.serviceDuration ?? "HALF_DAY", data.serviceDates.map((date) => date.serviceDate ?? date.id), data.serviceDuration ? {} : Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, date.durationMode ?? (getServiceHoursExact(date) > 4 ? "FULL_DAY" : "HALF_DAY")])));
+  const includedFee = data.packageSnapshot
+    ? Number(data.packageSnapshot.includedBaristaFee ?? data.pricingBreakdown?.extraBaristaFee ?? legacy.extraBaristaFee)
+    : legacy.extraBaristaFee;
+  const pricing = { ...legacy, ...manpower, fullDayBaristaFeesByDate: [],
+    baseAmount: data.packageSnapshot ? Number(data.packageSnapshot.price) - includedFee : legacy.baseAmount,
+    subtotal: legacy.subtotal - includedFee + manpower.extraBaristaFee };
+
   const manualExtraChargeTotal = extraCharges
     .filter((charge) => String(charge.title ?? "").trim().toLowerCase() !== "extra serving hour")
     .reduce((sum, charge) => sum + Number(charge.amount), 0);

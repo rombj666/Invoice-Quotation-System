@@ -191,6 +191,24 @@ export function getAverageCupsPerDay(totalCups: number, serviceDayCount: number)
   return serviceDayCount > 0 ? totalCups / serviceDayCount : 0;
 }
 
+/** Integer allocation is chronological; fees are summed in service-date units. */
+export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY", selectedDates: string[], durationsByDate: Record<string, "HALF_DAY" | "FULL_DAY"> = {}) {
+  const dates = [...selectedDates].sort();
+  const cups = Number.isInteger(totalCups) && totalCups >= 0 ? totalCups : 0;
+  const base = dates.length ? Math.floor(cups / dates.length) : 0;
+  const remainder = dates.length ? cups % dates.length : 0;
+  const perDate = dates.map((date, index) => {
+    const cupsForDate = base + (index < remainder ? 1 : 0);
+    const requiredBaristas = Math.ceil(cupsForDate / ((durationsByDate[date] ?? duration) === "FULL_DAY" ? 150 : 100));
+    const extraBaristas = Math.max(requiredBaristas - 1, 0);
+    return { date, cupsForDate, requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
+  });
+  const requiredBaristas = Math.max(0, ...perDate.map((date) => date.requiredBaristas));
+  const minimumBaristas = perDate.length ? Math.min(...perDate.map((date) => date.requiredBaristas)) : 0;
+  const extraBaristas = perDate.reduce((sum, date) => sum + date.extraBaristas, 0);
+  return { perDate, requiredBaristas, minimumBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
+}
+
 export function getBaristasPerDay(averageCupsPerDay: number): 1 | 2 {
   return averageCupsPerDay <= 100 ? 1 : 2;
 }
@@ -273,10 +291,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   ];
   const featureKeys = new Set(selectedFeatureNames.map(normalizeFeatureName));
   const serviceDuration = normalized.serviceDuration ?? "HALF_DAY";
-  const cupsPerBarista = serviceDuration === "FULL_DAY" ? 200 : 100;
-  const requiredBaristas = Math.ceil(normalized.totalCups / cupsPerBarista);
-  const extraBaristas = Math.max(requiredBaristas - 1, 0);
-  const extraBaristaFee = extraBaristas * 100;
+  const { requiredBaristas, extraBaristas, extraBaristaFee } = getQuotationBaristaPricing(normalized.totalCups, serviceDuration, normalized.selectedDates);
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
   const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;

@@ -114,7 +114,7 @@ export function QuotationShell() {
   const selectedPreview = preview?.packageDisplay.code === data.packageCode ? preview : null;
   const discountApplied = data.discountCode.trim().toUpperCase() === "FIRST";
   const selectedDuration: ServiceDurationMode = data.serviceDuration === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
-  const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration);
+  const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration, data.serviceDates.map((date) => date.serviceDate));
 
   useEffect(() => {
     let restoredStep = 0;
@@ -333,7 +333,7 @@ export function QuotationShell() {
         packageSnapshot: {
           id: selectedPackage.id, name: selectedPackage.name,
           level: selectedPackage.code as unknown as NonNullable<QuotationData["packageSnapshot"]>["level"],
-          briefDescription: selectedPackage.shortDescription, price: validated.subtotal,
+          briefDescription: selectedPackage.shortDescription, price: validated.subtotal, includedBaristaFee: validated.extraBaristaFee,
           perks: validated.selectedItems.map((name, displayOrder) => ({ id: `${selectedPackage.code}-${displayOrder}`, name, displayOrder }))
         }
       };
@@ -464,7 +464,7 @@ export function QuotationShell() {
           <dl className="quotation-summary-row">
             <div><dt>Total Cups</dt><dd>{data.totalCups ?? "—"}</dd></div>
             <div><dt>Duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
-            <div><dt>Baristas</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
+            <div><dt>Baristas per date (maximum)</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
             <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
             <div className="quotation-summary-total"><dt>Total</dt><dd>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</dd>{discountApplied ? <small>FIRST · 5% off</small> : null}</div>
           </dl>
