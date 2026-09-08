@@ -187,10 +187,6 @@ export function getCupRate(totalCups: number): number {
   return CUP_TIERS.find((tier) => totalCups >= tier.minimumCups)?.rate ?? 10;
 }
 
-export function getAverageCupsPerDay(totalCups: number, serviceDayCount: number): number {
-  return serviceDayCount > 0 ? totalCups / serviceDayCount : 0;
-}
-
 /** Integer allocation is chronological; fees are summed in service-date units. */
 export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY", selectedDates: string[], durationsByDate: Record<string, "HALF_DAY" | "FULL_DAY"> = {}) {
   const dates = [...selectedDates].sort();
@@ -209,13 +205,6 @@ export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DA
   return { perDate, requiredBaristas, minimumBaristas, extraBaristas, extraBaristaFee: extraBaristas * 100 };
 }
 
-export function getBaristasPerDay(averageCupsPerDay: number): 1 | 2 {
-  return averageCupsPerDay <= 100 ? 1 : 2;
-}
-
-export function getStandardServiceHours(averageCupsPerDay: number): 4 | 8 {
-  return averageCupsPerDay < 200 ? 4 : 8;
-}
 
 export function calculateSleeveCharge(totalCups: number): number {
   return Math.max(totalCups, SLEEVE_MIN_QTY) * SLEEVE_RATE;

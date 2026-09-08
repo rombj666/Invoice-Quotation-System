@@ -1,7 +1,7 @@
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { cloudinaryFolders, uploadCloudinaryBuffer, uploadCloudinaryDataUrl } from "../services/cloudinary.service";
-import { calculatePricing, hasValidServiceDates } from "../utils/pricing";
+import { calculatePricing, hasValidServiceDates } from "../utils/invoice-pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";

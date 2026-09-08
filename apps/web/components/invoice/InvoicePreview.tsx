@@ -2,7 +2,7 @@
 
 import type { QuotationData } from "../../types/quotation";
 import type { InvoiceDetails } from "../../types/invoice";
-import { calculatePricing, getBaristasNeeded } from "../../lib/pricing";
+import { calculatePricing, getBaristasNeeded } from "../../lib/invoice-pricing";
 import { getAddonDisplayName } from "../../lib/addons";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";

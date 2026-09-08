@@ -5,7 +5,7 @@ import pdfStyles from "./QuotationPdf.module.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { QuotationData, ServiceDate } from "../../types/quotation";
-import { CART_SELECTION_ERROR, getAddonDisplayName, getAddonPrice, hasCartAddonConflict } from "../../lib/addons";
+import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { calculateQuotationPricing, getDurationLabel } from "../../lib/pricing";
 import { submitQuotationWithPdf } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
@@ -33,7 +33,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const pricing = calculateQuotationPricing(data);
   const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && (data.serviceDuration === "HALF_DAY" || data.serviceDuration === "FULL_DAY");
   const quotationDurationLabel = data.serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
-  const addonAmount = pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee;
   const totalBaristasRequired = pricing.minimumBaristas === pricing.requiredBaristas
     ? String(pricing.requiredBaristas) : `${pricing.minimumBaristas}–${pricing.requiredBaristas}`;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
@@ -44,7 +43,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
     ...data,
     quotationNo: activeQuotationNo,
     expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
-    pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total },
+    pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total },
     pricingBreakdown: {
       requiredBaristas: pricing.requiredBaristas,
       extraBaristas: pricing.extraBaristas,
@@ -61,14 +60,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   function afterQuotationNumberPaint(): Promise<void> {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  }
-
-  function addOnNames() {
-    return [
-      ...data.selectedAddons.map((addon) => `${getAddonDisplayName(addon.name)} (${formatMoney(getAddonPrice(addon))})`),
-      data.hasCupStickers ? `Custom Cup Stickers (${formatMoney(pricing.cupStickerFee)})` : "",
-      data.hasCupSleeves ? `Custom Cup Sleeves (${formatMoney(pricing.cupSleeveFee)})` : ""
-    ].filter(Boolean);
   }
 
   function drinkSelection() {
@@ -132,7 +123,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
             <div><span>Baristas per service date</span><strong>{totalBaristasRequired}</strong></div>
             {hasQuotationLevelSettings ? <div><span>Extra barista units (all dates)</span><strong>{pricing.extraBaristas}</strong></div> : null}
-            {hasQuotationLevelSettings ? <div><span>Extra barista fee (total)</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+            {hasQuotationLevelSettings ? <div><span>Extra barista fee (included in package)</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
           </div>
           <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
             <thead><tr><th>Selected Service Dates</th><th>Baristas</th></tr></thead>
@@ -146,11 +137,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         <table className="invoice-table invoice-item-table">
           <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
           <tbody>
-            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td><td className="amount-cell">{formatMoney(pricing.baseAmount)}</td></tr>
-            {pricing.extraBaristaFee > 0 ? <tr><td>Extra Barista Fee</td><td>{pricing.extraBaristas} extra barista units across service dates</td><td className="number-cell">{pricing.extraBaristas}</td><td className="amount-cell">RM100.00</td><td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td></tr> : null}
-            {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <tr key={`legacy-hours-${entry.serviceDateId}`}><td>Extra Serving Hour</td><td>{formatCompactDate(entry.date)} · legacy service calculation</td><td className="number-cell">{entry.extraServingHours}</td><td className="amount-cell">{formatMoney(entry.rate)}</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
-            {pricing.machineRentalFee > 0 ? <tr><td>Machine Rental</td><td>Additional coffee machine rental</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td><td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td></tr> : null}
-            {addonAmount > 0 ? <tr><td>Add-ons</td><td>{addOnNames().join(", ")}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(addonAmount)}</td><td className="amount-cell">{formatMoney(addonAmount)}</td></tr> : null}
+            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.packageAmount)}</td><td className="amount-cell">{formatMoney(pricing.packageAmount)}</td></tr>
             {(data.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description}<div>Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</div></td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
           </tbody>
         </table>
@@ -194,11 +181,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div className="review-summary-rows">
             <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Baristas per service date</span><strong>{totalBaristasRequired}</strong></div>
-            <div className="review-fee-start"><span>Coffee Catering</span><strong>{formatMoney(pricing.baseAmount)}</strong></div>
-            <div><span>Extra Barista Fee</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div>
-            <div><span>Add-on Fee</span><strong>{formatMoney(addonAmount)}</strong></div>
-            {pricing.totalExtraServingHourFee > 0 ? <div><span>Extra Serving Hour</span><strong>{formatMoney(pricing.totalExtraServingHourFee)}</strong></div> : null}
-            {pricing.machineRentalFee > 0 ? <div><span>Machine Rental</span><strong>{formatMoney(pricing.machineRentalFee)}</strong></div> : null}
+            <div className="review-fee-start"><span>{selectedPackage?.name ?? "Quotation"} package</span><strong>{formatMoney(pricing.packageAmount)}</strong></div>
             {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}<small> · Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</small></span><strong>{formatMoney(charge.amount)}</strong></div>)}
             {pricing.discountAmount > 0 ? <div className="review-subtotal"><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div> : null}
             {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>-{formatMoney(pricing.discountAmount)}</strong></div> : null}

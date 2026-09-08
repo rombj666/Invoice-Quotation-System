@@ -96,7 +96,7 @@ export type QuotationPackage = {
   updatedAt?: string;
 };
 
-export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt"> & { includedBaristaFee?: number };
+export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt">;
 
 export type QuotationExtraCharge = {
   serviceDateIds?: string[];
@@ -198,6 +198,7 @@ export type QuotationData = {
   linkExpiryDays: number;
   expiresAt?: string;
   pricingSnapshot?: {
+    packageAmount?: number;
     subtotal: number;
     discountAmount: number;
     total: number;

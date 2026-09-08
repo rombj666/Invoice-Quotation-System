@@ -67,6 +67,11 @@ export function toQuotationPayload(record: any) {
   })() : metadata;
   return {
     ...hydrated,
+    pricingSnapshot: {
+      ...metadata.pricingSnapshot,
+      packageAmount: metadata.packageSnapshot?.price ?? metadata.pricingSnapshot?.packageAmount
+        ?? Math.max(0, Number(record.subtotalAmount ?? metadata.pricingSnapshot?.subtotal ?? 0) - (record.extraCharges ?? []).filter((charge: any) => String(charge.title).trim().toLowerCase() !== "extra serving hour").reduce((sum: number, charge: any) => sum + Number(charge.amount), 0))
+    },
     id: record.id,
     quotationNo: record.quotationNo,
     status: record.status,
@@ -327,7 +332,6 @@ quotationRoutes.post("/", async (req, res, next) => {
         level: pricing.packageCode,
         briefDescription: packageDisplay.shortDescription,
         price: pricing.subtotal,
-        includedBaristaFee: pricing.extraBaristaFee,
         perks: publicPricingPreview(pricing, packageDisplay).selectedItems.map((name, displayOrder) => ({ id: `${pricing.packageCode}-${displayOrder}`, name, displayOrder })),
         packageCode: pricing.packageCode,
         packageName: packageDisplay.name,

@@ -44,7 +44,6 @@ export default function AdminQuotationDetailPage() {
   const pricing = calculateQuotationPricing(quotation);
   const hasQuotationDuration = Number.isFinite(quotation.totalCups) && (quotation.serviceDuration === "HALF_DAY" || quotation.serviceDuration === "FULL_DAY");
   const baristasProvided = pricing.minimumBaristas === pricing.requiredBaristas ? String(pricing.requiredBaristas) : `${pricing.minimumBaristas}–${pricing.requiredBaristas}`;
-  const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
@@ -140,18 +139,6 @@ export default function AdminQuotationDetailPage() {
             {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
           </section> : null}
-          <section>
-            <h3>Pricing</h3>
-            <p>{quotation.packageSnapshot ? "Package price" : "Base"}: {formatMoney(pricing.baseAmount)}</p>
-            {pricing.extraBaristaFee > 0 ? <p>{pricing.fullDayBaristaFeesByDate.length ? "Full-day barista charge" : "Extra barista fee"}: {formatMoney(pricing.extraBaristaFee)}</p> : null}
-            {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
-            {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
-            {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
-            {(quotation.extraCharges ?? []).map((charge) => <p key={charge.id}>{charge.title}: {formatMoney(charge.amount)}</p>)}
-            <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
-            {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
-            <p>Total: {formatMoney(pricing.total)}</p>
-          </section>
           {(quotation.extraCharges ?? []).length ? <section>
             <h3>Manual Extra Charges</h3>
             <div className="admin-extra-charge-list">

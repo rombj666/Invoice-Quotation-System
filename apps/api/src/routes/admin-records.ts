@@ -6,7 +6,9 @@ import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
-import { calculatePricing, calculateQuotationPricing, getServiceHoursExact, hasValidServiceDates } from "../utils/pricing";
+import { calculatePricing, hasValidServiceDates } from "../utils/invoice-pricing";
+import { calculateQuotationPricing, getServiceHoursExact } from "../utils/pricing";
+import { calculateQuotationPricing as calculatePackagePricing, getQuotationPackageInput } from "@hour-coffee/shared";
 import { prisma } from "../utils/prisma";
 import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 import { toQuotationPayload } from "./quotations";
@@ -56,6 +58,7 @@ function validateQuotationEdits(data: any, current: any): string | null {
     ids.add(date.id); dates.add(date.serviceDate);
   }
   const stored = toQuotationPayload(current);
+  data.pricingSnapshot = stored.pricingSnapshot;
   data.extraCharges ??= stored.extraCharges;
   if (!Array.isArray(data.extraCharges)) return "Invalid extra charges.";
   const chargeIds = new Set<string>();
@@ -74,10 +77,19 @@ function validateQuotationEdits(data: any, current: any): string | null {
     charge.description = validated.charge!.description;
     charge.amount = Number(validated.charge!.amount);
   }
-  // Freeze the original non-manpower package amount across repeated edits.
-  if (current.metadata?.packageSnapshot) {
-    data.packageSnapshot = { ...current.metadata.packageSnapshot,
-      includedBaristaFee: current.metadata.packageSnapshot.includedBaristaFee ?? current.metadata.pricingBreakdown?.extraBaristaFee ?? calculatePricing(current.metadata).extraBaristaFee };
+  // The saved package amount is authoritative. Reprice only if its service inputs change.
+  const original = current.metadata ?? {};
+  if (original.packageSnapshot) {
+    data.packageSnapshot = { ...original.packageSnapshot };
+    data.packageCode = original.packageCode;
+    data.cartStyle = original.cartStyle;
+    data.selectedOptions = original.selectedOptions;
+    const before = getQuotationPackageInput(original);
+    const after = getQuotationPackageInput(data);
+    if (before && after && (before.totalCups !== after.totalCups || before.serviceDuration !== after.serviceDuration || before.selectedDates.length !== after.selectedDates.length)) {
+      const packagePricing = calculatePackagePricing(after);
+      data.packageSnapshot.price = packagePricing.subtotal;
+    }
   }
   return null;
 }
@@ -123,7 +135,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
     const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
-    res.json({ ...pricedData, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
+    res.json({ ...pricedData, pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
   } catch (error) {
     next(error);
   }
@@ -162,7 +174,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     if (!pdfUpload) throw new Error("Unable to upload quotation PDF.");
     newPdfPublicId = pdfUpload.cloudinaryPublicId;
     const summaryFields = changedFields({ ...(current.metadata as object), extraCharges: toQuotationPayload(current).extraCharges }, data, ["quotationNo", "customer", "location", "fullAddress", "eventType", "customEventType", "serviceDates", "drinkOrders", "selectedAddons", "hasCupStickers", "hasCupSleeves", "discountPercent", "status", "extraCharges"]);
-    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
+    const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
 
     const dateDatabaseIds = new Map<string, string>(pricedData.serviceDates.map((date: any) => [date.id, randomUUID()]));
     const updated = await prisma.$transaction(async (tx) => {

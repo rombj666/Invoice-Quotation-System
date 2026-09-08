@@ -3,10 +3,10 @@
 import type { PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ServiceDate, ServiceDurationMode } from "../../types/quotation";
-import type { PricingBreakdown } from "../../lib/pricing";
+import type { PricingBreakdown } from "../../lib/invoice-pricing";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { formatDateLabel, formatMoney, formatTime } from "../../lib/formatters";
-import { COFFEE_CATERING_TIERS, getBaristasNeeded, getCoffeeCateringTier } from "../../lib/pricing";
+import { COFFEE_CATERING_TIERS, getBaristasNeeded, getCoffeeCateringTier } from "../../lib/invoice-pricing";
 import { Button } from "../common/Button";
 import { StepNavigation } from "../common/StepNavigation";
 

@@ -333,7 +333,7 @@ export function QuotationShell() {
         packageSnapshot: {
           id: selectedPackage.id, name: selectedPackage.name,
           level: selectedPackage.code as unknown as NonNullable<QuotationData["packageSnapshot"]>["level"],
-          briefDescription: selectedPackage.shortDescription, price: validated.subtotal, includedBaristaFee: validated.extraBaristaFee,
+          briefDescription: selectedPackage.shortDescription, price: validated.subtotal,
           perks: validated.selectedItems.map((name, displayOrder) => ({ id: `${selectedPackage.code}-${displayOrder}`, name, displayOrder }))
         }
       };
