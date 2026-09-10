@@ -99,6 +99,8 @@ export type QuotationPackage = {
 export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt">;
 
 export type QuotationExtraCharge = {
+  serviceDateIds?: string[];
+  appliesToAllDates?: boolean;
   id: string;
   title: string;
   description?: string;
@@ -196,6 +198,7 @@ export type QuotationData = {
   linkExpiryDays: number;
   expiresAt?: string;
   pricingSnapshot?: {
+    packageAmount?: number;
     subtotal: number;
     discountAmount: number;
     total: number;

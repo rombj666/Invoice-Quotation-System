@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
-import { calculatePricing } from "../../../lib/pricing";
+import { calculatePricing } from "../../../lib/invoice-pricing";
 import { loadAllInvoices } from "../../../lib/invoice-storage";
 import { formatDateLabel, formatMalaysiaDateInput, formatMoney } from "../../../lib/formatters";
 import type { InvoiceDetails } from "../../../types/invoice";

@@ -115,6 +115,7 @@ model Quotation {
 }
 
 model QuotationExtraCharge {
+  dates QuotationExtraChargeDate[]
   id          String    @id @default(cuid())
   quotationId String
   quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
@@ -128,6 +129,7 @@ model QuotationExtraCharge {
 }
 
 model QuotationDate {
+  extraChargeDates QuotationExtraChargeDate[]
   id                 String                @id @default(cuid())
   quotationId        String
   quotation          Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
@@ -446,4 +448,15 @@ model PackagePerk {
   updatedAt    DateTime         @updatedAt
 
   @@index([packageId, displayOrder])
+}
+
+model QuotationExtraChargeDate {
+  id String @id @default(cuid())
+  extraChargeId String
+  quotationDateId String
+  extraCharge QuotationExtraCharge @relation(fields: [extraChargeId], references: [id], onDelete: Cascade)
+  quotationDate QuotationDate @relation(fields: [quotationDateId], references: [id], onDelete: Cascade)
+
+  @@unique([extraChargeId, quotationDateId])
+  @@index([quotationDateId])
 }

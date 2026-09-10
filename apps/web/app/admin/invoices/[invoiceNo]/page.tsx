@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card } from "../../../../components/common/Card";
 import { apiBaseUrl } from "../../../../lib/api-client";
-import { calculatePricing } from "../../../../lib/pricing";
+import { calculatePricing } from "../../../../lib/invoice-pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { loadInvoiceByNo } from "../../../../lib/invoice-storage";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";

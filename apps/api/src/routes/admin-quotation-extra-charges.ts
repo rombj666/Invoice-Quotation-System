@@ -61,7 +61,7 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
     const current = await prisma.quotation.findUnique({
       where: { id: quotationId },
       include: {
-        extraCharges: { orderBy: { createdAt: "asc" } },
+        extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } },
         invoices: { select: { id: true } }
       }
     });
@@ -112,13 +112,14 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
       });
       const storedMetadata = metadataObject(current.metadata);
       const pricing = calculateQuotationPricing(
-        { ...storedMetadata, discountPercent: Number(current.discountPercent) } as any,
+        { ...storedMetadata, pricingSnapshot: toQuotationPayload(current).pricingSnapshot, discountPercent: Number(current.discountPercent) } as any,
         extraCharges
       );
       const metadata = {
         ...storedMetadata,
         extraCharges: undefined,
         pricingSnapshot: {
+          packageAmount: pricing.packageAmount,
           subtotal: pricing.subtotal,
           discountAmount: pricing.discountAmount,
           total: pricing.total
@@ -144,7 +145,7 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
           }
         },
         include: {
-          extraCharges: { orderBy: { createdAt: "asc" } },
+          extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } },
           invoices: { select: { id: true } },
           statusHistory: { orderBy: { createdAt: "desc" } }
         }

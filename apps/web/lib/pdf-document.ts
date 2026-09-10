@@ -19,6 +19,7 @@ export async function generatePdfBlob(elementId: string, { filename }: PdfOption
     return await html2pdf()
       .set({
         filename,
+        ...(elementId === "quotationPreview" ? { pagebreak: { mode: ["css", "legacy"], before: ".quotation-page-two", avoid: ["tr", "thead", ".invoice-totals"] } } : {}),
         margin: 6,
         image: { type: "jpeg", quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },

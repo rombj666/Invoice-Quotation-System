@@ -7,7 +7,7 @@ import type { CustomizationMode, QuotationData } from "../../types/quotation";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
-import { calculatePricing } from "../../lib/pricing";
+import { calculatePricing } from "../../lib/invoice-pricing";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
 import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";

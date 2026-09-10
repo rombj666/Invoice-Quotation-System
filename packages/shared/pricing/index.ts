@@ -151,10 +151,10 @@ export type PricingValidation = {
 };
 
 export const CUP_TIERS = [
-  { minimumCups: 400, rate: 7.5 },
-  { minimumCups: 300, rate: 8 },
+  { minimumCups: 350, rate: 8 },
   { minimumCups: 200, rate: 8.5 },
-  { minimumCups: 100, rate: 9 },
+  { minimumCups: 150, rate: 9 },
+  { minimumCups: 100, rate: 9.5 },
   { minimumCups: 50, rate: 10 }
 ] as const;
 
@@ -187,17 +187,26 @@ export function getCupRate(totalCups: number): number {
   return CUP_TIERS.find((tier) => totalCups >= tier.minimumCups)?.rate ?? 10;
 }
 
-export function getAverageCupsPerDay(totalCups: number, serviceDayCount: number): number {
-  return serviceDayCount > 0 ? totalCups / serviceDayCount : 0;
+/** Integer allocation is chronological; fees are summed in service-date units. */
+export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY", selectedDates: string[], durationsByDate: Record<string, "HALF_DAY" | "FULL_DAY"> = {}) {
+  const dates = [...selectedDates].sort();
+  const cups = Number.isInteger(totalCups) && totalCups >= 0 ? totalCups : 0;
+  const base = dates.length ? Math.floor(cups / dates.length) : 0;
+  const remainder = dates.length ? cups % dates.length : 0;
+  const perDate = dates.map((date, index) => {
+    const cupsForDate = base + (index < remainder ? 1 : 0);
+    const isFullDay = (durationsByDate[date] ?? duration) === "FULL_DAY";
+    const requiredBaristas = Math.ceil(cupsForDate / (isFullDay ? 150 : 100));
+    const extraBaristas = Math.max(requiredBaristas - 1, 0);
+    return { date, cupsForDate, requiredBaristas, extraBaristas, extraBaristaFee: extraBaristas * (isFullDay ? 150 : 100) };
+  });
+  const requiredBaristas = Math.max(0, ...perDate.map((date) => date.requiredBaristas));
+  const minimumBaristas = perDate.length ? Math.min(...perDate.map((date) => date.requiredBaristas)) : 0;
+  const extraBaristas = perDate.reduce((sum, date) => sum + date.extraBaristas, 0);
+  const extraBaristaFee = perDate.reduce((sum, date) => sum + date.extraBaristaFee, 0);
+  return { perDate, requiredBaristas, minimumBaristas, extraBaristas, extraBaristaFee };
 }
 
-export function getBaristasPerDay(averageCupsPerDay: number): 1 | 2 {
-  return averageCupsPerDay <= 100 ? 1 : 2;
-}
-
-export function getStandardServiceHours(averageCupsPerDay: number): 4 | 8 {
-  return averageCupsPerDay < 200 ? 4 : 8;
-}
 
 export function calculateSleeveCharge(totalCups: number): number {
   return Math.max(totalCups, SLEEVE_MIN_QTY) * SLEEVE_RATE;
@@ -273,10 +282,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   ];
   const featureKeys = new Set(selectedFeatureNames.map(normalizeFeatureName));
   const serviceDuration = normalized.serviceDuration ?? "HALF_DAY";
-  const cupsPerBarista = serviceDuration === "FULL_DAY" ? 200 : 100;
-  const requiredBaristas = Math.ceil(normalized.totalCups / cupsPerBarista);
-  const extraBaristas = Math.max(requiredBaristas - 1, 0);
-  const extraBaristaFee = extraBaristas * 100;
+  const { requiredBaristas, extraBaristas, extraBaristaFee } = getQuotationBaristaPricing(normalized.totalCups, serviceDuration, normalized.selectedDates);
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
   const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;

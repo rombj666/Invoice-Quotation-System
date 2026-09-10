@@ -15,7 +15,7 @@ import {
 } from "../../lib/addons";
 import { formatMoney } from "../../lib/formatters";
 import { addonAvailabilityKeys, flattenAvailability, loadProductAvailability, type AvailabilityItem } from "../../lib/product-availability";
-import { getCupSleevePrice, getCupStickerPrice, getMachineRentalFee } from "../../lib/pricing";
+import { getCupSleevePrice, getCupStickerPrice, getMachineRentalFee } from "../../lib/invoice-pricing";
 import { StepNavigation } from "../common/StepNavigation";
 
 type Props = {
