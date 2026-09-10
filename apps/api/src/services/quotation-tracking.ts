@@ -26,10 +26,13 @@ export async function recordQuotationTracking(
     create: { sessionId, visitorId: input.visitorId, visitDate, firstVisitedAt: now, lastActivityAt: now },
     update: { lastActivityAt: now }
   });
-  if (milestone) {
+  // A later milestone proves the preceding stages in this same session.
+  // Conditional writes preserve first timestamps under repeats and concurrent requests.
+  const milestones: TrackingMilestone[] = ["step1EngagedAt", "step2VisitedAt", "packageSelectedAt", "submittedAt"];
+  for (const reached of milestone ? milestones.slice(0, milestones.indexOf(milestone) + 1) : []) {
     await db.quotationTrackingSession.updateMany({
-      where: { id: session.id, [milestone]: null },
-      data: { [milestone]: now }
+      where: { id: session.id, [reached]: null },
+      data: { [reached]: now }
     });
   }
   return { sessionId: session.sessionId, visitDate: visitDate.toISOString().slice(0, 10) };

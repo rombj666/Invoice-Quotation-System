@@ -28,7 +28,7 @@ type TrafficMetric = Exclude<keyof TrafficCounts, "step1Abandoned" | "step2Aband
 const trafficMetrics: Array<{ key: TrafficMetric; label: string; tab: string }> = [
   { key: "sessions", label: "Quotation Sessions", tab: "Sessions" },
   { key: "step1Engaged", label: "Step 1 Engaged", tab: "Engaged" },
-  { key: "step2Visitors", label: "Step 2 Visitors", tab: "Step 2" },
+  { key: "step2Visitors", label: "Step 2 Reached", tab: "Step 2 Reached" },
   { key: "packageSelected", label: "Package Selected", tab: "Package Selected" },
   { key: "submitted", label: "Submitted Quotations", tab: "Submitted" },
   { key: "directExit", label: "Direct Exit", tab: "Direct Exit" }
@@ -94,7 +94,7 @@ function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["tra
     {loading ? <div className="admin-chart-empty">Loading quotation traffic…</div> : <>
       <TrafficTrend traffic={traffic} metric={metric} />
       <div className="admin-traffic-abandonment"><span>Step 1 Abandoned <strong>{traffic.current.totals.step1Abandoned.toLocaleString()}</strong></span><span>Step 2 Abandoned <strong>{traffic.current.totals.step2Abandoned.toLocaleString()}</strong></span></div>
-      <p className="admin-traffic-note">One session per visitor per Malaysia calendar day. Milestones use their event times. Direct exits and abandonment are counted only after the visit day ends.</p>
+      <p className="admin-traffic-note">One session per visitor per Malaysia calendar day. All funnel stages are grouped by when the session first opened; later stages also qualify for earlier stages. Direct exits and abandonment are counted only after the visit day ends.</p>
     </>}
   </section>;
 }

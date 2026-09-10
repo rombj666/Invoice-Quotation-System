@@ -94,6 +94,7 @@ type TrafficCounts = {
 };
 
 type DashboardTrafficSession = {
+  id: string;
   visitDate: Date;
   firstVisitedAt: Date;
   step1EngagedAt: Date | null;
@@ -127,20 +128,26 @@ function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from
     bucket[metric] += 1;
   }
   const today = malaysiaVisitDate(now);
+  const seen = new Set<string>();
   for (const session of sessions) {
-    count("sessions", session.firstVisitedAt);
-    count("step1Engaged", session.step1EngagedAt);
-    count("step2Visitors", session.step2VisitedAt);
-    count("packageSelected", session.packageSelectedAt);
-    count("submitted", session.submittedAt);
-    if (session.visitDate >= today) continue;
-    const visitDayStart = new Date(session.visitDate.getTime() - MALAYSIA_OFFSET_MS);
-    const engaged = session.step1EngagedAt !== null;
-    const reachedStep2 = session.step2VisitedAt !== null;
+    if (seen.has(session.id)) continue;
+    seen.add(session.id);
+    // All stages use the session-start cohort, including historical records whose
+    // earlier events are missing. Later milestones are evidence of progression.
     const submitted = session.submittedAt !== null;
-    if (!engaged && !reachedStep2 && !submitted) count("directExit", visitDayStart);
-    if (engaged && !reachedStep2 && !submitted) count("step1Abandoned", visitDayStart);
-    if (reachedStep2 && !submitted) count("step2Abandoned", visitDayStart);
+    const selected = session.packageSelectedAt !== null || submitted;
+    const reachedStep2 = session.step2VisitedAt !== null || selected;
+    const engaged = session.step1EngagedAt !== null || reachedStep2;
+    const startedAt = session.firstVisitedAt;
+    count("sessions", startedAt);
+    if (engaged) count("step1Engaged", startedAt);
+    if (reachedStep2) count("step2Visitors", startedAt);
+    if (selected) count("packageSelected", startedAt);
+    if (submitted) count("submitted", startedAt);
+    if (session.visitDate >= today) continue;
+    if (!engaged) count("directExit", startedAt);
+    if (engaged && !reachedStep2) count("step1Abandoned", startedAt);
+    if (reachedStep2 && !submitted) count("step2Abandoned", startedAt);
   }
   return { from: from.toISOString(), to: to.toISOString(), totals, points: [...buckets].map(([label, values]) => ({ label, values })) };
 }
@@ -189,15 +196,9 @@ adminDashboardRoutes.get("/metrics", async (req, res, next) => {
         orderBy: { createdAt: "asc" }
       }),
       prisma.quotationTrackingSession.findMany({
-        where: trafficDateRange ? {
-          OR: [
-            { firstVisitedAt: trafficDateRange }, { step1EngagedAt: trafficDateRange },
-            { step2VisitedAt: trafficDateRange }, { packageSelectedAt: trafficDateRange },
-            { submittedAt: trafficDateRange },
-            { visitDate: { gte: new Date(trafficFrom!.getTime() + MALAYSIA_OFFSET_MS), lt: new Date(range.to!.getTime() + MALAYSIA_OFFSET_MS) } }
-          ]
-        } : {},
+        where: trafficDateRange ? { firstVisitedAt: trafficDateRange } : {},
         select: {
+          id: true,
           visitDate: true,
           firstVisitedAt: true,
           step1EngagedAt: true,
