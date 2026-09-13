@@ -97,6 +97,7 @@ export function QuotationShell() {
   const [pdfData, setPdfData] = useState<QuotationData | null>(null);
   const engagedVisitDate = useRef("");
   const submitting = useRef(false);
+  const submittedContact = useRef<Parameters<typeof openCustomerQuotationWhatsApp>[0] | null>(null);
   const minimumDate = useMemo(() => toLocalIsoDate(getMinimumSelectableDate()), []);
 
   const displayPackages = useMemo(
@@ -308,6 +309,15 @@ export function QuotationShell() {
 
   async function continueToWhatsApp() {
     if (submitting.current) return;
+    const existingContact = submittedContact.current ?? (data.quotationPdfUrl && data.quotationPdfPublicId ? {
+      quotation: data,
+      packageName: data.packageSnapshot?.name ?? selectedPackage?.name ?? "",
+      estimatedTotal: data.pricingSnapshot?.total ?? selectedPreview?.finalTotal ?? 0
+    } : null);
+    if (existingContact) {
+      openCustomerQuotationWhatsApp(existingContact);
+      return;
+    }
     if (!selectedPackage) return setError("Choose a package first.");
     if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
     if (!data.customer.name.trim()) return setError("Customer full name is required.");
@@ -343,9 +353,10 @@ export function QuotationShell() {
         setPdfData((current) => current ? { ...current, quotationNo: nextQuotationNo } : current);
         await afterPdfPaint();
       });
+      submittedContact.current = { quotation: saved, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal };
       setData(saved);
       window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({ quotationNo: saved.quotationNo, status: "submitted", submittedAt: new Date().toISOString() }));
-      openCustomerQuotationWhatsApp({ quotation: data, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal }, whatsappWindow);
+      openCustomerQuotationWhatsApp(submittedContact.current, whatsappWindow);
     } catch (reason) {
       whatsappWindow?.close();
       setError(reason instanceof Error ? reason.message : "Unable to submit quotation. Please try again.");
@@ -479,7 +490,33 @@ export function QuotationShell() {
             </div>
           </div>
         </section>
-        <div className="quotation-submit-action"><Button type="button" onClick={continueToWhatsApp} disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : "Submit"}</Button></div>
+        <section className="quotation-contact-action" aria-labelledby="quotation-contact-heading">
+          <h2 id="quotation-contact-heading">Ready to proceed?</h2>
+          <Button type="button" onClick={continueToWhatsApp} aria-describedby="quotation-contact-description" disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : "Contact Us on WhatsApp"}</Button>
+          <p id="quotation-contact-description">Send us a message on WhatsApp and our team will get back to you as soon as possible.</p>
+        </section>
+        <style jsx>{`
+          .quotation-contact-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            margin-top: 24px;
+            padding: 24px 20px;
+            border: 1px solid #deded5;
+            border-radius: 18px;
+            background: #f3f5ef;
+            text-align: center;
+          }
+          .quotation-contact-action h2 { margin: 0; color: #5f432b; font-size: 20px; }
+          .quotation-contact-action p { max-width: 440px; margin: 0; color: #65665d; font-size: 14px; line-height: 1.6; }
+          .quotation-contact-action :global(.hc-button) { width: min(100%, 340px); background: #32634c; border-color: #32634c; color: #fff; text-transform: none; }
+          .quotation-contact-action :global(.hc-button:hover:not(:disabled)) { background: #284f3d; border-color: #284f3d; }
+          @media (max-width: 640px) {
+            .quotation-contact-action { padding: 22px 16px; margin-bottom: calc(88px + env(safe-area-inset-bottom)); }
+            .quotation-contact-action :global(.hc-button) { width: 100%; }
+          }
+        `}</style>
         {previewError ? <p className="error">{previewError}</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>}
