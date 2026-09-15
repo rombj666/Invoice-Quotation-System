@@ -7,7 +7,7 @@ type QuotationDocumentInput = {
   packageCode?: string;
   cartStyle?: CartStyle;
   selectedOptions?: PackageOptionCode[];
-  packageSnapshot?: { price: number; packageCode?: string; level?: string; perks?: Array<{ name: string }> };
+  packageSnapshot?: { price: number; extendedDayCharge?: number; packageCode?: string; level?: string; perks?: Array<{ name: string }> };
   pricingSnapshot?: { subtotal: number; total: number; discountAmount: number; packageAmount?: number };
   discountPercent: number;
 };
@@ -54,11 +54,14 @@ export function calculateQuotationDocumentPricing(data: QuotationDocumentInput, 
     .filter((charge) => String(charge.title ?? "").trim().toLowerCase() !== "extra serving hour")
     .reduce((sum, charge) => sum + Number(charge.amount), 0);
   const packageInput = getQuotationPackageInput(data);
+  let extendedDayCharge = data.packageSnapshot?.extendedDayCharge ?? 0;
   let packageAmount: number;
   if (data.packageSnapshot && Number.isFinite(Number(data.packageSnapshot.price))) {
     packageAmount = Number(data.packageSnapshot.price);
   } else if (packageInput) {
-    packageAmount = calculateQuotationPricing(packageInput).subtotal;
+    const packagePricing = calculateQuotationPricing(packageInput);
+    packageAmount = packagePricing.subtotal;
+    extendedDayCharge = packagePricing.extendedDayCharge;
   } else {
     // Historical records remain readable using saved amounts, never obsolete rate formulas.
     packageAmount = Number(data.pricingSnapshot?.packageAmount ?? Math.max(0, Number(data.pricingSnapshot?.subtotal ?? 0) - manualExtraChargeTotal));
@@ -69,6 +72,7 @@ export function calculateQuotationDocumentPricing(data: QuotationDocumentInput, 
     ...manpower,
     totalCups,
     packageAmount,
+    extendedDayCharge,
     baseAmount: packageAmount,
     manualExtraChargeTotal,
     subtotal,

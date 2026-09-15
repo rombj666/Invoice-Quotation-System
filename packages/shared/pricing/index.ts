@@ -127,6 +127,7 @@ export type PricingResult = {
   requiredBaristas: number;
   extraBaristas: number;
   extraBaristaFee: number;
+  extendedDayCharge: number;
   standardServiceHours: 4 | 8;
   extendedToEightHours: boolean;
   cartStyle?: CartStyle;
@@ -291,8 +292,11 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     : 0;
   const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0)
     + customizeEquipmentCartCharge;
+  const includedServiceDays = Math.max(1, Math.floor(normalized.totalCups / (serviceDuration === "FULL_DAY" ? 150 : 100)));
+  const additionalDays = Math.max(0, serviceDayCount - includedServiceDays);
+  const extendedDayCharge = additionalDays * (serviceDuration === "FULL_DAY" ? 160 : 80);
   const extensionLabor = 0;
-  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge + extraBaristaFee;
+  const preTravelSubtotal = cupRevenue + sleeveCharge + selectionCharge + extraBaristaFee + extendedDayCharge;
   const travel = calculateTravel(preTravelSubtotal);
   const subtotal = preTravelSubtotal + travel;
   const discountPercent = normalized.discountPercent ?? 0;
@@ -311,6 +315,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     requiredBaristas,
     extraBaristas,
     extraBaristaFee,
+    extendedDayCharge,
     standardServiceHours: serviceDuration === "FULL_DAY" ? 8 : 4,
     extendedToEightHours: serviceDuration === "FULL_DAY",
     ...(normalized.cartStyle ? { cartStyle: normalized.cartStyle } : {}),

@@ -89,6 +89,7 @@ function validateQuotationEdits(data: any, current: any): string | null {
     if (before && after && (before.totalCups !== after.totalCups || before.serviceDuration !== after.serviceDuration || before.selectedDates.length !== after.selectedDates.length)) {
       const packagePricing = calculatePackagePricing(after);
       data.packageSnapshot.price = packagePricing.subtotal;
+      data.packageSnapshot.extendedDayCharge = packagePricing.extendedDayCharge;
     }
   }
   return null;
