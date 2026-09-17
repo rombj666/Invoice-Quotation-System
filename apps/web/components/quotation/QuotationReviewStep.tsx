@@ -33,6 +33,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const pricing = calculateQuotationPricing(data);
   const hasQuotationLevelSettings = Number.isFinite(data.totalCups) && (data.serviceDuration === "HALF_DAY" || data.serviceDuration === "FULL_DAY");
   const quotationDurationLabel = data.serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day";
+  const extendedDayRate = data.serviceDuration === "FULL_DAY" ? 160 : 80;
   const totalBaristasRequired = pricing.minimumBaristas === pricing.requiredBaristas
     ? String(pricing.requiredBaristas) : `${pricing.minimumBaristas}–${pricing.requiredBaristas}`;
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
@@ -137,7 +138,8 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         <table className="invoice-table invoice-item-table">
           <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
           <tbody>
-            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.packageAmount)}</td><td className="amount-cell">{formatMoney(pricing.packageAmount)}</td></tr>
+            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</td><td className="amount-cell">{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</td></tr>
+            {pricing.extendedDayCharge > 0 ? <tr><td>Extended Service Day</td><td>{pricing.extendedDayCharge / extendedDayRate} × {quotationDurationLabel}</td><td className="number-cell">{pricing.extendedDayCharge / extendedDayRate}</td><td className="amount-cell">{formatMoney(extendedDayRate)}</td><td className="amount-cell">{formatMoney(pricing.extendedDayCharge)}</td></tr> : null}
             {(data.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description}<div>Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</div></td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
           </tbody>
         </table>
@@ -181,7 +183,8 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div className="review-summary-rows">
             <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Baristas per service date</span><strong>{totalBaristasRequired}</strong></div>
-            <div className="review-fee-start"><span>{selectedPackage?.name ?? "Quotation"} package</span><strong>{formatMoney(pricing.packageAmount)}</strong></div>
+            <div className="review-fee-start"><span>{selectedPackage?.name ?? "Quotation"} package</span><strong>{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</strong></div>
+            {pricing.extendedDayCharge > 0 ? <div><span>Extended Service Day ({pricing.extendedDayCharge / extendedDayRate} × {quotationDurationLabel})</span><strong>{formatMoney(pricing.extendedDayCharge)}</strong></div> : null}
             {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}<small> · Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</small></span><strong>{formatMoney(charge.amount)}</strong></div>)}
             {pricing.discountAmount > 0 ? <div className="review-subtotal"><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div> : null}
             {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>-{formatMoney(pricing.discountAmount)}</strong></div> : null}

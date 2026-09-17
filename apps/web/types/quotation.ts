@@ -75,6 +75,7 @@ export type QuotationPricingPreview = {
   requiredBaristas: number;
   extraBaristas: number;
   extraBaristaFee: number;
+  extendedDayCharge: number;
   standardServiceHours: 4 | 8;
   extendedToEightHours: boolean;
 };
@@ -96,7 +97,7 @@ export type QuotationPackage = {
   updatedAt?: string;
 };
 
-export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt">;
+export type QuotationPackageSnapshot = Omit<QuotationPackage, "createdAt" | "updatedAt"> & { extendedDayCharge?: number };
 
 export type QuotationExtraCharge = {
   serviceDateIds?: string[];
