@@ -5,7 +5,7 @@ export const adminDashboardRoutes = Router();
 
 export type Period = "today" | "week" | "month" | "all";
 const MALAYSIA_OFFSET_MS = 8 * 60 * 60 * 1000;
-const ABANDON_AFTER_MS = 60 * 1000;
+const ABANDON_AFTER_MS = 60 * 60 * 1000;
 
 function parsePeriod(value: unknown): Period {
   return value === "today" || value === "week" || value === "month" ? value : "all";

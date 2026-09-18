@@ -29,7 +29,6 @@ const trafficMetrics: Array<{ key: TrafficMetric; label: string; tab: string; ca
   { key: "sessions", label: "Quotation Sessions", tab: "Sessions", category: "funnel" },
   { key: "step1Engaged", label: "Step 1 Completed", tab: "Step 1 Completed", category: "funnel" },
   { key: "step2Visitors", label: "Step 2 Completed", tab: "Step 2 Completed", category: "funnel" },
-  { key: "submitted", label: "Submitted Quotations", tab: "Submitted", category: "funnel" },
 
   { key: "directExit", label: "Exited Before Step 1", tab: "Exited Before Step 1", category: "dropoff" },
   { key: "step1Abandoned", label: "Step 1 Abandoned", tab: "Step 1 Abandoned", category: "dropoff" },
