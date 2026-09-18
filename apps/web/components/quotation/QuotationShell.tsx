@@ -16,10 +16,12 @@ import { TextArea, TextInput } from "../common/FormField";
 import { ProgressHeader } from "./ProgressHeader";
 import { QuotationDatePicker } from "./QuotationDatePicker";
 import { QuotationReviewStep } from "./QuotationReviewStep";
+import { trackGaEvent } from "../../lib/ga";
 
 const totalSteps = 2;
 const draftStorageKey = "hourCoffeeQuotationDraft";
 export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
+const gaMilestoneStorageKey = "hourCoffeeQuotationGaMilestones";
 
 const PACKAGE_ORDER: Record<PackageCode, number> = {
   EXHIBITOR: 0,
@@ -80,6 +82,53 @@ function getCustomizeDefaultCart(item: FixedPackageDisplay): CartStyle | undefin
     ?? item.availableCartStyles[0]?.code;
 }
 
+type GaMilestone =
+  | "quotation_view"
+  | "quotation_step_1_completed"
+  | "quotation_step_2_completed"
+  | "generate_lead";
+
+function trackGaMilestoneOnce(
+  milestone: GaMilestone,
+  params?: Record<string, unknown>
+) {
+  const session = getQuotationTrackingSession();
+
+  let stored: {
+    sessionId?: string;
+    events?: Partial<Record<GaMilestone, boolean>>;
+  } | null = null;
+
+  try {
+    stored = JSON.parse(
+      window.localStorage.getItem(gaMilestoneStorageKey) ?? "null"
+    );
+  } catch {
+    stored = null;
+  }
+
+  if (stored?.sessionId !== session.sessionId) {
+    stored = {
+      sessionId: session.sessionId,
+      events: {}
+    };
+  }
+
+  if (stored.events?.[milestone]) return;
+
+  trackGaEvent(milestone, params);
+
+  stored.events = {
+    ...(stored.events ?? {}),
+    [milestone]: true
+  };
+
+  window.localStorage.setItem(
+    gaMilestoneStorageKey,
+    JSON.stringify(stored)
+  );
+}
+
 export function QuotationShell() {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<QuotationData>(initialQuotation);
@@ -136,6 +185,7 @@ export function QuotationShell() {
       }
     }
     trackQuotationEvent("OPEN");
+    trackGaMilestoneOnce("quotation_view");
     if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
     loadLockedDates().then((dates) => { setLockedDates(dates); setLocksLoading(false); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load date availability. Please reload the page."));
@@ -253,6 +303,7 @@ export function QuotationShell() {
     if (new Set(data.serviceDates.map((date) => date.serviceDate)).size !== data.serviceDates.length) return setError("Each event date can only be selected once.");
     setData((current) => ({ ...current, discountPercent: discountApplied ? 5 : 0 }));
     setError("");
+    trackGaMilestoneOnce("quotation_step_1_completed");
     setStep(1);
     trackQuotationEvent("STEP2_VISITED");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -326,6 +377,7 @@ export function QuotationShell() {
     if (!/^01\d{8,9}$/.test(phone)) return setError("Enter a valid Malaysian phone number.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer.email.trim())) return setError("Enter a valid email address.");
     if (!data.location.trim()) return setError("Event address is required.");
+    trackGaMilestoneOnce("quotation_step_2_completed");
     submitting.current = true;
     setIsSubmitting(true);
     setError("");
@@ -353,6 +405,9 @@ export function QuotationShell() {
       const saved = await submitQuotationWithPdf(quotationForSubmission, async (nextQuotationNo) => {
         setPdfData((current) => current ? { ...current, quotationNo: nextQuotationNo } : current);
         await afterPdfPaint();
+      });
+      trackGaMilestoneOnce("generate_lead", {
+        quotation_no: saved.quotationNo
       });
       submittedContact.current = { quotation: saved, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal };
       setData(saved);

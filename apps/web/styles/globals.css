@@ -4398,9 +4398,8 @@ p {
 
 /* Quotation Traffic */
 .admin-traffic-panel { overflow: hidden; }
-.admin-traffic-metrics { border: 1px solid #e7e1db; border-radius: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; }
-.admin-traffic-metrics button { background: #fff; border: 0; border-right: 1px solid #e7e1db; color: #493b31; cursor: pointer; display: flex; flex-direction: column; gap: 8px; padding: 20px; text-align: left; }
-.admin-traffic-metrics button:last-child { border-right: 0; }
+.admin-traffic-metrics {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;}
+.admin-traffic-metrics button {background: #fff; border: 1px solid #e7e1db; border-radius: 12px; color: #493b31; cursor: pointer; display: flex; flex-direction: column; min-height: 128px; padding: 20px; text-align: left;}
 .admin-traffic-metrics button[aria-pressed="true"] { background: #8c6b4a; color: #fff; }
 .admin-traffic-metrics button > span { font-size: 12px; font-weight: 700; }
 .admin-traffic-metrics strong { font-family: "Playfair Display", Georgia, serif; font-size: 34px; line-height: 1.2; }
@@ -4426,13 +4425,13 @@ p {
 .admin-traffic-legend > span { align-items: center; display: flex; gap: 8px; }
 .admin-traffic-legend i { border-top: 3px solid #8c6b4a; display: inline-block; flex: 0 0 28px; }
 .admin-traffic-legend i.previous { border-color: #71818c; border-top-style: dashed; }
-.admin-traffic-abandonment { border-top: 1px solid #eee9e4; color: #6b625b; display: flex; flex-wrap: wrap; font-size: 12px; gap: 12px 28px; margin-top: 24px; padding-top: 18px; }
-.admin-traffic-abandonment strong { color: #493b31; margin-left: 8px; }
 .admin-traffic-note { color: #7b7169; font-size: 11px; margin: 10px 0 0; }
+.admin-traffic-metrics button.dropoff { background: #fcfaf7;}
+.admin-traffic-metrics button.dropoff > span {color: #7a5a3e;}
+.admin-traffic-metrics button.dropoff[aria-pressed="true"] {background: #6d5039;color: #fff;}
+.admin-traffic-metrics button.dropoff[aria-pressed="true"] > span {color: #fff;}
 @media (max-width: 1100px) {
   .admin-traffic-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-traffic-metrics button:nth-child(2) { border-right: 0; }
-  .admin-traffic-metrics button:nth-child(-n + 2) { border-bottom: 1px solid #e7e1db; }
 }
 @media (max-width: 640px) {
   .admin-traffic-metrics button { gap: 6px; padding: 14px; }

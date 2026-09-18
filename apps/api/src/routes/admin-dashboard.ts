@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../utils/prisma";
-import { malaysiaVisitDate } from "../services/quotation-tracking";
 
 export const adminDashboardRoutes = Router();
 
 export type Period = "today" | "week" | "month" | "all";
 const MALAYSIA_OFFSET_MS = 8 * 60 * 60 * 1000;
+const ABANDON_AFTER_MS = 60 * 1000;
 
 function parsePeriod(value: unknown): Period {
   return value === "today" || value === "week" || value === "month" ? value : "all";
@@ -97,6 +97,7 @@ type DashboardTrafficSession = {
   id: string;
   visitDate: Date;
   firstVisitedAt: Date;
+  lastActivityAt: Date;
   step1EngagedAt: Date | null;
   step2VisitedAt: Date | null;
   packageSelectedAt: Date | null;
@@ -127,7 +128,6 @@ function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from
     totals[metric] += 1;
     bucket[metric] += 1;
   }
-  const today = malaysiaVisitDate(now);
   const seen = new Set<string>();
   for (const session of sessions) {
     if (seen.has(session.id)) continue;
@@ -144,8 +144,8 @@ function trafficPeriod(sessions: DashboardTrafficSession[], period: Period, from
     if (reachedStep2) count("step2Visitors", startedAt);
     if (selected) count("packageSelected", startedAt);
     if (submitted) count("submitted", startedAt);
-    if (session.visitDate >= today) continue;
-    if (!engaged) count("directExit", startedAt);
+    const inactiveForMs = now.getTime() - session.lastActivityAt.getTime();
+    if (submitted || inactiveForMs < ABANDON_AFTER_MS) continue;    if (!engaged) count("directExit", startedAt);
     if (engaged && !reachedStep2) count("step1Abandoned", startedAt);
     if (reachedStep2 && !submitted) count("step2Abandoned", startedAt);
   }
@@ -201,6 +201,7 @@ adminDashboardRoutes.get("/metrics", async (req, res, next) => {
           id: true,
           visitDate: true,
           firstVisitedAt: true,
+          lastActivityAt: true,
           step1EngagedAt: true,
           step2VisitedAt: true,
           packageSelectedAt: true,

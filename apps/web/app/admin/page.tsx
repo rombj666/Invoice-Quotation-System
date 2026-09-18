@@ -23,15 +23,17 @@ function EmptyChart() {
   return <div className="admin-chart-empty">No quotation data is available for this period.</div>;
 }
 
-type TrafficMetric = Exclude<keyof TrafficCounts, "step1Abandoned" | "step2Abandoned">;
+type TrafficMetric = keyof TrafficCounts;
 
-const trafficMetrics: Array<{ key: TrafficMetric; label: string; tab: string }> = [
-  { key: "sessions", label: "Quotation Sessions", tab: "Sessions" },
-  { key: "step1Engaged", label: "Step 1 Engaged", tab: "Engaged" },
-  { key: "step2Visitors", label: "Step 2 Reached", tab: "Step 2 Reached" },
-  { key: "packageSelected", label: "Package Selected", tab: "Package Selected" },
-  { key: "submitted", label: "Submitted Quotations", tab: "Submitted" },
-  { key: "directExit", label: "Direct Exit", tab: "Direct Exit" }
+const trafficMetrics: Array<{ key: TrafficMetric; label: string; tab: string; category: "funnel" | "dropoff" }> = [
+  { key: "sessions", label: "Quotation Sessions", tab: "Sessions", category: "funnel" },
+  { key: "step1Engaged", label: "Step 1 Completed", tab: "Step 1 Completed", category: "funnel" },
+  { key: "step2Visitors", label: "Step 2 Completed", tab: "Step 2 Completed", category: "funnel" },
+  { key: "submitted", label: "Submitted Quotations", tab: "Submitted", category: "funnel" },
+
+  { key: "directExit", label: "Exited Before Step 1", tab: "Exited Before Step 1", category: "dropoff" },
+  { key: "step1Abandoned", label: "Step 1 Abandoned", tab: "Step 1 Abandoned", category: "dropoff" },
+  { key: "step2Abandoned", label: "Step 2 Abandoned", tab: "Step 2 Abandoned", category: "dropoff" }
 ];
 
 function trafficDateLabel(label: string, grouping: DashboardMetrics["traffic"]["grouping"]) {
@@ -86,16 +88,30 @@ function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["tra
   const [metric, setMetric] = useState<TrafficMetric>("sessions");
   return <section className="admin-dashboard-chart-panel admin-traffic-panel" aria-labelledby="quotation-traffic-heading" aria-busy={loading}>
     <h2 id="quotation-traffic-heading">Quotation Traffic</h2>
-    <div className="admin-traffic-metrics">{trafficMetrics.filter((item) => item.key !== "packageSelected" && item.key !== "directExit").map((item) => <button key={item.key} type="button" aria-pressed={metric === item.key} onClick={() => setMetric(item.key)}>
-      <span>{item.label}</span><strong>{loading ? "—" : traffic.current.totals[item.key].toLocaleString()}</strong>
-      {!loading && traffic.previous ? <small>Previous: {traffic.previous.totals[item.key].toLocaleString()}</small> : null}
-    </button>)}</div>
+    <div className="admin-traffic-metrics">
+      {trafficMetrics.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className={item.category === "dropoff" ? "dropoff" : ""}
+          aria-pressed={metric === item.key}
+          onClick={() => setMetric(item.key)}
+        >
+          <span>{item.label}</span>
+          <strong>{loading ? "—" : traffic.current.totals[item.key].toLocaleString()}</strong>
+          {!loading && traffic.previous ? (
+            <small>Previous: {traffic.previous.totals[item.key].toLocaleString()}</small>
+          ) : null}
+        </button>
+      ))}
+    </div>
     <div className="admin-traffic-tabs" role="group" aria-label="Quotation traffic graph metric">{trafficMetrics.map((item) => <button key={item.key} type="button" aria-pressed={metric === item.key} onClick={() => setMetric(item.key)}>{item.tab}</button>)}</div>
     {loading ? <div className="admin-chart-empty">Loading quotation traffic…</div> : <>
       <TrafficTrend traffic={traffic} metric={metric} />
-      <div className="admin-traffic-abandonment"><span>Step 1 Abandoned <strong>{traffic.current.totals.step1Abandoned.toLocaleString()}</strong></span><span>Step 2 Abandoned <strong>{traffic.current.totals.step2Abandoned.toLocaleString()}</strong></span></div>
-      <p className="admin-traffic-note">One session per visitor per Malaysia calendar day. All funnel stages are grouped by when the session first opened; later stages also qualify for earlier stages. Direct exits and abandonment are counted only after the visit day ends.</p>
-    </>}
+      <p className="admin-traffic-note">
+        One session per visitor per Malaysia calendar day. Funnel stages are grouped by when the session first opened. Exit and abandonment metrics are counted after 1 hour of inactivity.
+      </p>    
+      </>}
   </section>;
 }
 
