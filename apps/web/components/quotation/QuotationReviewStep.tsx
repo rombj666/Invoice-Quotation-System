@@ -134,6 +134,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
         <div className="quotation-page-two" style={{ breakBefore: "page", pageBreakBefore: "always" }} />
         {selectedPackage ? <div className="invoice-section"><h3>Package Inclusions</h3><ul>{selectedPackage.perks.map((perk) => <li key={perk.id}>{perk.name}</li>)}</ul></div> : <div className="invoice-section"><h3>Selected Drinks</h3>{drinkSelection()}</div>}
+        {pricing.featureCharges.length > 0 ? <div className="invoice-section"><h3>Feature Pricing (included in package total)</h3><table className="invoice-table"><tbody>{pricing.featureCharges.map((feature) => <tr key={feature.name}><td>{feature.name}</td><td className="amount-cell">{formatMoney(feature.amount)}</td></tr>)}</tbody></table></div> : null}
 
         <table className="invoice-table invoice-item-table">
           <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
@@ -184,6 +185,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
             <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
             <div><span>Baristas per service date</span><strong>{totalBaristasRequired}</strong></div>
             <div className="review-fee-start"><span>{selectedPackage?.name ?? "Quotation"} package</span><strong>{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</strong></div>
+            {pricing.featureCharges.map((feature) => <div key={feature.name}><span>{feature.name}<small> · Included in package total</small></span><strong>{formatMoney(feature.amount)}</strong></div>)}
             {pricing.extendedDayCharge > 0 ? <div><span>Extended Service Day ({pricing.extendedDayCharge / extendedDayRate} × {quotationDurationLabel})</span><strong>{formatMoney(pricing.extendedDayCharge)}</strong></div> : null}
             {(data.extraCharges ?? []).map((charge) => <div key={charge.id}><span>{charge.title}<small> · Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</small></span><strong>{formatMoney(charge.amount)}</strong></div>)}
             {pricing.discountAmount > 0 ? <div className="review-subtotal"><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div> : null}

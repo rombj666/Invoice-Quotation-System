@@ -1,4 +1,4 @@
-import { PACKAGE_CODES, calculateQuotationPricing, getQuotationBaristaPricing, type CartStyle, type PackageCode, type PackageOptionCode, type PricingInput } from "./index";
+import { PACKAGE_CODES, calculateQuotationPricing, getQuotationBaristaPricing, validatePricingInput, type CartStyle, type PackageCode, type PackageOptionCode, type PricingInput } from "./index";
 
 type QuotationDocumentInput = {
   totalCups?: number;
@@ -54,6 +54,8 @@ export function calculateQuotationDocumentPricing(data: QuotationDocumentInput, 
     .filter((charge) => String(charge.title ?? "").trim().toLowerCase() !== "extra serving hour")
     .reduce((sum, charge) => sum + Number(charge.amount), 0);
   const packageInput = getQuotationPackageInput(data);
+  const featureCharges = packageInput && validatePricingInput(packageInput).valid
+    ? calculateQuotationPricing(packageInput).featureCharges : [];
   let extendedDayCharge = data.packageSnapshot?.extendedDayCharge ?? 0;
   let packageAmount: number;
   if (data.packageSnapshot && Number.isFinite(Number(data.packageSnapshot.price))) {
@@ -72,6 +74,7 @@ export function calculateQuotationDocumentPricing(data: QuotationDocumentInput, 
     ...manpower,
     totalCups,
     packageAmount,
+    featureCharges,
     extendedDayCharge,
     baseAmount: packageAmount,
     manualExtraChargeTotal,

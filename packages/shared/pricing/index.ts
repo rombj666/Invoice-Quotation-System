@@ -136,6 +136,7 @@ export type PricingResult = {
   cupRevenue: number;
   sleeveCharge: number;
   selectionCharge: number;
+  featureCharges: Array<{ name: string; amount: number }>;
   extensionLabor: number;
   preTravelSubtotal: number;
   travel: number;
@@ -160,14 +161,13 @@ export const CUP_TIERS = [
 ] as const;
 
 export const SLEEVE_RATE = 0.5;
-export const SLEEVE_MIN_QTY = 200;
 export const TRAVEL_THRESHOLD = 1500;
 export const TRAVEL_LOW = 150;
 export const TRAVEL_HIGH = 250;
 export const FEATURE_PRICES = {
   "special print latte art": 200,
-  "foam board display cart": 300,
-  "foam board stand": 200,
+  "foam board display cart": 250,
+  "foam board stand": 150,
   "customizable syrup drink": 100
 } as const;
 const CUSTOMIZE_EQUIPMENT_CART_PRICE = 200;
@@ -210,7 +210,7 @@ export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DA
 
 
 export function calculateSleeveCharge(totalCups: number): number {
-  return Math.max(totalCups, SLEEVE_MIN_QTY) * SLEEVE_RATE;
+  return totalCups * SLEEVE_RATE;
 }
 
 export function calculateTravel(preTravelSubtotal: number): number {
@@ -292,6 +292,13 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     : 0;
   const selectionCharge = [...featureKeys].reduce((total, feature) => total + (FEATURE_PRICES[feature as keyof typeof FEATURE_PRICES] ?? 0), 0)
     + customizeEquipmentCartCharge;
+  const featureCharges = [
+    ...(sleeveCharge > 0 ? [{ name: `Cup Sleeves (${normalized.totalCups} × RM0.50)`, amount: sleeveCharge }] : []),
+    ...Object.entries(FEATURE_PRICES).filter(([feature]) => featureKeys.has(feature)).map(([feature, amount]) => ({
+      name: selectedFeatureNames.find((name) => normalizeFeatureName(name) === feature)!, amount
+    })),
+    ...(customizeEquipmentCartCharge > 0 ? [{ name: CART_STYLE_LABELS.EQUIPMENT_CART, amount: customizeEquipmentCartCharge }] : [])
+  ];
   const includedServiceDays = Math.max(1, Math.floor(normalized.totalCups / (serviceDuration === "FULL_DAY" ? 150 : 100)));
   const additionalDays = Math.max(0, serviceDayCount - includedServiceDays);
   const extendedDayCharge = additionalDays * (serviceDuration === "FULL_DAY" ? 160 : 80);
@@ -324,6 +331,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
     cupRevenue,
     sleeveCharge,
     selectionCharge,
+    featureCharges,
     extensionLabor,
     preTravelSubtotal,
     travel,

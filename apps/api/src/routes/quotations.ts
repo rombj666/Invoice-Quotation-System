@@ -297,10 +297,10 @@ quotationRoutes.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Event address is required." });
     }
     const selectedAddons = [
-      ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 300 }] : []),
+      ...(pricing.cartStyle === "FOAM_BOARD_DISPLAY_CART" ? [{ name: CART_STYLE_LABELS.FOAM_BOARD_DISPLAY_CART, price: 250 }] : []),
       ...pricing.selectedOptions.map((option) => ({
         name: PACKAGE_OPTION_LABELS[option],
-        price: option === "LATTE_ART" ? 200 : option === "FOAM_BOARD_STAND" ? 200 : option === "CUSTOM_SYRUP" ? 100 : pricing.sleeveCharge
+        price: option === "LATTE_ART" ? 200 : option === "FOAM_BOARD_STAND" ? 150 : option === "CUSTOM_SYRUP" ? 100 : pricing.sleeveCharge
       }))
     ];
     const serviceDuration = pricing.serviceDuration;
