@@ -48,6 +48,7 @@ export default function AdminQuotationDetailPage() {
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
+  const canEditQuotation = status === "DRAFT" || status === "PENDING_APPROVAL";
 
   async function approve() {
     if (!window.confirm("Are you sure you want to approve this quotation?")) return;
@@ -77,11 +78,12 @@ export default function AdminQuotationDetailPage() {
         <div className="admin-detail-header">
           <div>
             <h1>{quotation.quotationNo}</h1>
-            <span className={`admin-status-badge large ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span>
+            <span className={`admin-status-badge large ${isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending"}`}>{status.replaceAll("_", " ")}</span>
           </div>
           <div className="admin-actions">
-            <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link>
-            {!isApproved ? (
+            {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+            {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
+            {status === "PENDING_APPROVAL" ? (
               <button className="admin-approve-button large" type="button" onClick={approve}>
                 Approve Quotation
               </button>

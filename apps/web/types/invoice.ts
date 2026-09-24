@@ -14,6 +14,8 @@ export type InvoiceDetails = {
   paymentStatus?: "UNPAID" | "RECEIPT_UPLOADED" | "VERIFIED" | "REJECTED";
   quotation: QuotationData;
   eventAddress: string;
+  eventArea?: "Selangor" | "Others";
+  eventAreaOther?: string;
   dressCode: string;
   customDressCode: string;
   environment: string;

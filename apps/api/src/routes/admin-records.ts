@@ -136,7 +136,9 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
     const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
     const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
-    res.json({ ...pricedData, pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
+    const packageInput = getQuotationPackageInput(pricedData);
+    const packageBreakdown = packageInput ? calculatePackagePricing(packageInput) : null;
+    res.json({ ...pricedData, pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total, ...(packageBreakdown ? { cupRate: packageBreakdown.cupRate, cupRevenue: packageBreakdown.cupRevenue, sleeveCharge: packageBreakdown.sleeveCharge, selectionCharge: packageBreakdown.selectionCharge, extensionLabor: packageBreakdown.extensionLabor, preTravelSubtotal: packageBreakdown.preTravelSubtotal, travel: packageBreakdown.travel } : {}) }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } });
   } catch (error) {
     next(error);
   }
@@ -235,6 +237,96 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
     res.json(toQuotationPayload(updated));
   } catch (error) {
     if (newPdfPublicId) void deleteCloudinaryPdf(newPdfPublicId).catch(() => undefined);
+    next(error);
+  }
+});
+
+adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, res, next) => {
+  let uploadedPdfPublicId: string | undefined;
+  try {
+    const multipart = await parseMultipartRequest(req, 30 * 1024 * 1024);
+    const payload = JSON.parse(multipart.fields.payload ?? "{}");
+    const data = payload.quotation;
+    const pdfFile = multipart.files.find((file) => file.fieldName === "invoicePdf");
+    if (!pdfFile || pdfFile.mimeType !== "application/pdf") return res.status(400).json({ error: "The final invoice PDF is required." });
+    if (!data || data.quotationNo !== req.params.quotationNo) return res.status(400).json({ error: "The confirmed quotation reference is invalid." });
+    if (payload.eventArea !== "Selangor" && payload.eventArea !== "Others") return res.status(400).json({ error: "Choose a valid event area." });
+    if (payload.eventArea === "Others" && !String(payload.eventAreaOther ?? "").trim()) return res.status(400).json({ error: "Other event area is required." });
+    if (!String(payload.eventAddress ?? "").trim()) return res.status(400).json({ error: "Event address is required." });
+
+    const current = await prisma.quotation.findUnique({
+      where: { quotationNo: req.params.quotationNo },
+      include: { customer: true, dates: { include: { drinks: true } }, invoices: { select: { invoiceNo: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+    });
+    if (!current) return res.status(404).json({ error: "Quotation not found." });
+    if (current.invoices.length) return res.status(409).json({ error: "An invoice already exists for this quotation.", invoiceNo: current.invoices[0].invoiceNo });
+    if (current.status !== "APPROVED") return res.status(403).json({ error: "Only an approved quotation can generate an invoice." });
+
+    const editError = validateQuotationEdits(data, current);
+    if (editError) return res.status(400).json({ error: editError });
+    const fieldError = validateQuotationFields(data, true);
+    if (fieldError) return res.status(400).json({ error: fieldError });
+    const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
+    if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
+    if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
+
+    await ensureProductAvailabilityDefaults();
+    const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
+    const confirmed = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
+    const pricing = calculateQuotationPricing(confirmed, confirmed.extraCharges ?? []);
+    const confirmedPackageInput = getQuotationPackageInput(confirmed);
+    const confirmedPackageBreakdown = confirmedPackageInput ? calculatePackagePricing(confirmedPackageInput) : null;
+    confirmed.pricingSnapshot = { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total, ...(confirmedPackageBreakdown ? { cupRate: confirmedPackageBreakdown.cupRate, cupRevenue: confirmedPackageBreakdown.cupRevenue, sleeveCharge: confirmedPackageBreakdown.sleeveCharge, selectionCharge: confirmedPackageBreakdown.selectionCharge, extensionLabor: confirmedPackageBreakdown.extensionLabor, preTravelSubtotal: confirmedPackageBreakdown.preTravelSubtotal, travel: confirmedPackageBreakdown.travel } : {}) };
+    confirmed.pricingBreakdown = { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee };
+
+    const invoiceNo = String(payload.invoiceNo ?? "").trim().toUpperCase();
+    if (!/^A\d{5}$/.test(invoiceNo)) return res.status(400).json({ error: "Invoice number must use the format A00001." });
+    const pdfUpload = await uploadCloudinaryBuffer(pdfFile, cloudinaryFolders.invoicePdfs, `${invoiceNo}-${Date.now()}.pdf`);
+    if (!pdfUpload) throw new Error("Unable to upload invoice PDF.");
+    uploadedPdfPublicId = pdfUpload.cloudinaryPublicId;
+
+    const metadata = toJsonValue({
+      invoiceNo,
+      invoiceStatus: "SUBMITTED",
+      paymentStatus: "UNPAID",
+      quotation: confirmed,
+      eventArea: payload.eventArea,
+      eventAreaOther: payload.eventArea === "Others" ? String(payload.eventAreaOther).trim() : "",
+      eventAddress: String(payload.eventAddress).trim(),
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: "admin"
+    });
+    const itemData = [
+      { itemType: "COFFEE_SERVICE" as InvoiceItemType, name: confirmed.packageSnapshot?.name || "Coffee Catering", description: confirmed.packageSnapshot?.perks?.map((perk: any) => perk.name).join(", ") || "Confirmed quotation package", quantity: 1, unitPrice: pricing.packageAmount, amount: pricing.packageAmount },
+      ...(confirmed.extraCharges ?? []).map((charge: any) => ({ itemType: "OTHER" as InvoiceItemType, name: charge.title, description: charge.description || null, quantity: 1, unitPrice: Number(charge.amount), amount: Number(charge.amount), metadata: toJsonValue({ serviceDateIds: charge.serviceDateIds ?? [], appliesToAllDates: charge.appliesToAllDates ?? true }) }))
+    ];
+    const invoice = await prisma.$transaction(async (tx) => {
+      const created = await tx.invoice.create({
+        data: {
+          invoiceNo, quotationId: current.id, customerId: current.customerId,
+          status: "SUBMITTED", paymentStatus: "UNPAID", eventAddress: String(payload.eventAddress).trim(),
+          finalSubtotalAmount: pricing.subtotal, finalDiscountAmount: pricing.discountAmount, finalTotalAmount: pricing.total,
+          invoicePdfUrl: pdfUpload.fileUrl, invoicePdfPublicId: pdfUpload.cloudinaryPublicId, metadata,
+          items: { create: itemData },
+          drinkSnapshots: { create: confirmed.serviceDates.flatMap((serviceDate: any) => Object.entries(confirmed.drinkOrders?.[serviceDate.id] ?? {}).map(([beverageId, quantities]: [string, any]) => ({
+            serviceDateId: serviceDate.id, serviceDate: new Date(`${serviceDate.serviceDate}T12:00:00Z`), beverageId,
+            beverageName: confirmed.beverageSnapshots?.[beverageId]?.name ?? beverageId,
+            imageUrlSnapshot: confirmed.beverageSnapshots?.[beverageId]?.imageUrl ?? null,
+            icedAvailableSnapshot: confirmed.beverageSnapshots?.[beverageId]?.icedAvailable ?? true,
+            hotAvailableSnapshot: confirmed.beverageSnapshots?.[beverageId]?.hotAvailable ?? false,
+            iceCups: Number(quantities.ice || 0), hotCups: Number(quantities.hot || 0),
+            isExcluded: confirmed.excludedBeverageIdsByDate?.[serviceDate.id]?.includes(beverageId) ?? false,
+            distributionMode: confirmed.drinkDistributionModeByDate?.[serviceDate.id] ?? "HOUR_COFFEE_DECIDES"
+          }))) }
+        },
+        include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+      });
+      await tx.quotation.update({ where: { id: current.id }, data: { status: "CONVERTED_TO_INVOICE", statusHistory: { create: { fromStatus: "APPROVED", toStatus: "CONVERTED_TO_INVOICE", changedBy: "admin", changeSummary: `Generated unpaid invoice ${invoiceNo}.` } } } });
+      return created;
+    });
+    res.status(201).json(toInvoicePayload(invoice));
+  } catch (error) {
+    if (uploadedPdfPublicId) void deleteCloudinaryPdf(uploadedPdfPublicId).catch(() => undefined);
     next(error);
   }
 });

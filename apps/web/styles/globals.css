@@ -2227,6 +2227,11 @@ p {
 .admin-form-grid section,.admin-edit-section { background:#faf8f5; border:1px solid #e7e1db; border-radius:12px; padding:18px; }
 .admin-form-grid h2,.admin-edit-section h2 { font-size:20px; }
 .admin-edit-section { margin-top:16px; }
+.admin-invoice-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:20px 0; }
+.admin-invoice-steps button { border:1px solid #d8d0c7; border-radius:10px; padding:12px; background:#fff; text-align:left; }
+.admin-invoice-steps button.active { background:#2f241f; color:#fff; border-color:#2f241f; }
+.admin-review-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:20px 0 12px; }
+.admin-review-heading div { display:flex; gap:8px; }
 .admin-inline-fields { align-items:end; display:grid; gap:10px; grid-template-columns:repeat(4,minmax(100px,1fr)); }
 .admin-date-editor { background:#fff; border:1px solid #e2ddd8; border-radius:10px; margin-top:12px; padding:14px; }
 .admin-drink-editor { display:grid; gap:8px; grid-template-columns:repeat(4,minmax(120px,1fr)); }
