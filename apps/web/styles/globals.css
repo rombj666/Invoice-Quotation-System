@@ -2232,6 +2232,10 @@ p {
 .admin-invoice-steps button.active { background:#2f241f; color:#fff; border-color:#2f241f; }
 .admin-review-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:20px 0 12px; }
 .admin-review-heading div { display:flex; gap:8px; }
+.artwork-editor-preview { margin:18px auto; display:grid; place-items:center; overflow:hidden; border:1px solid #d9d2c9; background:#fff; color:#74695f; }
+.artwork-editor-preview.a4 { width:min(100%,420px); aspect-ratio:210/297; }
+.artwork-editor-preview.latte { width:min(100%,320px); aspect-ratio:1; border-radius:50%; }
+.artwork-editor-preview img { width:100%; height:100%; object-fit:contain; }
 .admin-inline-fields { align-items:end; display:grid; gap:10px; grid-template-columns:repeat(4,minmax(100px,1fr)); }
 .admin-date-editor { background:#fff; border:1px solid #e2ddd8; border-radius:10px; margin-top:12px; padding:14px; }
 .admin-drink-editor { display:grid; gap:8px; grid-template-columns:repeat(4,minmax(120px,1fr)); }

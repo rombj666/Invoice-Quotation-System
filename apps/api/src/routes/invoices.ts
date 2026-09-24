@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { cloudinaryFolders, uploadCloudinaryBuffer, uploadCloudinaryDataUrl } from "../services/cloudinary.service";
@@ -12,6 +13,75 @@ export const invoiceRoutes = Router();
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
+
+async function invoiceForCustomizationToken(token: string) {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const paid = await prisma.invoice.findMany({
+    where: { paymentStatus: "VERIFIED" },
+    include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+  });
+  return paid.find((invoice) => (invoice.metadata as any)?.customizationAccess?.tokenHash === tokenHash) ?? null;
+}
+
+function customizationKinds(quotation: any) {
+  const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  const features = [...(quotation.packageSnapshot?.perks ?? []).map((item: any) => item.name), ...(quotation.selectedAddons ?? []).map((item: any) => item.name)].map(normalize);
+  const includes = (...names: string[]) => features.some((feature) => names.some((name) => feature.includes(name)));
+  return new Set([
+    ...((quotation.cartStyle && quotation.cartStyle !== "NO_CART") || includes("coffee cart", "branded cart", "display cart") ? ["cart"] : []),
+    ...(quotation.hasCupSleeves || quotation.selectedOptions?.includes("CUP_SLEEVES") || includes("cup sleeve") ? ["sleeve"] : []),
+    ...(quotation.hasCupStickers || includes("cup sticker") ? ["sticker"] : []),
+    ...(includes("custom menu") ? ["customMenu"] : []),
+    ...(quotation.selectedOptions?.includes("LATTE_ART") || includes("latte art", "print pen", "special print") ? ["latteArt"] : [])
+  ]);
+}
+
+invoiceRoutes.get("/customization/:token", async (req, res, next) => {
+  try {
+    const invoice = await invoiceForCustomizationToken(req.params.token);
+    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or payment has not been verified." });
+    const payload = toInvoicePayload(invoice);
+    delete payload.customizationAccess;
+    res.json(payload);
+  } catch (error) { next(error); }
+});
+
+invoiceRoutes.post("/customization/:token", async (req, res, next) => {
+  try {
+    const invoice = await invoiceForCustomizationToken(req.params.token);
+    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or payment has not been verified." });
+    const multipart = await parseMultipartRequest(req, 40 * 1024 * 1024);
+    const data = JSON.parse(multipart.fields.payload ?? "{}");
+    const metadata = (invoice.metadata ?? {}) as any;
+    const allowedKinds = customizationKinds(metadata.quotation ?? {});
+    const filesByField = new Map(multipart.files.map((file) => [file.fieldName, file]));
+    const savedFiles: Array<Record<string, unknown>> = [];
+    const invalidField = [...filesByField.keys()].find((fieldName) => {
+      const kind = fieldName === "customMenu" || fieldName === "latteArt" ? fieldName : fieldName.split(":")[0];
+      return !allowedKinds.has(kind);
+    });
+    if (invalidField) return res.status(400).json({ error: "This customization type is not included in the confirmed invoice." });
+
+    for (const [fieldName, file] of filesByField) {
+      const isMenu = fieldName === "customMenu";
+      const isLatte = fieldName === "latteArt";
+      const type: CustomizationType = fieldName.startsWith("cart:") ? "CART_DESIGN" : fieldName.startsWith("sleeve:") ? "CUP_SLEEVE" : "CUP_STICKER";
+      const folder = isMenu ? cloudinaryFolders.invoices : isLatte ? cloudinaryFolders.cupStickers : type === "CART_DESIGN" ? cloudinaryFolders.cartDesigns : type === "CUP_SLEEVE" ? cloudinaryFolders.cupSleeves : cloudinaryFolders.cupStickers;
+      const upload = await uploadCloudinaryBuffer(file, folder, `${invoice.invoiceNo}-${fieldName.replace(/[^a-z0-9-]/gi, "-")}-${file.fileName}`);
+      if (!upload) continue;
+      if (isMenu) {
+        await prisma.invoiceFile.create({ data: { invoiceId: invoice.id, fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType } });
+      } else {
+        await prisma.customizationFile.create({ data: { invoiceId: invoice.id, type, designKey: isLatte ? "latte-art" : fieldName.split(":").slice(1).join(":"), fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, metadata: toJsonValue({ physicalSize: data.physicalSizes?.[fieldName] ?? null, originalArtwork: true }) } });
+      }
+      savedFiles.push({ fieldName, fileUrl: upload.fileUrl, fileName: file.fileName, mimeType: upload.mimeType, physicalSize: isMenu ? { widthCm: 21, heightCm: 29.7 } : isLatte ? { diameterCm: 8 } : data.physicalSizes?.[fieldName] ?? null });
+    }
+
+    const setup = { eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString(), files: savedFiles };
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { metadata: toJsonValue({ ...metadata, customizationSubmission: setup }) } });
+    res.json({ ok: true, invoiceNo: invoice.invoiceNo });
+  } catch (error) { next(error); }
+});
 
 invoiceRoutes.get("/next-number", async (_req, res, next) => {
   try {

@@ -14,6 +14,7 @@ import type { InvoiceDetails } from "../../../../types/invoice";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { DocumentCard } from "../../../../components/admin/DocumentCard";
 import { getProvidedBeverageNames } from "../../../../lib/beverages";
+import { verifyInvoicePayment } from "../../../../lib/admin-api";
 
 function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Image" | "File" {
   if (mimeType === "application/pdf") return "PDF";
@@ -115,6 +116,7 @@ function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title
           <div className="admin-design-preview" key={`${file.type}-${file.designKey}`}>
             <p className="admin-file-type">File type: {fileLabel(file.mimeType, file.fileUrl)}</p>
             <p>{file.fileName}</p>
+            {file.metadata && typeof file.metadata === "object" && "physicalSize" in file.metadata && file.metadata.physicalSize ? <p>Physical size: {JSON.stringify(file.metadata.physicalSize)}</p> : null}
             {fileLabel(file.mimeType, file.fileUrl) === "Image" ? <img className="admin-image-preview" src={file.fileUrl} alt={`${title} ${file.designKey}`} /> : null}
             <FileActions fileUrl={file.fileUrl} fileName={file.fileName} openLabel={fileLabel(file.mimeType, file.fileUrl) === "Image" ? "Open Image" : "Open File"} downloadLabel={fileLabel(file.mimeType, file.fileUrl) === "Image" ? "Download Image" : "Download File"} />
           </div>
@@ -140,6 +142,9 @@ function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title
 export default function AdminInvoiceDetailPage() {
   const params = useParams<{ invoiceNo: string }>();
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
+  const [customizationLink, setCustomizationLink] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     loadInvoiceByNo(params.invoiceNo).then(setInvoice);
@@ -158,15 +163,29 @@ export default function AdminInvoiceDetailPage() {
     );
   }
 
-  const quotation = invoice.quotation;
+  const currentInvoice = invoice;
+  const quotation = currentInvoice.quotation;
   const pricing = calculatePricing(quotation);
   const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
 
+  async function verifyPayment() {
+    setVerifying(true); setActionError("");
+    try {
+      const result = await verifyInvoicePayment(currentInvoice.invoiceNo);
+      const link = `${window.location.origin}/customize/${result.token}`;
+      setCustomizationLink(link);
+      setInvoice({ ...currentInvoice, paymentStatus: "VERIFIED" });
+    } catch (reason) { setActionError(reason instanceof Error ? reason.message : "Unable to verify payment."); }
+    finally { setVerifying(false); }
+  }
+
   return (
     <main className="admin-page">
       <Card className="admin-card">
-        <div className="admin-detail-header"><div><p className="admin-eyebrow">Invoice</p><h1>{invoice.invoiceNo}</h1></div><div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link></div></div>
+        <div className="admin-detail-header"><div><p className="admin-eyebrow">Invoice</p><h1>{invoice.invoiceNo}</h1></div><div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link><button type="button" disabled={verifying} onClick={verifyPayment}>{verifying ? "Verifying..." : invoice.paymentStatus === "VERIFIED" ? "Create New Customization Link" : "Verify Payment & Create Customization Link"}</button></div></div>
+        {actionError ? <p className="error">{actionError}</p> : null}
+        {customizationLink ? <div className="ok-summary"><strong>Customization Link</strong><p>{customizationLink}</p><button type="button" onClick={() => navigator.clipboard.writeText(customizationLink)}>Copy Customization Link</button></div> : null}
         <div className="detail-grid">
           <section>
             <h3>Invoice</h3>
@@ -237,6 +256,8 @@ export default function AdminInvoiceDetailPage() {
           <CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
           <CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" />
           <CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" />
+          <CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" />
+          {invoice.customizationSubmission ? <section><h3>Customization Submission</h3><p>Submitted: {new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p><p>Setup address: {invoice.customizationSubmission.eventAddress || "-"}</p>{invoice.customizationSubmission.files.map((file) => <p key={`${file.fieldName}-${file.fileUrl}`}>{file.fileName}{file.physicalSize ? ` · Physical size: ${file.physicalSize.diameterCm ? `${file.physicalSize.diameterCm} cm diameter` : `${file.physicalSize.widthCm ?? "-"} × ${file.physicalSize.heightCm ?? "-"} cm`}` : ""}</p>)}</section> : null}
         </div>
       </Card>
     </main>

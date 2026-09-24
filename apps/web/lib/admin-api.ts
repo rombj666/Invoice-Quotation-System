@@ -112,3 +112,7 @@ export function updateAdminInvoice(originalInvoiceNo: string, data: InvoiceDetai
   form.append("invoicePdf", pdf, `${data.invoiceNo}.pdf`);
   return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(originalInvoiceNo)}`, { method: "PATCH", body: form });
 }
+
+export function verifyInvoicePayment(invoiceNo: string) {
+  return request<{ invoiceNo: string; paymentStatus: "VERIFIED"; token: string }>(`/api/admin/invoices/${encodeURIComponent(invoiceNo)}/verify-payment`, { method: "POST" });
+}

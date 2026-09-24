@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { validateChargeInput } from "./admin-quotation-extra-charges";
 import { InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
@@ -329,6 +329,25 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
     if (uploadedPdfPublicId) void deleteCloudinaryPdf(uploadedPdfPublicId).catch(() => undefined);
     next(error);
   }
+});
+
+adminRecordRoutes.post("/invoices/:invoiceNo/verify-payment", async (req, res, next) => {
+  try {
+    const current = await prisma.invoice.findUnique({ where: { invoiceNo: req.params.invoiceNo } });
+    if (!current) return res.status(404).json({ error: "Invoice not found." });
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const before = (current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata) ? current.metadata : {}) as Record<string, unknown>;
+    await prisma.invoice.update({
+      where: { id: current.id },
+      data: {
+        paymentStatus: "VERIFIED",
+        metadata: toJsonValue({ ...before, customizationAccess: { tokenHash, issuedAt: new Date().toISOString() } }),
+        statusHistory: { create: { fromStatus: current.status, toStatus: current.status, changedBy: "admin", changeSummary: "Payment verified and customization link issued." } }
+      }
+    });
+    res.json({ invoiceNo: current.invoiceNo, paymentStatus: "VERIFIED", token });
+  } catch (error) { next(error); }
 });
 
 adminRecordRoutes.patch("/invoices/:invoiceNo", async (req, res, next) => {
