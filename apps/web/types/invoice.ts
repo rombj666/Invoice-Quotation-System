@@ -57,6 +57,5 @@ export type InvoiceDetails = {
     environment: string;
     environmentNotes: string;
     submittedAt: string;
-    files: Array<{ fieldName: string; fileUrl: string; fileName: string; mimeType?: string; physicalSize?: { widthCm?: number; heightCm?: number; diameterCm?: number } | null }>;
   };
 };

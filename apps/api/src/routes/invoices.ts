@@ -18,9 +18,9 @@ async function invoiceForCustomizationToken(token: string) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const paid = await prisma.invoice.findMany({
     where: { paymentStatus: "VERIFIED" },
-    include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+    include: { quotation: true, paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
   });
-  return paid.find((invoice) => (invoice.metadata as any)?.customizationAccess?.tokenHash === tokenHash) ?? null;
+  return paid.find((invoice) => (invoice.quotation.metadata as any)?.portalToken === token || (invoice.metadata as any)?.customizationAccess?.tokenHash === tokenHash) ?? null;
 }
 
 function customizationKinds(quotation: any) {
@@ -55,7 +55,6 @@ invoiceRoutes.post("/customization/:token", async (req, res, next) => {
     const metadata = (invoice.metadata ?? {}) as any;
     const allowedKinds = customizationKinds(metadata.quotation ?? {});
     const filesByField = new Map(multipart.files.map((file) => [file.fieldName, file]));
-    const savedFiles: Array<Record<string, unknown>> = [];
     const invalidField = [...filesByField.keys()].find((fieldName) => {
       const kind = fieldName === "customMenu" || fieldName === "latteArt" ? fieldName : fieldName.split(":")[0];
       return !allowedKinds.has(kind);
@@ -74,10 +73,9 @@ invoiceRoutes.post("/customization/:token", async (req, res, next) => {
       } else {
         await prisma.customizationFile.create({ data: { invoiceId: invoice.id, type, designKey: isLatte ? "latte-art" : fieldName.split(":").slice(1).join(":"), fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, metadata: toJsonValue({ physicalSize: data.physicalSizes?.[fieldName] ?? null, originalArtwork: true }) } });
       }
-      savedFiles.push({ fieldName, fileUrl: upload.fileUrl, fileName: file.fileName, mimeType: upload.mimeType, physicalSize: isMenu ? { widthCm: 21, heightCm: 29.7 } : isLatte ? { diameterCm: 8 } : data.physicalSizes?.[fieldName] ?? null });
     }
 
-    const setup = { eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString(), files: savedFiles };
+    const setup = { eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString() };
     await prisma.invoice.update({ where: { id: invoice.id }, data: { metadata: toJsonValue({ ...metadata, customizationSubmission: setup }) } });
     res.json({ ok: true, invoiceNo: invoice.invoiceNo });
   } catch (error) { next(error); }

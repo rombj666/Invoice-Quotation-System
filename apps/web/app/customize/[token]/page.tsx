@@ -14,8 +14,7 @@ import { loadCustomization, submitCustomization } from "../../../lib/customizati
 import type { CustomizationByDate } from "../../../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../../../types/invoice";
 
-export default function CustomerCustomizationPage() {
-  const { token } = useParams<{ token: string }>();
+export function CustomizationFlow({ token, onComplete }: { token: string; onComplete?: () => void }) {
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [eventAddress, setEventAddress] = useState("");
@@ -43,6 +42,7 @@ export default function CustomerCustomizationPage() {
     try {
       await submitCustomization(token, { eventAddress, dressCode, customDressCode, environment, environmentNotes, cartDesigns, sleeveDesigns, stickerDesigns, customMenu, latteArt });
       setComplete(true);
+      onComplete?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to submit customization."); }
     finally { setSubmitting(false); }
   }
@@ -62,4 +62,9 @@ export default function CustomerCustomizationPage() {
     {error ? <p className="error">{error}</p> : null}
     <StepNavigation canGoBack={stepIndex > 0} onBack={() => setStepIndex((index) => Math.max(0, index - 1))} onNext={current === "finish" ? finish : () => setStepIndex((index) => Math.min(steps.length - 1, index + 1))} nextLabel={current === "finish" ? submitting ? "SUBMITTING..." : "FINISH CUSTOMIZATION" : "CONTINUE"} nextDisabled={submitting} />
   </Card></main>;
+}
+
+export default function CustomerCustomizationPage() {
+  const { token } = useParams<{ token: string }>();
+  return <CustomizationFlow token={token} />;
 }

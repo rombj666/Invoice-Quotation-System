@@ -2236,6 +2236,9 @@ p {
 .artwork-editor-preview.a4 { width:min(100%,420px); aspect-ratio:210/297; }
 .artwork-editor-preview.latte { width:min(100%,320px); aspect-ratio:1; border-radius:50%; }
 .artwork-editor-preview img { width:100%; height:100%; object-fit:contain; }
+.portal-card { display:grid; gap:18px; }
+.portal-heading { border-bottom:1px solid #e4ded6; padding-bottom:16px; }
+.portal-section { border:1px solid #e4ded6; border-radius:14px; padding:18px; background:#faf9f6; }
 .admin-inline-fields { align-items:end; display:grid; gap:10px; grid-template-columns:repeat(4,minmax(100px,1fr)); }
 .admin-date-editor { background:#fff; border:1px solid #e2ddd8; border-radius:10px; margin-top:12px; padding:14px; }
 .admin-drink-editor { display:grid; gap:8px; grid-template-columns:repeat(4,minmax(120px,1fr)); }

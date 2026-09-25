@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { validateChargeInput } from "./admin-quotation-extra-charges";
 import { InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
@@ -333,20 +333,32 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
 
 adminRecordRoutes.post("/invoices/:invoiceNo/verify-payment", async (req, res, next) => {
   try {
-    const current = await prisma.invoice.findUnique({ where: { invoiceNo: req.params.invoiceNo } });
+    const current = await prisma.invoice.findUnique({ where: { invoiceNo: req.params.invoiceNo }, include: { paymentReceipts: { select: { id: true }, take: 1 } } });
     if (!current) return res.status(404).json({ error: "Invoice not found." });
-    const token = randomBytes(32).toString("base64url");
-    const tokenHash = createHash("sha256").update(token).digest("hex");
+    if (!current.paymentReceipts.length) return res.status(409).json({ error: "A customer payment receipt is required before verification." });
     const before = (current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata) ? current.metadata : {}) as Record<string, unknown>;
     await prisma.invoice.update({
       where: { id: current.id },
       data: {
         paymentStatus: "VERIFIED",
-        metadata: toJsonValue({ ...before, customizationAccess: { tokenHash, issuedAt: new Date().toISOString() } }),
-        statusHistory: { create: { fromStatus: current.status, toStatus: current.status, changedBy: "admin", changeSummary: "Payment verified and customization link issued." } }
+        metadata: toJsonValue(before),
+        statusHistory: { create: { fromStatus: current.status, toStatus: current.status, changedBy: "admin", changeSummary: "Payment verified; customer portal customization unlocked." } }
       }
     });
-    res.json({ invoiceNo: current.invoiceNo, paymentStatus: "VERIFIED", token });
+    res.json({ invoiceNo: current.invoiceNo, paymentStatus: "VERIFIED" });
+  } catch (error) { next(error); }
+});
+
+adminRecordRoutes.post("/quotations/:quotationNo/portal", async (req, res, next) => {
+  try {
+    const quotation = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo } });
+    if (!quotation) return res.status(404).json({ error: "Quotation not found." });
+    if (quotation.status !== "APPROVED" && quotation.status !== "CONVERTED_TO_INVOICE") return res.status(409).json({ error: "Approve the quotation before sharing its customer portal." });
+    const metadata = (quotation.metadata && typeof quotation.metadata === "object" && !Array.isArray(quotation.metadata) ? quotation.metadata : {}) as Record<string, unknown>;
+    const existing = typeof metadata.portalToken === "string" ? metadata.portalToken : "";
+    const token = existing || randomBytes(32).toString("base64url");
+    if (!existing) await prisma.quotation.update({ where: { id: quotation.id }, data: { metadata: toJsonValue({ ...metadata, portalToken: token }) } });
+    res.json({ quotationNo: quotation.quotationNo, token });
   } catch (error) { next(error); }
 });
 

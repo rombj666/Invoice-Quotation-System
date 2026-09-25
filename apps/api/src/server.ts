@@ -12,6 +12,7 @@ import { adminRecordRoutes } from "./routes/admin-records";
 import { adminQuotationExtraChargeRoutes } from "./routes/admin-quotation-extra-charges";
 import { adminBeverageRoutes, beverageRoutes } from "./routes/beverages";
 import { adminPackageRoutes, packageRoutes } from "./routes/packages";
+import { portalRoutes } from "./routes/portal";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -30,6 +31,7 @@ app.use("/api/locked-dates", lockedDateRoutes);
 app.use("/api/beverages", beverageRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/portal", portalRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);

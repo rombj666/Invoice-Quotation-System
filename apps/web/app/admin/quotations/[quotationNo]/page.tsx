@@ -14,6 +14,7 @@ import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { DocumentCard } from "../../../../components/admin/DocumentCard";
 import { getProvidedBeverageNames } from "../../../../lib/beverages";
+import { getCustomerPortalToken } from "../../../../lib/admin-api";
 
 
 
@@ -23,6 +24,7 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [portalLink, setPortalLink] = useState("");
 
   useEffect(() => {
     loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
@@ -72,6 +74,12 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
+  async function customerPortal() {
+    setError("");
+    try { const result = await getCustomerPortalToken(currentQuotation.quotationNo); setPortalLink(`${window.location.origin}/portal/${result.token}`); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create customer portal link."); }
+  }
+
   return (
     <main className="admin-page">
       <Card className="admin-card">
@@ -81,6 +89,7 @@ export default function AdminQuotationDetailPage() {
             <span className={`admin-status-badge large ${isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending"}`}>{status.replaceAll("_", " ")}</span>
           </div>
           <div className="admin-actions">
+            {isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customer Portal</button> : null}
             {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
             {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
             {status === "PENDING_APPROVAL" ? (
@@ -95,6 +104,7 @@ export default function AdminQuotationDetailPage() {
         </div>
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
+        {portalLink ? <div className="ok-summary"><strong>Customer Portal Link</strong><p>{portalLink}</p><div className="admin-file-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div></div> : null}
         <div className="detail-grid">
           <section>
             <h3>Customer Info</h3>
