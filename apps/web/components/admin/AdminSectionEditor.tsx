@@ -9,20 +9,22 @@ type Props = {
   sections: Array<{ id: string; label: string; content: ReactNode }>;
   activeSection: string;
   onSectionChange: (id: string) => void;
-  saving: boolean;
-  onSave: () => void;
+  saving?: boolean;
+  onSave?: () => void;
+  actions?: ReactNode;
   children?: ReactNode;
 };
 
-export function AdminSectionEditor({ title, backHref, sections, activeSection, onSectionChange, saving, onSave, children }: Props) {
+export function AdminSectionEditor({ title, backHref, sections, activeSection, onSectionChange, saving, onSave, actions, children }: Props) {
   const active = sections.find((section) => section.id === activeSection) ?? sections[0];
 
   return <div className="admin-section-editor">
     <header className="admin-editor-topbar">
       <Link className="admin-editor-button" href={backHref}><span aria-hidden="true">←</span> Back</Link>
-      <div><p className="admin-eyebrow">Document editor</p><h1>{title}</h1></div>
-      <Link className="admin-editor-button" href={backHref}>Cancel</Link>
+      <div><p className="admin-eyebrow">{onSave ? "Document editor" : "Document details"}</p><h1>{title}</h1></div>
+      {onSave ? <Link className="admin-editor-button" href={backHref}>Cancel</Link> : null}
     </header>
+    {actions ? <div className="admin-record-actions">{actions}</div> : null}
     <div aria-live="polite">{children}</div>
     <div className="admin-editor-workspace">
       <nav className="admin-editor-sections" aria-label="Editor sections">
@@ -40,10 +42,10 @@ export function AdminSectionEditor({ title, backHref, sections, activeSection, o
         <div className="admin-editor-panel" id="admin-editor-panel" role="region" aria-labelledby={`editor-section-${active.id}`}>
           {active.content}
         </div>
-        <footer className="admin-editor-footer">
+        {onSave ? <footer className="admin-editor-footer">
           <Link className="admin-editor-button" href={backHref}>Cancel</Link>
           <button className="admin-editor-button primary" type="button" disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save Changes"}</button>
-        </footer>
+        </footer> : null}
       </div>
     </div>
   </div>;

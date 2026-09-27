@@ -4,6 +4,7 @@ import { extraChargeDateLabel } from "../../../../lib/extra-charge-dates";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AdminSectionEditor } from "../../../../components/admin/AdminSectionEditor";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
@@ -14,11 +15,11 @@ import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/format
 import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { DocumentCard } from "../../../../components/admin/DocumentCard";
-import { getProvidedBeverageNames } from "../../../../lib/beverages";
 
 
 
 export default function AdminQuotationDetailPage() {
+  const [activeSection, setActiveSection] = useState("summary");
   const params = useParams<{ quotationNo: string }>();
   const router = useRouter();
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
@@ -83,52 +84,42 @@ export default function AdminQuotationDetailPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create customer portal link."); }
   }
 
-  return (
-    <main className="admin-page">
-      <Card className="admin-card">
-        <div className="admin-detail-header">
-          <div>
-            <h1>{quotation.quotationNo}</h1>
-            <span className={`admin-status-badge large ${statusClass}`}>{statusLabel}</span>
-          </div>
-          <div className="admin-actions">
-            {isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customer Portal</button> : null}
-            {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
-            {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
-            {status === "PENDING_APPROVAL" ? (
+  return <main className="admin-page"><Card className="admin-card">
+    <AdminSectionEditor title={quotation.quotationNo} backHref="/admin/quotations" activeSection={activeSection} onSectionChange={setActiveSection}
+      actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
+{isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customer Portal</button> : null}
+{currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+{canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
+{status === "PENDING_APPROVAL" ? (
               <>
                 <button className="admin-approve-button large" type="button" onClick={approve}>
                   Approve Quotation
                 </button>
               </>
             ) : null}
-            {isReturned ? (
+{isReturned ? (
               <span className="admin-status-note">Waiting for customer to resubmit</span>
             ) : null}
-            <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
+<button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
               {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
-            </button>
-          </div>
-        </div>
-        {error ? <p className="error">{error}</p> : null}
-        {success ? <div className="ok-summary">{success}</div> : null}
-        {portalLink ? <div className="ok-summary"><strong>Customer Portal Link</strong><p>{portalLink}</p><div className="admin-file-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div></div> : null}
-        <div className="detail-grid">
-          <section>
+            </button></>}
+      sections={[
+        { id: "summary", label: "Summary", content: <><section><h2>Summary</h2><dl className="admin-summary-grid"><div><dt>Customer Name</dt><dd>{quotation.customer.name}</dd></div><div><dt>Phone</dt><dd>{quotation.customer.phone}</dd></div><div><dt>Email</dt><dd>{quotation.customer.email}</dd></div><div><dt>Total Cups</dt><dd>{pricing.totalCups}</dd></div><div><dt>Event Address</dt><dd>{quotation.fullAddress || quotation.location}</dd></div><div><dt>Event Date(s)</dt><dd>{quotation.serviceDates.map((date) => formatDateLabel(date.serviceDate)).join(", ")}</dd></div><div><dt>Selected Package</dt><dd>{quotation.packageSnapshot?.name || "-"}</dd></div><div><dt>Total Price</dt><dd>{formatMoney(pricing.total)}</dd></div></dl></section></> },
+        { id: "customer", label: "Customer & Billing", content: <><section>
             <h3>Customer Info</h3>
             <p>{quotation.customer.name}</p>
             <p>{quotation.customer.phone}</p>
             <p>{quotation.customer.email}</p>
             <p>{quotation.customer.companyName || "-"}</p>
             <p>{quotation.customer.billingAddress}</p>
-          </section>
-          <section>
+          </section></> },
+        { id: "event", label: "Event", content: <><section>
             <h3>Event</h3>
             <p>Location: {quotation.location}</p>
             <p>Event type: {quotation.eventType === "Others" ? quotation.customEventType : quotation.eventType}</p>
             <p>Status: {statusLabel}</p>
-          </section>
-          <section>
+          </section></> },
+        { id: "dates", label: "Service Dates", content: <><section>
             <h3>Service Dates</h3>
             <p><strong>Total cups: {pricing.totalCups}</strong></p>
             <p><strong>Baristas per service date: {baristasProvided}</strong></p>
@@ -137,19 +128,15 @@ export default function AdminQuotationDetailPage() {
                 {formatDateLabel(date.serviceDate)} — {hasQuotationDuration ? (quotation.serviceDuration === "FULL_DAY" ? "Full Day" : "Half Day") : date.durationMode ? getDurationLabel(date) : `${formatTime(date.startTime)} to ${formatTime(date.endTime)}`}
               </p>
             ))}
-          </section>
-          {quotation.packageSnapshot ? <section>
+          </section></> },
+        { id: "package", label: "Package", content: <>{quotation.packageSnapshot ? <section>
             <h3>Selected Package</h3>
             <p><strong>{quotation.packageSnapshot.name}</strong> · {formatMoney(quotation.packageSnapshot.price)}</p>
             {quotation.packageSnapshot.briefDescription ? <p>{quotation.packageSnapshot.briefDescription}</p> : null}
             {quotation.packageSnapshot.perks.map((perk) => <p key={perk.id}>✓ {perk.name}</p>)}
             {quotation.notes ? <p><strong>Customer notes:</strong> {quotation.notes}</p> : null}
-          </section> : null}
-          {!quotation.packageSnapshot ? <section>
-            <h3>Drink Preferences</h3>
-            {quotation.serviceDates.map((date) => <div key={date.id}><strong>{formatDateLabel(date.serviceDate)}</strong><p>Drinks provided: {getProvidedBeverageNames(quotation, date.id).join(", ") || "None"}</p></div>)}
-          </section> : null}
-          {!quotation.packageSnapshot ? <section>
+          </section> : null}</> },
+        { id: "addons", label: "Add-ons", content: <>{!quotation.packageSnapshot ? <section>
             <h3>Add-ons</h3>
             {addonRows.map((addon) => (
               <p key={addon.name}>
@@ -158,8 +145,8 @@ export default function AdminQuotationDetailPage() {
             ))}
             {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-          </section> : null}
-          {(quotation.extraCharges ?? []).length ? <section>
+          </section> : null}</> },
+        { id: "charges", label: "Extra Charges", content: <>{(quotation.extraCharges ?? []).length ? <section>
             <h3>Manual Extra Charges</h3>
             <div className="admin-extra-charge-list">
               {(quotation.extraCharges ?? []).map((charge) => <div className="admin-extra-charge-row" key={charge.id}>
@@ -167,11 +154,14 @@ export default function AdminQuotationDetailPage() {
               </div>)}
             </div>
             <p><strong>Total extra charges: {formatMoney(pricing.manualExtraChargeTotal)}</strong></p>
-          </section> : null}
-          <DocumentCard documentLabel="Quotation PDF" fileUrl={quotation.quotationPdfUrl} fileName={`${quotation.quotationNo}.pdf`} />
-          {quotation.editHistory?.length ? <section><h3>Edit History</h3>{quotation.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}
-        </div>
-      </Card>
-    </main>
-  );
+          </section> : null}</> },
+        { id: "documents", label: "Documents", content: <><DocumentCard documentLabel="Quotation PDF" fileUrl={quotation.quotationPdfUrl} fileName={`${quotation.quotationNo}.pdf`} /></> },
+        { id: "history", label: "History", content: <>{quotation.editHistory?.length ? <section><h3>Edit History</h3>{quotation.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}</> },
+      ]}
+    >
+        {error ? <p className="error" role="alert">{error}</p> : null}
+        {success ? <div className="ok-summary">{success}</div> : null}
+        {portalLink ? <div className="admin-record-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div> : null}
+    </AdminSectionEditor>
+  </Card></main>;
 }

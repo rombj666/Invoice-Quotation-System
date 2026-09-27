@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
-import { cloudinaryFolders, uploadCloudinaryBuffer, uploadCloudinaryDataUrl } from "../services/cloudinary.service";
+import { cloudinaryFolders, deleteCloudinaryImage, deleteCloudinaryPdf, uploadCloudinaryBuffer, uploadCloudinaryDataUrl, type CloudinaryUpload } from "../services/cloudinary.service";
 import { calculatePricing, hasValidServiceDates } from "../utils/invoice-pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { PAYMENT_ACCOUNT_WHITELIST } from "../config/payment-accounts";
@@ -10,6 +10,8 @@ import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
 import { sendNotification } from "../services/notifications";
 import { assertValidInvoiceStatePair, canQuotationCreateInvoice, expireOverdueQuotations, isUniqueConflict } from "../utils/state-machine";
+
+import { finalizeCustomization, FinalSubmissionError, FINAL_SUBMIT_DATE_ERROR } from "../services/finalize-customization";
 
 export const invoiceRoutes = Router();
 
@@ -60,9 +62,12 @@ invoiceRoutes.get("/customization/:token", async (req, res, next) => {
 });
 
 invoiceRoutes.post("/customization/:token", async (req, res, next) => {
+  const uploads: CloudinaryUpload[] = [];
+  let committed = false;
   try {
     const invoice = await invoiceForCustomizationToken(req.params.token);
     if (!invoice) return res.status(404).json({ error: "This customization link is invalid or payment has not been verified." });
+    if ((invoice.metadata as any)?.customizationSubmission?.submittedAt) return res.json({ ok: true, invoiceNo: invoice.invoiceNo });
     const multipart = await parseMultipartRequest(req, 40 * 1024 * 1024);
     const data = JSON.parse(multipart.fields.payload ?? "{}");
     const metadata = (invoice.metadata ?? {}) as any;
@@ -74,24 +79,35 @@ invoiceRoutes.post("/customization/:token", async (req, res, next) => {
     });
     if (invalidField) return res.status(400).json({ error: "This customization type is not included in the confirmed invoice." });
 
+    const invoiceFiles: Prisma.InvoiceFileCreateManyInput[] = [];
+    const customizationFiles: Prisma.CustomizationFileCreateManyInput[] = [];
+    const uploadId = randomUUID();
     for (const [fieldName, file] of filesByField) {
       const isMenu = fieldName === "customMenu";
       const isLatte = fieldName === "latteArt";
       const type: CustomizationType = fieldName.startsWith("cart:") ? "CART_DESIGN" : fieldName.startsWith("sleeve:") ? "CUP_SLEEVE" : "CUP_STICKER";
       const folder = isMenu ? cloudinaryFolders.invoices : isLatte ? cloudinaryFolders.cupStickers : type === "CART_DESIGN" ? cloudinaryFolders.cartDesigns : type === "CUP_SLEEVE" ? cloudinaryFolders.cupSleeves : cloudinaryFolders.cupStickers;
-      const upload = await uploadCloudinaryBuffer(file, folder, `${invoice.invoiceNo}-${fieldName.replace(/[^a-z0-9-]/gi, "-")}-${file.fileName}`);
-      if (!upload) continue;
+      const upload = await uploadCloudinaryBuffer(file, folder, `${invoice.invoiceNo}-${uploadId}-${fieldName.replace(/[^a-z0-9-]/gi, "-")}-${file.fileName}`);
+      if (!upload) throw new Error("Unable to upload customization artwork.");
+      uploads.push(upload);
       if (isMenu) {
-        await prisma.invoiceFile.create({ data: { invoiceId: invoice.id, fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType } });
+        invoiceFiles.push({ invoiceId: invoice.id, fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType });
       } else {
-        await prisma.customizationFile.create({ data: { invoiceId: invoice.id, type, designKey: isLatte ? "latte-art" : fieldName.split(":").slice(1).join(":"), fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, metadata: toJsonValue({ physicalSize: data.physicalSizes?.[fieldName] ?? null, originalArtwork: true }) } });
+        customizationFiles.push({ invoiceId: invoice.id, type, designKey: isLatte ? "latte-art" : fieldName.split(":").slice(1).join(":"), fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, metadata: toJsonValue({ physicalSize: data.physicalSizes?.[fieldName] ?? null, originalArtwork: true }) });
       }
     }
 
     const setup = { eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString() };
-    await prisma.invoice.update({ where: { id: invoice.id }, data: { metadata: toJsonValue({ ...metadata, customizationSubmission: setup }) } });
+    committed = await prisma.$transaction((tx) => finalizeCustomization(tx, invoice.id, setup, invoiceFiles, customizationFiles));
     res.json({ ok: true, invoiceNo: invoice.invoiceNo });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error instanceof FinalSubmissionError || isUniqueConflict(error, "date")) {
+      return res.status(409).json({ error: error instanceof FinalSubmissionError ? error.message : FINAL_SUBMIT_DATE_ERROR });
+    }
+    next(error);
+  } finally {
+    if (!committed) await Promise.allSettled(uploads.map((upload) => upload.mimeType === "application/pdf" ? deleteCloudinaryPdf(upload.cloudinaryPublicId) : deleteCloudinaryImage(upload.cloudinaryPublicId)));
+  }
 });
 
 invoiceRoutes.get("/next-number", async (_req, res, next) => {

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AdminSectionEditor } from "../../../../components/admin/AdminSectionEditor";
+import { CustomizationLinkModal } from "../../../../components/admin/CustomizationLinkModal";
 import { Card } from "../../../../components/common/Card";
 import { apiBaseUrl } from "../../../../lib/api-client";
 import { calculatePricing } from "../../../../lib/invoice-pricing";
@@ -140,6 +142,7 @@ function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title
 }
 
 export default function AdminInvoiceDetailPage() {
+  const [activeSection, setActiveSection] = useState("summary");
   const params = useParams<{ invoiceNo: string }>();
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
   const [portalLink, setPortalLink] = useState("");
@@ -184,48 +187,49 @@ export default function AdminInvoiceDetailPage() {
     catch (reason) { setActionError(reason instanceof Error ? reason.message : "Unable to open customer portal."); }
   }
 
-  return (
-    <main className="admin-page">
-      <Card className="admin-card">
-        <div className="admin-detail-header"><div><p className="admin-eyebrow">Invoice</p><h1>{invoice.invoiceNo}</h1></div><div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link><button type="button" onClick={loadPortalLink}>Customer Portal</button>{invoice.paymentStatus !== "VERIFIED" ? <button type="button" disabled={verifying || invoice.paymentStatus !== "RECEIPT_UPLOADED"} onClick={verifyPayment}>{verifying ? "Verifying..." : "Verify Payment"}</button> : null}</div></div>
-        {actionError ? <p className="error">{actionError}</p> : null}
-        {portalLink ? <div className="ok-summary"><strong>Customer Portal Link</strong><p>{portalLink}</p><div className="admin-file-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div></div> : null}
-        <div className="detail-grid">
-          <section>
+  return <main className="admin-page"><Card className="admin-card">
+    <AdminSectionEditor title={invoice.invoiceNo} backHref="/admin/invoices" activeSection={activeSection} onSectionChange={setActiveSection}
+      actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
+<Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link>
+<button type="button" onClick={loadPortalLink}>Customization Link</button>
+{invoice.paymentStatus !== "VERIFIED" ? <button type="button" disabled={verifying || invoice.paymentStatus !== "RECEIPT_UPLOADED"} onClick={verifyPayment}>{verifying ? "Verifying..." : "Verify Payment"}</button> : null}</>}
+      sections={[
+        { id: "summary", label: "Summary", content: <><section><h2>Summary</h2><dl className="admin-summary-grid"><div><dt>Customer Name</dt><dd>{quotation.customer.name}</dd></div><div><dt>Phone</dt><dd>{quotation.customer.phone}</dd></div><div><dt>Email</dt><dd>{quotation.customer.email}</dd></div><div><dt>Total Cups</dt><dd>{pricing.totalCups}</dd></div><div><dt>Event Address</dt><dd>{invoice.eventAddress}</dd></div><div><dt>Event Date(s)</dt><dd>{quotation.serviceDates.map((date) => formatDateLabel(date.serviceDate)).join(", ")}</dd></div><div><dt>Payment Receipt</dt><dd>{invoice.receiptUrl || invoice.receiptDataUrl ? <FileActions fileUrl={(invoice.receiptUrl || invoice.receiptDataUrl)!} fileName={invoice.receiptName} openLabel="View" downloadLabel="Download" /> : "-"}</dd></div></dl></section></> },
+        { id: "reference", label: "Reference & Status", content: <><section>
             <h3>Invoice</h3>
             <p>Invoice No.: {invoice.invoiceNo}</p>
             <p>Linked Quotation No.: {quotation.quotationNo}</p>
             <p>Invoice status: {invoice.invoiceStatus ?? "SUBMITTED"}</p>
             <p>Payment status: {invoice.paymentStatus ?? "RECEIPT_UPLOADED"}</p>
-          </section>
-          <section>
+          </section></> },
+        { id: "customer", label: "Customer & Billing", content: <><section>
             <h3>Customer Info</h3>
             <p>{quotation.customer.name}</p>
             <p>{quotation.customer.phone}</p>
             <p>{quotation.customer.email}</p>
             <p>{quotation.customer.companyName || "-"}</p>
             <p>{quotation.customer.billingAddress}</p>
-          </section>
-          <section>
+          </section></> },
+        { id: "event", label: "Event Details", content: <><section>
             <h3>Event Details</h3>
             <p>Event address: {invoice.eventAddress}</p>
             <p>Dress code: {invoice.dressCode === "Custom" ? invoice.customDressCode : invoice.dressCode}</p>
             <p>Environment: {invoice.environment}</p>
             <p>Environment notes: {invoice.environmentNotes || "-"}</p>
-          </section>
-          <section>
+          </section></> },
+        { id: "dates", label: "Service Dates", content: <><section>
             <h3>Service Dates</h3>
             {quotation.serviceDates.map((date) => (
               <p key={date.id}>
                 {formatDateLabel(date.serviceDate)} - {date.cups} cups - {formatTime(date.startTime)} to {formatTime(date.endTime)}
               </p>
             ))}
-          </section>
-          <section>
+          </section></> },
+        { id: "drinks", label: "Drink Preferences", content: <><section>
             <h3>Drink Preferences</h3>
             {quotation.serviceDates.map((date) => <div key={date.id}><strong>{formatDateLabel(date.serviceDate)}</strong><p>Drinks provided: {getProvidedBeverageNames(quotation, date.id).join(", ") || "None"}</p></div>)}
-          </section>
-          <section>
+          </section></> },
+        { id: "addons", label: "Add-ons", content: <><section>
             <h3>Add-ons</h3>
             {addonRows.map((addon) => (
               <p key={addon.name}>
@@ -234,8 +238,8 @@ export default function AdminInvoiceDetailPage() {
             ))}
             {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
-          </section>
-          <section>
+          </section></> },
+        { id: "pricing", label: "Price Breakdown", content: <><section>
             <h3>Final Total</h3>
             <p>Base: {formatMoney(pricing.baseAmount)}</p>
             {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
@@ -245,25 +249,27 @@ export default function AdminInvoiceDetailPage() {
             <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
             {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
             <p>Total: {formatMoney(pricing.total)}</p>
-          </section>
-          <DocumentCard documentLabel="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} />
-          {invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
-          {invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}
-          <ReceiptPreview fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} mimeType={invoice.receiptMimeType} />
-          {invoice.customMenuFile?.fileUrl ? (
+          </section></> },
+        { id: "receipt", label: "Payment Receipt", content: <><ReceiptPreview fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} mimeType={invoice.receiptMimeType} /></> },
+        { id: "documents", label: "Documents", content: <><DocumentCard documentLabel="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} />
+{invoice.customMenuFile?.fileUrl ? (
             <GenericFilePreview title="Custom Menu File" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />
           ) : null}
-          {(invoice.invoiceFiles ?? []).map((file) => (
+{(invoice.invoiceFiles ?? []).map((file) => (
             <GenericFilePreview key={file.fileUrl} title="Invoice File" fileUrl={file.fileUrl} fileName={file.fileName} mimeType={file.mimeType} />
-          ))}
-          <CustomizationPreview title="Cart Design Image" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" />
-          <CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
-          <CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" />
-          <CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" />
-          <CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" />
-          {invoice.customizationSubmission ? <section><h3>Customization Submission</h3><p>Submitted: {new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p><p>Setup address: {invoice.customizationSubmission.eventAddress || "-"}</p></section> : null}
-        </div>
-      </Card>
-    </main>
-  );
+          ))}</> },
+        { id: "notes", label: "Notes & History", content: <>{invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
+{invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}</> },
+        { id: "cart", label: "Cart Artwork", content: <><CustomizationPreview title="Cart Design Image" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" /></> },
+        { id: "stickers", label: "Cup Artwork", content: <><CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
+<CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" /></> },
+        { id: "sleeves", label: "Sleeve Artwork", content: <><CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" /></> },
+        { id: "latte", label: "Latte Artwork", content: <><CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" /></> },
+        { id: "setup", label: "Customization Setup", content: <>{invoice.customizationSubmission ? <section><h3>Customization Submission</h3><p>Submitted: {new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p><p>Setup address: {invoice.customizationSubmission.eventAddress || "-"}</p></section> : null}</> },
+      ]}
+    >
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+    </AdminSectionEditor>
+    {portalLink ? <CustomizationLinkModal url={portalLink} onClose={() => setPortalLink("")} /> : null}
+  </Card></main>;
 }
