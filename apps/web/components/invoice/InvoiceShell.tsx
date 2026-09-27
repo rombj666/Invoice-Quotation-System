@@ -9,7 +9,7 @@ import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../lib/addons";
 import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "../../lib/customization-layout";
 import { calculatePricing } from "../../lib/invoice-pricing";
 import { getNextInvoiceNo, saveInvoiceLocally } from "../../lib/invoice-storage";
-import { findQuotation as findStoredQuotation } from "../../lib/quotation-storage";
+import { findQuotation as findStoredQuotation, loadQuotationByNo } from "../../lib/quotation-storage";
 import { Card } from "../common/Card";
 import { StepNavigation } from "../common/StepNavigation";
 import { AddOnsStep } from "../quotation/AddOnsStep";
@@ -27,7 +27,7 @@ import { ReceiptUpload } from "./ReceiptUpload";
 import { SubmittedInvoiceView } from "./SubmittedInvoiceView";
 import { generatePdfBlob } from "../../lib/pdf-document";
 
-type InvoiceStep = "review" | "acknowledgements" | "receipt" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "preview" | "success";
+type InvoiceStep = "review" | "details" | "receipt" | "cart" | "menu" | "sleeve" | "sticker" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
@@ -159,7 +159,7 @@ function expandDesignsForDates(designs: CustomizationByDate, quotation: Quotatio
   return Object.fromEntries(quotation.serviceDates.map((date) => [date.serviceDate, designs[mode === "same" ? "shared" : date.serviceDate]]));
 }
 
-export function InvoiceShell() {
+export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: string }) {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [invoiceNo, setInvoiceNo] = useState("A00001");
   const [stepIndex, setStepIndex] = useState(0);
@@ -177,6 +177,9 @@ export function InvoiceShell() {
   const [environmentNotes, setEnvironmentNotes] = useState("");
   const [receiptName, setReceiptName] = useState("");
   const [receiptDataUrl, setReceiptDataUrl] = useState("");
+  const [receiptAmount, setReceiptAmount] = useState("");
+  const [receiptAccount, setReceiptAccount] = useState("");
+  const [receiptBank, setReceiptBank] = useState("");
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false, false]);
   const [activeDesignDate, setActiveDesignDate] = useState("");
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
@@ -211,6 +214,53 @@ export function InvoiceShell() {
   }, []);
 
   useEffect(() => {
+    if (!initialQuotationNo) return;
+    const quotationNo = initialQuotationNo.trim().toUpperCase();
+    let cancelled = false;
+    loadQuotationByNo(quotationNo).then(async (loaded) => {
+      if (cancelled || !loaded) {
+        if (!cancelled) setError("Quotation not found.");
+        return;
+      }
+      if (loaded.status === "RETURNED_FOR_EDIT") {
+        setLookupStatus("This quotation was returned for changes. Please edit and resubmit it from the edit page.");
+        return;
+      }
+      try {
+        const result = await findStoredQuotation({ quotationNo, name: loaded.customer.name, phone: loaded.customer.phone });
+        if (cancelled) return;
+        if (!result.matched) {
+          setError("We could not verify this quotation. Please check the quotation number.");
+          return;
+        }
+        if (result.access === "PENDING_REVIEW") {
+          setLookupStatus("Your quotation is being reviewed. We will contact you shortly.");
+          return;
+        }
+        if (result.access === "DRAFT_INVOICE") {
+          setLookupStatus(`Invoice draft ${result.invoiceNo} already exists for this quotation.`);
+          return;
+        }
+        if (result.access === "SUBMITTED_INVOICE") {
+          setSubmittedInvoice(result.invoice);
+          window.sessionStorage.setItem(submittedInvoiceIdentityKey, JSON.stringify({ quotationNo, name: loaded.customer.name, phone: loaded.customer.phone, invoiceNo: result.invoiceNo }));
+          window.history.replaceState(null, "", `/invoice?invoiceNo=${encodeURIComponent(result.invoiceNo)}`);
+          return;
+        }
+        const approvedQuotation = withCustomizationDefaults(result.quotation);
+        setQuotation(approvedQuotation);
+        if (approvedQuotation.serviceDates[0]) setActiveDesignDate(approvedQuotation.serviceDates[0].serviceDate);
+        setStepIndex(0);
+      } catch (findError) {
+        if (!cancelled) setError(findError instanceof Error ? findError.message : "Unable to load quotation.");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialQuotationNo]);
+
+  useEffect(() => {
     if (!quotation) return;
     const options = quotation.customizationOptions;
     setCartDesigns((current) => synchronizeDesigns(current, quotation, options.cart.mode));
@@ -222,7 +272,7 @@ export function InvoiceShell() {
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
-    const list: InvoiceStep[] = ["review", "acknowledgements", "preview", "receipt", "details"];
+    const list: InvoiceStep[] = ["review", "details", "receipt"];
     const hasCart = quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart");
     const hasCustomMenu = quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu");
     if (hasCart) list.push("cart");
@@ -327,11 +377,13 @@ export function InvoiceShell() {
   function next() {
     setError("");
     if (currentStep === "review") return;
-    if (currentStep === "acknowledgements" && acknowledgements.some((checked) => !checked)) return setError("Please tick all acknowledgements before continuing.");
+    if (currentStep === "details" && acknowledgements.some((checked) => !checked)) return setError("Please tick all acknowledgements before continuing.");
     if (currentStep === "details" && !eventAddress.trim()) return setError("Please enter the full event address.");
     if (currentStep === "details" && (!dressCode || !environment)) return setError("Please select dress code and event environment.");
     if (currentStep === "details" && dressCode === "Custom" && !customDressCode.trim()) return setError("Please describe the custom dress code.");
     if (currentStep === "receipt" && !receiptName) return setError("Please upload your payment receipt before continuing.");
+    if (currentStep === "receipt" && !receiptAmount.trim()) return setError("Please enter the receipt amount before continuing.");
+    if (currentStep === "receipt" && !receiptAccount.trim()) return setError("Please enter the payer account number before continuing.");
     if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     if (currentStep === "cart" && !hasRequiredDesigns("cart", cartDesigns)) return setError("Please upload the required cart design for every selected date.");
     if (currentStep === "sticker" && !hasRequiredDesigns("sticker", stickerDesigns)) return setError("Please upload the required cup sticker design for every selected date.");
@@ -371,6 +423,9 @@ export function InvoiceShell() {
         environmentNotes,
         receiptName,
         receiptDataUrl,
+        receiptAmount,
+        receiptAccount,
+        receiptBank,
         customMenuFile,
         cartDesigns: finalCartDesigns,
         stickerDesigns: finalStickerDesigns,
@@ -412,6 +467,10 @@ export function InvoiceShell() {
           <button className="hc-button hc-button-primary find-button" type="button" onClick={() => findQuotation()} disabled={isFindingQuotation}>
             {isFindingQuotation ? "FINDING..." : "FIND QUOTATION"}
           </button>
+          <div className="find-quotation-links">
+            <a href="/orders">Have an account? View my orders</a>
+            <a href="/notifications">Notification centre</a>
+          </div>
         </Card>
       </main>
     );
@@ -420,7 +479,7 @@ export function InvoiceShell() {
   return (
     <main className="hc-page invoice-page">
       <div className="team-topbar">Hour Coffee - Invoice</div>
-      <Card className={`wide-card ${currentStep === "preview" ? "invoice-preview-card" : "invoice-flow-card"}`}>
+      <Card className="wide-card invoice-flow-card">
         <div className="progress-header">
           <div className="progress-text">
             Step {stepIndex + 1} of {steps.length}
@@ -491,23 +550,43 @@ export function InvoiceShell() {
             ) : null}
           </div>
         ) : null}
-        {currentStep === "acknowledgements" ? <AcknowledgementsStep checked={acknowledgements} onChange={setAcknowledgements} /> : null}
-        {currentStep === "preview" ? <InvoicePreview invoiceNo={invoiceNo} quotation={quotation} /> : null}
         {currentStep === "details" ? (
-          <EventDetailsStep
-            eventAddress={eventAddress}
-            dressCode={dressCode}
-            customDressCode={customDressCode}
-            environment={environment}
-            environmentNotes={environmentNotes}
-            onEventAddress={setEventAddress}
-            onDressCode={setDressCode}
-            onCustomDressCode={setCustomDressCode}
-            onEnvironment={setEnvironment}
-            onEnvironmentNotes={setEnvironmentNotes}
+          <div>
+            <EventDetailsStep
+              eventAddress={eventAddress}
+              dressCode={dressCode}
+              customDressCode={customDressCode}
+              environment={environment}
+              environmentNotes={environmentNotes}
+              onEventAddress={setEventAddress}
+              onDressCode={setDressCode}
+              onCustomDressCode={setCustomDressCode}
+              onEnvironment={setEnvironment}
+              onEnvironmentNotes={setEnvironmentNotes}
+            />
+            <details className="acknowledgements-collapse">
+              <summary>Terms &amp; acknowledgements (please review and tick all)</summary>
+              <AcknowledgementsStep checked={acknowledgements} onChange={setAcknowledgements} />
+            </details>
+            <div className="invoice-preview-section">
+              <InvoicePreview invoiceNo={invoiceNo} quotation={quotation} />
+            </div>
+          </div>
+        ) : null}
+        {currentStep === "receipt" ? (
+          <ReceiptUpload
+            receiptName={receiptName}
+            receiptAmount={receiptAmount}
+            receiptAccount={receiptAccount}
+            receiptBank={receiptBank}
+            expectedAmount={calculatePricing(quotation).total}
+            onReceiptName={setReceiptName}
+            onReceiptAmount={setReceiptAmount}
+            onReceiptAccount={setReceiptAccount}
+            onReceiptBank={setReceiptBank}
+            onReceiptDataUrl={setReceiptDataUrl}
           />
         ) : null}
-        {currentStep === "receipt" ? <ReceiptUpload receiptName={receiptName} onReceiptName={setReceiptName} onReceiptDataUrl={setReceiptDataUrl} /> : null}
         {currentStep === "cart" ? (
           <CartLogoCustomizer mode={quotation.customizationOptions.cart.mode} serviceDates={quotation.serviceDates} designs={cartDesigns} activeDate={activeDesignDate} onActiveDate={setActiveDesignDate} onDesigns={setCartDesigns} />
         ) : null}
@@ -527,7 +606,7 @@ export function InvoiceShell() {
         ) : null}
         {currentStep === "success" ? <InvoiceSuccess invoiceNo={invoiceNo} /> : null}
 
-        {currentStep !== "preview" && currentStep !== "success" ? (
+        {currentStep !== "success" ? (
           <div className="print-document" aria-hidden="true">
             <InvoicePreview
               invoiceNo={invoiceNo}
@@ -541,6 +620,9 @@ export function InvoiceShell() {
                 environment,
                 environmentNotes,
                 receiptName,
+                receiptAmount,
+                receiptAccount,
+                receiptBank,
                 submittedAt: new Date().toISOString()
               }}
               documentId="invoiceSubmissionPreview"
@@ -555,7 +637,7 @@ export function InvoiceShell() {
             onBack={stepIndex > 0 ? back : undefined}
             canGoBack={stepIndex > 0}
             onNext={stepIndex === steps.length - 2 ? submit : next}
-            nextLabel={currentStep === "preview" ? "PROCEED TO PAYMENT" : stepIndex === steps.length - 2 ? (isSubmittingInvoice ? "SAVING..." : "DONE - NEXT STEP") : "CONTINUE"}
+            nextLabel={stepIndex === steps.length - 2 ? (isSubmittingInvoice ? "SAVING..." : "SUBMIT INVOICE") : "CONTINUE"}
           />
         ) : null}
       </Card>

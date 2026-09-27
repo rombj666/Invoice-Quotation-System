@@ -18,6 +18,8 @@ import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
 import { getFixedPackages } from "./packages";
 import { isTrackingId, recordQuotationTracking } from "../services/quotation-tracking";
+import { sendNotification } from "../services/notifications";
+import { assertValidQuotationTransition, expireOverdueQuotations, isUniqueConflict } from "../utils/state-machine";
 
 export const quotationRoutes = Router();
 const LOCKED_DATE_MESSAGE = "One or more selected dates are no longer available. Please choose another date.";
@@ -93,6 +95,10 @@ export function toQuotationPayload(record: any) {
     createdAt: record.createdAt?.toISOString?.() ?? record.createdAt,
     updatedAt: record.updatedAt?.toISOString?.() ?? record.updatedAt,
     hasInvoice: Array.isArray(record.invoices) ? record.invoices.length > 0 : undefined,
+    voidedAt: record.voidedAt?.toISOString?.() ?? record.voidedAt ?? null,
+    voidReason: record.voidReason ?? null,
+    returnReason: record.returnReason ?? null,
+    returnedAt: record.returnedAt?.toISOString?.() ?? record.returnedAt ?? null,
     editHistory: record.statusHistory?.filter((entry: any) => !/follow[ -]?up/i.test(String(entry.changeSummary ?? ""))).map((entry: any) => ({
       changedAt: entry.createdAt?.toISOString?.() ?? entry.createdAt,
       changedBy: entry.changedBy,
@@ -140,9 +146,16 @@ async function getNextQuotationNo(): Promise<string> {
     FROM "Quotation"
     WHERE "quotationNo" ~ '^Q[0-9]{5}$'
   `);
-  const nextNumber = result.highestNumber + 1;
-  if (nextNumber > 99999) throw new Error("Quotation number range exhausted.");
-  return `Q${String(nextNumber).padStart(5, "0")}`;
+  // Auto-avoid already-used numbers: walk upward until an unused number is
+  // found (handles gaps left by cancelled records or concurrent inserts).
+  let nextNumber = result.highestNumber + 1;
+  for (;;) {
+    if (nextNumber > 99999) throw new Error("Quotation number range exhausted.");
+    const candidate = `Q${String(nextNumber).padStart(5, "0")}`;
+    const taken = await prisma.quotation.findUnique({ where: { quotationNo: candidate }, select: { id: true } });
+    if (!taken) return candidate;
+    nextNumber += 1;
+  }
 }
 
 function isQuotationNoConflict(error: unknown): boolean {
@@ -245,6 +258,18 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!isTrackingId(tracking?.visitorId) || !isTrackingId(tracking?.sessionId)) {
       return res.status(400).json({ error: "A valid daily quotation session is required." });
     }
+    // Idempotency: reject a resubmission that carries the same unique token.
+    const submissionToken = String(incomingData.submissionToken ?? "").trim() || undefined;
+    if (submissionToken) {
+      const duplicate = await prisma.quotation.findUnique({ where: { submissionToken }, select: { quotationNo: true, status: true } });
+      if (duplicate) {
+        return res.status(409).json({
+          code: "ALREADY_SUBMITTED",
+          error: "This quotation was already submitted. Please use the confirmation number shown after your first submission.",
+          quotationNo: duplicate.quotationNo
+        });
+      }
+    }
     const quotationPdfFile = multipart?.files.find((file) => file.fieldName === "quotationPdf");
     if (!quotationPdfFile) {
       logQuotationPdf("pdf_generation", {
@@ -277,6 +302,16 @@ quotationRoutes.post("/", async (req, res, next) => {
     if (!packageDisplay) return res.status(400).json({ error: "Choose a valid package." });
     if (packageDisplay.code !== parsedPricing.input.packageCode) return res.status(400).json({ error: "The selected package details do not match." });
     const pricing = calculateFixedPackagePricing({ ...parsedPricing.input, packageFeatures: packageDisplay.includedItems });
+    // Amount must match the system calculation. The client-generated PDF amount
+    // is cross-checked here; mismatches are rejected instead of stored.
+    const submittedTotal = Number(incomingData.pricingSnapshot?.total ?? incomingData.totalAmount);
+    if (Number.isFinite(submittedTotal) && Math.abs(submittedTotal - Number(pricing.finalTotal)) > 0.01) {
+      return res.status(409).json({
+        code: "AMOUNT_MISMATCH",
+        error: "The amount on the quotation does not match the system price. Please refresh the page and resubmit.",
+        systemTotal: pricing.finalTotal
+      });
+    }
     const selectedLockDates = pricing.selectedDates.map((date) => new Date(`${date}T00:00:00.000Z`));
     if (await prisma.lockedDate.findFirst({ where: { date: { in: selectedLockDates } }, select: { id: true } })) {
       return res.status(409).json({ error: LOCKED_DATE_MESSAGE });
@@ -446,6 +481,7 @@ quotationRoutes.post("/", async (req, res, next) => {
         data: {
         quotationNo,
         customerId: customer.id,
+        submissionToken: submissionToken ?? null,
         status: (data.status ?? "PENDING_APPROVAL") as QuotationStatus,
         location: resolvedEventAddress,
         eventType: data.eventType === "Others" ? data.customEventType || data.eventType : String(data.eventType ?? ""),
@@ -533,8 +569,23 @@ quotationRoutes.post("/", async (req, res, next) => {
           nextQuotationNo: await getNextQuotationNo()
         });
       }
+      if (isUniqueConflict(error, "submissionToken")) {
+        return res.status(409).json({
+          code: "ALREADY_SUBMITTED",
+          error: "This quotation was already submitted. Please use the confirmation number shown after your first submission."
+        });
+      }
       return res.status(500).json({ error: "Quotation submission failed while saving the PDF. No successful submission was recorded. Please try again." });
     }
+
+    await sendNotification({
+      type: "QUOTATION_SUBMITTED",
+      recipient: { role: "admin", name: "Hour Coffee Admin" },
+      title: `New quotation ${quotationNo} from ${quotation.customer.name}`,
+      message: `${quotation.customer.name} (${quotation.customer.phone}) submitted quotation ${quotationNo} for ${pricing.finalTotal} RM.`,
+      referenceNo: quotationNo,
+      link: `/admin/quotations?no=${encodeURIComponent(quotationNo)}`
+    });
 
     res.status(201).json(toQuotationPayload(quotation));
   } catch (error) {
@@ -544,6 +595,7 @@ quotationRoutes.post("/", async (req, res, next) => {
 
 quotationRoutes.get("/", async (_req, res, next) => {
   try {
+    await expireOverdueQuotations();
     const quotations = await prisma.quotation.findMany({
       orderBy: { createdAt: "desc" },
       include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
@@ -556,6 +608,7 @@ quotationRoutes.get("/", async (_req, res, next) => {
 
 quotationRoutes.get("/:quotationNo", async (req, res, next) => {
   try {
+    await expireOverdueQuotations();
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
       include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } }
@@ -569,6 +622,7 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
 
 quotationRoutes.post("/find", async (req, res, next) => {
   try {
+    await expireOverdueQuotations();
     const { quotationNo, name, phone } = req.body;
     const normalizedQuotationNo = String(quotationNo ?? "").trim().toUpperCase();
     const quotation = await prisma.quotation.findUnique({
@@ -600,6 +654,12 @@ quotationRoutes.post("/find", async (req, res, next) => {
         invoice: toInvoicePayload(existingInvoice)
       });
     }
+    if (quotation.status === "EXPIRED") {
+      return res.json({ matched: true, access: "QUOTATION_EXPIRED", quotationNo: quotation.quotationNo });
+    }
+    if (quotation.status === "CANCELLED") {
+      return res.json({ matched: true, access: "QUOTATION_CANCELLED", quotationNo: quotation.quotationNo });
+    }
     if (quotation.status !== "APPROVED") {
       return res.json({ matched: true, access: "PENDING_REVIEW", quotationNo: quotation.quotationNo });
     }
@@ -611,6 +671,7 @@ quotationRoutes.post("/find", async (req, res, next) => {
 
 quotationRoutes.post("/history", async (req, res, next) => {
   try {
+    await expireOverdueQuotations();
     const customers = await findMatchingCustomers(req.body);
     if (!customers.length) return res.json({ matched: false, quotations: [] });
     const quotations = await prisma.quotation.findMany({
@@ -642,6 +703,7 @@ quotationRoutes.post("/history", async (req, res, next) => {
 
 quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
   try {
+    await expireOverdueQuotations();
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
       include: { customer: true, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
@@ -651,6 +713,12 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
     }
     if (quotation.invoices.length > 0) {
       return res.status(409).json({ access: "INVOICE_STARTED" });
+    }
+    if (quotation.status === "EXPIRED") {
+      return res.status(409).json({ access: "QUOTATION_EXPIRED", message: "This quotation has expired." });
+    }
+    if (quotation.status === "CANCELLED") {
+      return res.status(409).json({ access: "QUOTATION_CANCELLED", message: "This quotation has been voided." });
     }
     res.json({
       access: "QUOTATION_SUMMARY",
@@ -663,10 +731,32 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
 
 quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
   try {
+    await expireOverdueQuotations();
+    const current = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, select: { id: true, status: true, expiresAt: true } });
+    if (!current) return res.status(404).json({ error: "Quotation not found" });
+    if (current.expiresAt && new Date(current.expiresAt).getTime() < Date.now()) {
+      return res.status(409).json({ error: "This quotation has expired and can no longer be approved." });
+    }
+    try {
+      assertValidQuotationTransition(current.status, "APPROVED");
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal quotation status transition." });
+    }
     const quotation = await prisma.quotation.update({
       where: { quotationNo: req.params.quotationNo },
-      data: { status: "APPROVED" },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      data: {
+        status: "APPROVED",
+        statusHistory: { create: { fromStatus: current.status, toStatus: "APPROVED", changedBy: "admin", changeSummary: "Quotation approved." } }
+      },
+      include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+    });
+    await sendNotification({
+      type: "QUOTATION_APPROVED",
+      recipient: { role: "customer", name: quotation.customer.name, phone: quotation.customer.phone, email: quotation.customer.email },
+      title: `Quotation ${quotation.quotationNo} approved`,
+      message: "Your quotation was approved. You can now submit your invoice details.",
+      referenceNo: quotation.quotationNo,
+      link: `/customer/quotation/${encodeURIComponent(quotation.quotationNo)}/invoice`
     });
     res.json(toQuotationPayload(quotation));
   } catch (error) {
@@ -674,10 +764,179 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
   }
 });
 
+// Customer resubmission: after admin returns a quotation for changes
+// (RETURNED_FOR_EDIT), the customer may edit the original quotation and
+// resubmit it, moving it back to PENDING_APPROVAL. The quotation number is
+// preserved so the audit trail stays linked to one record.
+quotationRoutes.patch("/:quotationNo/resubmit", async (req, res, next) => {
+  try {
+    const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
+    const multipart = isMultipart ? await parseMultipartRequest(req, 30 * 1024 * 1024) : null;
+    const incomingData = multipart ? JSON.parse(multipart.fields.payload ?? "{}") : req.body;
+    const quotationPdfFile = multipart?.files.find((file) => file.fieldName === "quotationPdf");
+    if (!quotationPdfFile || quotationPdfFile.mimeType !== "application/pdf" || quotationPdfFile.buffer.length === 0) {
+      return res.status(400).json({ error: "The resubmitted quotation document must be a PDF." });
+    }
+    const current = await prisma.quotation.findUnique({
+      where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
+      include: { customer: true }
+    });
+    if (!current) return res.status(404).json({ error: "Quotation not found" });
+    if (current.status !== "RETURNED_FOR_EDIT") {
+      return res.status(409).json({ error: "This quotation cannot be resubmitted. It must be returned by the admin for changes first." });
+    }
+    try {
+      assertValidQuotationTransition(current.status, "PENDING_APPROVAL");
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal quotation status transition." });
+    }
+
+    const customerInput = incomingData.customer ?? {};
+    const customerName = String(customerInput.name ?? current.customer.name ?? "").trim();
+    const customerPhone = normalizePhone(customerInput.phone ?? current.customer.phone ?? "");
+    const customerEmail = String(customerInput.email ?? current.customer.email ?? "").trim();
+    if (!customerName) return res.status(400).json({ error: "Customer full name is required." });
+    if (!/^01\d{8,9}$/.test(customerPhone)) return res.status(400).json({ error: "Enter a valid Malaysian phone number." });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) return res.status(400).json({ error: "Enter a valid email address." });
+
+    const selectedLocation = String(incomingData.location ?? current.location ?? "").trim();
+    const resolvedEventAddress = selectedLocation.startsWith("Others")
+      ? String(incomingData.fullAddress ?? selectedLocation).trim()
+      : selectedLocation;
+    if (!resolvedEventAddress) return res.status(400).json({ error: "Event address is required." });
+
+    const metadata = { ...((current.metadata ?? {}) as Record<string, unknown>) };
+    const editableKeys = ["location", "fullAddress", "eventType", "customEventType", "notes"] as const;
+    for (const key of editableKeys) {
+      if (incomingData[key] !== undefined) metadata[key] = incomingData[key];
+    }
+    const previousCustomer = (metadata.customer ?? {}) as Record<string, unknown>;
+    metadata.customer = {
+      ...previousCustomer,
+      name: customerName,
+      phone: customerPhone,
+      email: customerEmail,
+      companyName: String(customerInput.companyName ?? previousCustomer.companyName ?? current.customer.companyName ?? ""),
+      companyRegNo: String(customerInput.companyRegNo ?? previousCustomer.companyRegNo ?? current.customer.companyRegNo ?? ""),
+      billingAddress: String(customerInput.billingAddress ?? previousCustomer.billingAddress ?? current.customer.billingAddress ?? "")
+    };
+
+    let quotationPdfUpload: Awaited<ReturnType<typeof uploadCloudinaryBuffer>> = null;
+    try {
+      quotationPdfUpload = await uploadCloudinaryBuffer(
+        quotationPdfFile,
+        cloudinaryFolders.quotationPdfs,
+        `${current.quotationNo}-${Date.now()}.pdf`
+      );
+      if (!quotationPdfUpload) throw new Error("Cloudinary returned no quotation PDF upload result.");
+      logQuotationPdf("cloudinary_upload", {
+        quotationId: current.id,
+        quotationNo: current.quotationNo,
+        success: true,
+        secureUrl: quotationPdfUpload.fileUrl,
+        publicId: quotationPdfUpload.cloudinaryPublicId
+      });
+    } catch (error) {
+      logQuotationPdf("cloudinary_upload", {
+        quotationId: current.id,
+        quotationNo: current.quotationNo,
+        success: false,
+        error: errorMessage(error)
+      });
+      return res.status(502).json({ error: "Quotation resubmission failed while uploading the PDF. Please try again." });
+    }
+
+    const quotation = await prisma.$transaction(async (tx) => {
+      if (current.quotationPdfPublicId) {
+        await deleteCloudinaryPdf(current.quotationPdfPublicId).catch((cleanupError) => {
+          console.error("[quotation-pdf] resubmit_old_pdf_cleanup", {
+            quotationId: current.id,
+            quotationNo: current.quotationNo,
+            publicId: current.quotationPdfPublicId,
+            error: errorMessage(cleanupError)
+          });
+        });
+      }
+      return tx.quotation.update({
+        where: { quotationNo: current.quotationNo },
+        data: {
+          status: "PENDING_APPROVAL",
+          location: resolvedEventAddress,
+          quotationPdfUrl: quotationPdfUpload?.fileUrl ?? null,
+          quotationPdfPublicId: quotationPdfUpload?.cloudinaryPublicId ?? null,
+          returnReason: null,
+          returnedAt: null,
+          metadata: toJsonValue(metadata),
+          customer: {
+            update: {
+              name: customerName,
+              phone: customerPhone,
+              email: customerEmail,
+              companyName: String(customerInput.companyName ?? current.customer.companyName ?? ""),
+              companyRegNo: String(customerInput.companyRegNo ?? current.customer.companyRegNo ?? ""),
+              billingAddress: String(customerInput.billingAddress ?? current.customer.billingAddress ?? "")
+            }
+          },
+          statusHistory: {
+            create: { fromStatus: "RETURNED_FOR_EDIT", toStatus: "PENDING_APPROVAL", changedBy: "customer", changeSummary: "Customer edited and resubmitted the quotation." }
+          }
+        },
+        include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      });
+    });
+    logQuotationPdf("database_save", {
+      quotationId: quotation.id,
+      quotationNo: quotation.quotationNo,
+      success: true,
+      secureUrl: quotation.quotationPdfUrl,
+      publicId: quotation.quotationPdfPublicId
+    });
+
+    await sendNotification({
+      type: "QUOTATION_RESUBMITTED",
+      recipient: { role: "admin", name: "Hour Coffee Admin" },
+      title: `Quotation ${quotation.quotationNo} resubmitted by ${quotation.customer.name}`,
+      message: `${quotation.customer.name} (${quotation.customer.phone}) resubmitted quotation ${quotation.quotationNo} after requested changes.`,
+      referenceNo: quotation.quotationNo,
+      link: `/admin/quotations/${encodeURIComponent(quotation.quotationNo)}`
+    });
+
+    res.json(toQuotationPayload(quotation));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Soft delete: quotations are voided (CANCELLED + reason) instead of being
+// physically removed, preserving the audit trail.
 quotationRoutes.delete("/:quotationNo", async (req, res, next) => {
   try {
-    await prisma.quotation.delete({ where: { quotationNo: req.params.quotationNo } });
-    res.status(204).send();
+    const reason = String(req.body?.reason ?? "").trim() || "Voided by admin without a reason.";
+    const current = await prisma.quotation.findUnique({
+      where: { quotationNo: req.params.quotationNo },
+      include: { invoices: { select: { id: true } } }
+    });
+    if (!current) return res.status(404).json({ error: "Quotation not found" });
+    if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length > 0) {
+      return res.status(409).json({ error: "This quotation already has an invoice and cannot be voided." });
+    }
+    if (current.status === "CANCELLED") return res.status(409).json({ error: "This quotation is already voided." });
+    try {
+      assertValidQuotationTransition(current.status, "CANCELLED");
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal quotation status transition." });
+    }
+    const quotation = await prisma.quotation.update({
+      where: { quotationNo: req.params.quotationNo },
+      data: {
+        status: "CANCELLED",
+        voidedAt: new Date(),
+        voidReason: reason,
+        statusHistory: { create: { fromStatus: current.status, toStatus: "CANCELLED", changedBy: "admin", changeSummary: `Voided: ${reason}` } }
+      },
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+    });
+    res.json({ voided: true, quotation: toQuotationPayload(quotation) });
   } catch (error) {
     next(error);
   }

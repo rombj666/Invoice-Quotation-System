@@ -7,7 +7,8 @@ import { formatDateLabel, formatMoney } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
 import { getQuotationBaristaPricing } from "../../lib/pricing";
 import { getQuotationTrackingSession, trackQuotationEvent } from "../../lib/quotation-tracking";
-import { getNextQuotationNo, previewQuotationPricing, submitQuotationWithPdf } from "../../lib/quotation-storage";
+import { getNextQuotationNo, previewQuotationPricing, resubmitQuotation, submitQuotationWithPdf } from "../../lib/quotation-storage";
+import { generatePdfBlob } from "../../lib/pdf-document";
 import { loadLockedDates } from "../../lib/locked-dates";
 import type { CartStyle, FixedPackageDisplay, PackageCode, PackageOptionCode, QuotationData, QuotationPricingPreview, ServiceDate, ServiceDurationMode } from "../../types/quotation";
 import { Button } from "../common/Button";
@@ -129,9 +130,10 @@ function trackGaMilestoneOnce(
   );
 }
 
-export function QuotationShell() {
+export function QuotationShell({ editQuotation }: { editQuotation?: QuotationData }) {
   const [step, setStep] = useState(0);
-  const [data, setData] = useState<QuotationData>(initialQuotation);
+  const [data, setData] = useState<QuotationData>(() => editQuotation ? { ...initialQuotation(), ...editQuotation } : initialQuotation());
+  const [resubmitted, setResubmitted] = useState(false);
   const [packages, setPackages] = useState<FixedPackageDisplay[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -167,26 +169,33 @@ export function QuotationShell() {
   const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration, data.serviceDates.map((date) => date.serviceDate));
 
   useEffect(() => {
-    let restoredStep = 0;
-    const savedDraft = window.localStorage.getItem(draftStorageKey);
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft) as { version?: number; step?: number; data?: QuotationData };
-        if (parsed.version === 7 && parsed.data?.customer && Array.isArray(parsed.data.serviceDates)) {
-          const savedDuration = parsed.data.serviceDuration === "FULL_DAY" || parsed.data.serviceDuration === "HALF_DAY"
-            ? parsed.data.serviceDuration
-            : parsed.data.serviceDates[0]?.durationMode === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
-          setData({ ...parsed.data, serviceDuration: savedDuration });
-          setStep(parsed.step === 1 ? 1 : 0);
-          restoredStep = parsed.step === 1 ? 1 : 0;
+    if (editQuotation) {
+      setStep(1);
+      trackQuotationEvent("OPEN");
+      trackGaMilestoneOnce("quotation_view");
+      trackQuotationEvent("STEP2_VISITED");
+    } else {
+      let restoredStep = 0;
+      const savedDraft = window.localStorage.getItem(draftStorageKey);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft) as { version?: number; step?: number; data?: QuotationData };
+          if (parsed.version === 7 && parsed.data?.customer && Array.isArray(parsed.data.serviceDates)) {
+            const savedDuration = parsed.data.serviceDuration === "FULL_DAY" || parsed.data.serviceDuration === "HALF_DAY"
+              ? parsed.data.serviceDuration
+              : parsed.data.serviceDates[0]?.durationMode === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
+            setData({ ...parsed.data, serviceDuration: savedDuration });
+            setStep(parsed.step === 1 ? 1 : 0);
+            restoredStep = parsed.step === 1 ? 1 : 0;
+          }
+        } catch {
+          window.localStorage.removeItem(draftStorageKey);
         }
-      } catch {
-        window.localStorage.removeItem(draftStorageKey);
       }
+      trackQuotationEvent("OPEN");
+      trackGaMilestoneOnce("quotation_view");
+      if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
     }
-    trackQuotationEvent("OPEN");
-    trackGaMilestoneOnce("quotation_view");
-    if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
     loadLockedDates().then((dates) => { setLockedDates(dates); setLocksLoading(false); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load date availability. Please reload the page."));
 
@@ -199,7 +208,7 @@ export function QuotationShell() {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || editQuotation) return;
     window.localStorage.setItem(draftStorageKey, JSON.stringify({ version: 7, step, data }));
   }, [data, ready, step]);
 
@@ -360,6 +369,54 @@ export function QuotationShell() {
 
   async function continueToWhatsApp() {
     if (submitting.current) return;
+
+    if (editQuotation) {
+      if (!selectedPackage) return setError("Choose a package first.");
+      if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
+      if (!data.customer.name.trim()) return setError("Customer full name is required.");
+      const editPhoneDigits = data.customer.phone.replace(/\D/g, "");
+      const editPhone = editPhoneDigits.startsWith("60") ? `0${editPhoneDigits.slice(2)}` : editPhoneDigits;
+      if (!/^01\d{8,9}$/.test(editPhone)) return setError("Enter a valid Malaysian phone number.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer.email.trim())) return setError("Enter a valid email address.");
+      if (!data.location.trim()) return setError("Event address is required.");
+      submitting.current = true;
+      setIsSubmitting(true);
+      setError("");
+      try {
+        const [dates, validated] = await Promise.all([loadLockedDates(), previewQuotationPricing(data)]);
+        setLockedDates(dates);
+        if (data.serviceDates.some((date) => dates.includes(date.serviceDate))) throw new Error("One or more selected dates are no longer available. Please choose another date.");
+        const quotationForSubmission: QuotationData = {
+          ...data,
+          quotationNo: editQuotation.quotationNo,
+          status: "PENDING_APPROVAL",
+          expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
+          discountPercent: discountApplied ? 5 : 0,
+          packageSnapshot: {
+            id: selectedPackage.id, name: selectedPackage.name,
+            level: selectedPackage.code as unknown as NonNullable<QuotationData["packageSnapshot"]>["level"],
+            briefDescription: selectedPackage.shortDescription, price: validated.subtotal,
+            extendedDayCharge: validated.extendedDayCharge,
+            perks: validated.selectedItems.map((name, displayOrder) => ({ id: `${selectedPackage.code}-${displayOrder}`, name, displayOrder }))
+          }
+        };
+        setPdfData(quotationForSubmission);
+        await afterPdfPaint();
+        const filename = `Hour-Coffee-Quotation-${quotationForSubmission.quotationNo}.pdf`;
+        const quotationPdf = await generatePdfBlob("quotationPreview", { filename });
+        await resubmitQuotation(quotationForSubmission.quotationNo, quotationForSubmission, quotationPdf);
+        setResubmitted(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Unable to resubmit quotation. Please try again.");
+      } finally {
+        submitting.current = false;
+        setIsSubmitting(false);
+        setPdfData(null);
+      }
+      return;
+    }
+
     const existingContact = submittedContact.current ?? (data.quotationPdfUrl && data.quotationPdfPublicId ? {
       quotation: data,
       packageName: data.packageSnapshot?.name ?? selectedPackage?.name ?? "",
@@ -423,8 +480,25 @@ export function QuotationShell() {
     }
   }
 
+  if (resubmitted) {
+    return <main className="hc-page quotation-workspace">
+      <Card className="quotation-flow-card">
+        <div className="quotation-resubmitted">
+          <h1>Quotation resubmitted</h1>
+          <p>Your updated quotation <strong>{editQuotation?.quotationNo}</strong> has been sent back for approval.</p>
+          <p>You can track its status anytime from <a href={`/orders?phone=${encodeURIComponent(data.customer.phone ?? "")}&email=${encodeURIComponent(data.customer.email ?? "")}`}>My Orders</a>.</p>
+        </div>
+      </Card>
+    </main>;
+  }
+
   return <main className="hc-page quotation-workspace" onClickCapture={() => trackQuotationEvent("ACTIVITY")} onKeyDownCapture={() => trackQuotationEvent("ACTIVITY")}>
     <Card className="quotation-flow-card">
+      {editQuotation ? <div className="quotation-edit-banner">
+        <strong>This quotation was returned for changes.</strong>
+        {editQuotation.returnReason ? <span> Admin note: {editQuotation.returnReason}</span> : null}
+        <span> Edit the details below and resubmit for approval.</span>
+      </div> : null}
       <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info & Event Details", "Choose, Review & Submit"]} />
 
       {step === 0 ? <div className="quotation-basic-step">
@@ -548,8 +622,8 @@ export function QuotationShell() {
         </section>
         <section className="quotation-contact-action" aria-labelledby="quotation-contact-heading">
           <h2 id="quotation-contact-heading">Ready to proceed?</h2>
-          <Button type="button" onClick={continueToWhatsApp} aria-describedby="quotation-contact-description" disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : "Contact Us on WhatsApp"}</Button>
-          <p id="quotation-contact-description">Send us a message on WhatsApp and our team will get back to you as soon as possible.</p>
+          <Button type="button" onClick={continueToWhatsApp} aria-describedby="quotation-contact-description" disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : editQuotation ? "Resubmit Quotation" : "Contact Us on WhatsApp"}</Button>
+          <p id="quotation-contact-description">{editQuotation ? "Your changes will be sent back for approval." : "Send us a message on WhatsApp and our team will get back to you as soon as possible."}</p>
         </section>
         <style jsx>{`
           .quotation-contact-action {

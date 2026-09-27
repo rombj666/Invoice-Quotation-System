@@ -102,3 +102,9 @@ export function updateAdminInvoice(originalInvoiceNo: string, data: InvoiceDetai
   form.append("invoicePdf", pdf, `${data.invoiceNo}.pdf`);
   return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(originalInvoiceNo)}`, { method: "PATCH", body: form });
 }
+
+export function returnAdminQuotation(quotationNo: string, returnReason: string) {
+  const form = new FormData();
+  form.append("payload", JSON.stringify({ status: "RETURNED_FOR_EDIT", returnReason }));
+  return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}`, { method: "PATCH", body: form });
+}

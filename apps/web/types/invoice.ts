@@ -19,6 +19,9 @@ export type InvoiceDetails = {
   environment: string;
   environmentNotes: string;
   receiptName: string;
+  receiptAmount?: string;
+  receiptAccount?: string;
+  receiptBank?: string;
   receiptDataUrl?: string;
   customMenuFile?: InvoiceUploadFile;
   invoicePdfUrl?: string;

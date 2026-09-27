@@ -8,7 +8,8 @@ const navigation = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/quotations", label: "Quotation List" },
   { href: "/admin/invoices", label: "Invoice List" },
-  { href: "/admin/lock-dates", label: "Lock Dates" }
+  { href: "/admin/lock-dates", label: "Lock Dates" },
+  { href: "/notifications?role=admin", label: "Notification Center" }
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
@@ -27,7 +28,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <div className="admin-sidebar-brand">Hour Coffee Admin</div>
         <nav aria-label="Admin navigation">
           {navigation.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href.split("?")[0]);
             return <Link className={active ? "active" : ""} href={item.href} key={item.href}>{item.label}</Link>;
           })}
         </nav>

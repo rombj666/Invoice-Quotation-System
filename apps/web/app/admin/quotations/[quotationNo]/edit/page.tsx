@@ -72,7 +72,7 @@ export default function AdminQuotationEditPage() {
     <div className="admin-page-header"><div><p className="admin-eyebrow">Quotation</p><h1>Edit {params.quotationNo}</h1><p>Prices and totals are recalculated by the backend when saved.</p></div><Link className="admin-link-button" href={`/admin/quotations/${params.quotationNo}`}>Cancel</Link></div>
     {data.hasInvoice ? <div className="warn-summary">This quotation has a related invoice. Editing it will not modify the existing invoice or its pricing.</div> : null}
     {error ? <p className="error">{error}</p> : null}{success ? <div className="ok-summary">{success}</div> : null}
-    <div className="admin-form-grid">
+    <div className="admin-edit-layout"><div className="admin-form-grid">
       <section><h2>Reference & Status</h2><label className="admin-field"><span>Quotation number</span><input value={data.quotationNo} onChange={(event)=>patch({quotationNo:event.target.value.toUpperCase()})} /></label><label className="admin-field"><span>Quotation status</span><select value={data.status} onChange={(event)=>patch({status:event.target.value as QuotationData["status"]})}>{["DRAFT","PENDING_APPROVAL","APPROVED","REVIEWED","SENT","CONVERTED_TO_INVOICE","CANCELLED"].map(value=><option key={value}>{value}</option>)}</select></label><label className="admin-field"><span>Discount percent</span><input type="number" min="0" max="100" step="0.01" value={data.discountPercent} onChange={(event)=>patch({discountPercent:Number(event.target.value)})} /></label></section>
       <section><h2>Customer & Billing</h2>{([['name','Name'],['phone','Phone'],['email','Email'],['companyName','Company'],['companyRegNo','Company registration'],['billingAddress','Billing address']] as const).map(([key,label])=><label className="admin-field" key={key}><span>{label}</span><input value={data.customer[key]} onChange={(event)=>updateCustomer(key,event.target.value)} /></label>)}</section>
       <section><h2>Event</h2><label className="admin-field"><span>Location</span><input value={data.location} onChange={(event)=>patch({location:event.target.value})} /></label><label className="admin-field"><span>Full address</span><textarea rows={3} value={data.fullAddress} onChange={(event)=>patch({fullAddress:event.target.value})} /></label><label className="admin-field"><span>Event type</span><input value={data.eventType} onChange={(event)=>patch({eventType:event.target.value})} /></label><label className="admin-field"><span>Custom event type</span><input value={data.customEventType} onChange={(event)=>patch({customEventType:event.target.value})} /></label></section>
@@ -97,6 +97,8 @@ export default function AdminQuotationEditPage() {
         </fieldset>;
       })}
     </section>
+    </div>
+    <aside className="admin-edit-live-preview"><div className="admin-preview-panel"><div className="admin-preview-heading"><p className="admin-eyebrow">Live Preview</p><h2>Quotation</h2></div><QuotationReviewStep data={data} readOnly /></div></aside>
     <div className="print-document" aria-hidden="true"><QuotationReviewStep data={data} readOnly /></div>
     <div className="admin-edit-actions"><button className="hc-button hc-button-primary" type="button" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save Changes"}</button><Link className="hc-button hc-button-secondary" href={`/admin/quotations/${params.quotationNo}`}>Cancel</Link></div>
   </Card></main>;

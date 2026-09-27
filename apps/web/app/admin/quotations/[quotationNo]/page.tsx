@@ -9,6 +9,7 @@ import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../.
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
+import { returnAdminQuotation } from "../../../../lib/admin-api";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
@@ -23,6 +24,9 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showReturnForm, setShowReturnForm] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
+  const [isReturning, setIsReturning] = useState(false);
 
   useEffect(() => {
     loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
@@ -48,6 +52,9 @@ export default function AdminQuotationDetailPage() {
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
+  const isReturned = status === "RETURNED_FOR_EDIT";
+  const statusLabel = isReturned ? "RETURNED FOR EDIT" : isApproved ? "APPROVED" : "PENDING APPROVAL";
+  const statusClass = isReturned ? "returned" : isApproved ? "approved" : "pending";
 
   async function approve() {
     if (!window.confirm("Are you sure you want to approve this quotation?")) return;
@@ -58,6 +65,27 @@ export default function AdminQuotationDetailPage() {
       setSuccess("Quotation approved successfully.");
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
+    }
+  }
+
+  async function returnForChanges() {
+    if (!returnReason.trim()) {
+      setError("Please enter a reason so the customer knows what to change.");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    setIsReturning(true);
+    try {
+      const updated = await returnAdminQuotation(currentQuotation.quotationNo, returnReason.trim());
+      setQuotation(updated);
+      setSuccess("Quotation returned for changes. The customer has been notified.");
+      setShowReturnForm(false);
+      setReturnReason("");
+    } catch (returnError) {
+      setError(returnError instanceof Error ? returnError.message : "Unable to return quotation.");
+    } finally {
+      setIsReturning(false);
     }
   }
 
@@ -77,20 +105,50 @@ export default function AdminQuotationDetailPage() {
         <div className="admin-detail-header">
           <div>
             <h1>{quotation.quotationNo}</h1>
-            <span className={`admin-status-badge large ${isApproved ? "approved" : "pending"}`}>{isApproved ? "APPROVED" : "PENDING APPROVAL"}</span>
+            <span className={`admin-status-badge large ${statusClass}`}>{statusLabel}</span>
           </div>
           <div className="admin-actions">
             <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link>
-            {!isApproved ? (
-              <button className="admin-approve-button large" type="button" onClick={approve}>
-                Approve Quotation
-              </button>
+            {!isApproved && !isReturned ? (
+              <>
+                <button className="admin-approve-button large" type="button" onClick={approve}>
+                  Approve Quotation
+                </button>
+                <button className="admin-return-button large" type="button" onClick={() => { setError(""); setShowReturnForm((visible) => !visible); }}>
+                  Return for Changes
+                </button>
+              </>
+            ) : null}
+            {isReturned ? (
+              <span className="admin-status-note">Waiting for customer to resubmit</span>
             ) : null}
             <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
               {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
             </button>
           </div>
         </div>
+        {showReturnForm ? (
+          <div className="admin-return-form">
+            <label htmlFor="returnReason">
+              <strong>Reason for returning this quotation</strong> (the customer will see this and be asked to edit and resubmit)
+            </label>
+            <textarea
+              id="returnReason"
+              value={returnReason}
+              onChange={(event) => setReturnReason(event.target.value)}
+              rows={3}
+              placeholder="e.g. Please change the service date, minimum baristas are insufficient for this cup count, ..."
+            />
+            <div className="admin-return-form-actions">
+              <button className="admin-return-button large" type="button" disabled={isReturning} onClick={returnForChanges}>
+                {isReturning ? "Returning..." : "Return Quotation"}
+              </button>
+              <button className="hc-button hc-button-secondary" type="button" onClick={() => { setShowReturnForm(false); setReturnReason(""); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
         <div className="detail-grid">
@@ -106,7 +164,7 @@ export default function AdminQuotationDetailPage() {
             <h3>Event</h3>
             <p>Location: {quotation.location}</p>
             <p>Event type: {quotation.eventType === "Others" ? quotation.customEventType : quotation.eventType}</p>
-            <p>Status: {isApproved ? "APPROVED" : "PENDING APPROVAL"}</p>
+            <p>Status: {statusLabel}</p>
           </section>
           <section>
             <h3>Service Dates</h3>

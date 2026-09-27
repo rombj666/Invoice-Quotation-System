@@ -153,13 +153,17 @@ export type QuotationData = {
     | "APPROVED"
     | "REVIEWED"
     | "SENT"
+    | "RETURNED_FOR_EDIT"
     | "CONVERTED_TO_INVOICE"
+    | "EXPIRED"
     | "CANCELLED";
   createdAt?: string;
   quotationPdfUrl?: string;
   quotationPdfPublicId?: string;
   updatedAt?: string;
   hasInvoice?: boolean;
+  returnReason?: string | null;
+  returnedAt?: string | null;
   editHistory?: Array<{ changedAt: string; changedBy: string; summary?: string }>;
   serviceDates: ServiceDate[];
   selectedPackageId?: string;

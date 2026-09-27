@@ -15,7 +15,9 @@ enum QuotationStatus {
   REVIEWED
   SENT
   CONVERTED_TO_INVOICE
+  RETURNED_FOR_EDIT
   CANCELLED
+  EXPIRED
 }
 
 enum InvoiceStatus {
@@ -99,6 +101,14 @@ model Quotation {
   quotationPdfUrl      String?
   quotationPdfPublicId String?
   expiresAt            DateTime?
+  /// Unique idempotency credential issued by the client before submission; a reused token is rejected.
+  submissionToken      String?    @unique
+  /// Soft-delete marker: when set the quotation is considered voided instead of physically deleted.
+  voidedAt             DateTime?
+  voidReason           String?
+  /// Admin-returned-for-edit marker: reason shown to the customer before resubmission.
+  returnReason         String?
+  returnedAt           DateTime?
   metadata             Json?
   dates                QuotationDate[]
   addons               QuotationAddon[]
@@ -205,6 +215,11 @@ model Invoice {
   finalTotalAmount    Decimal                @db.Decimal(10, 2)
   invoicePdfUrl       String?
   invoicePdfPublicId  String?
+  /// Unique idempotency credential issued by the client before submission; a reused token is rejected.
+  submissionToken     String?    @unique
+  /// Soft-delete marker: when set the invoice is considered voided instead of physically deleted.
+  voidedAt            DateTime?
+  voidReason          String?
   metadata            Json?
   items               InvoiceItem[]
   paymentReceipts     PaymentReceipt[]
@@ -272,6 +287,13 @@ model PaymentReceipt {
   fileName           String
   mimeType           String
   status             PaymentStatus @default(RECEIPT_UPLOADED)
+  /// Auto-verification input captured from the customer at upload time.
+  receiptAmount      Decimal?      @db.Decimal(10, 2)
+  receiptAccount     String?
+  receiptBank        String?
+  /// AUTO_VERIFIED | MANUAL_REVIEW required
+  verificationStatus String?
+  verificationNote   String?
   uploadedAt         DateTime      @default(now())
 
   @@index([invoiceId])
@@ -459,4 +481,28 @@ model QuotationExtraChargeDate {
 
   @@unique([extraChargeId, quotationDateId])
   @@index([quotationDateId])
+}
+
+/// Notification event log (notification center). Architecturally extensible:
+/// a delivery channel (email/WhatsApp) can later be attached without schema
+/// changes — each row already stores the recipient contact details.
+model Notification {
+  id             String    @id @default(cuid())
+  type           String
+  recipientRole  String
+  recipientName  String?
+  recipientPhone String?
+  recipientEmail String?
+  title          String
+  message        String
+  referenceNo    String?
+  link           String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([recipientRole])
+  @@index([recipientPhone])
+  @@index([recipientEmail])
+  @@index([referenceNo])
+  @@index([createdAt])
 }

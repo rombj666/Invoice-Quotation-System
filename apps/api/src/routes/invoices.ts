@@ -3,9 +3,12 @@ import { Router } from "express";
 import { cloudinaryFolders, uploadCloudinaryBuffer, uploadCloudinaryDataUrl } from "../services/cloudinary.service";
 import { calculatePricing, hasValidServiceDates } from "../utils/invoice-pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
+import { PAYMENT_ACCOUNT_WHITELIST } from "../config/payment-accounts";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
+import { sendNotification } from "../services/notifications";
+import { assertValidInvoiceStatePair, canQuotationCreateInvoice, expireOverdueQuotations, isUniqueConflict } from "../utils/state-machine";
 
 export const invoiceRoutes = Router();
 
@@ -13,10 +16,20 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+async function getNextAvailableInvoiceNo(used: Set<string>, fromNo?: string): Promise<string> {
+  let index = fromNo ? (Number(fromNo.replace(/^A/i, "").replace(/^0+/, "")) || 1) : used.size + 1;
+  let candidate = `A${String(index).padStart(5, "0")}`;
+  while (used.has(candidate)) {
+    index += 1;
+    candidate = `A${String(index).padStart(5, "0")}`;
+  }
+  return candidate;
+}
+
 invoiceRoutes.get("/next-number", async (_req, res, next) => {
   try {
-    const count = await prisma.invoice.count();
-    res.json({ invoiceNo: `A${String(count + 1).padStart(5, "0")}` });
+    const used = new Set((await prisma.invoice.findMany({ select: { invoiceNo: true } })).map((invoice) => invoice.invoiceNo));
+    res.json({ invoiceNo: await getNextAvailableInvoiceNo(used) });
   } catch (error) {
     next(error);
   }
@@ -34,7 +47,9 @@ invoiceRoutes.post("/", async (req, res, next) => {
       include: { customer: true, dates: { include: { drinks: true } } }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
-    if (quotation.status !== "APPROVED") return res.status(403).json({ error: "Quotation is still pending approval" });
+    await expireOverdueQuotations();
+    const invoiceGuard = canQuotationCreateInvoice(quotation.status, quotation.expiresAt);
+    if (!invoiceGuard.allowed) return res.status(409).json({ error: invoiceGuard.reason });
     const savedQuotation = quotation.metadata as any;
     if (!savedQuotation) return res.status(409).json({ error: "The saved quotation data is unavailable." });
     if (!hasValidServiceDates(savedQuotation.serviceDates)) {
@@ -44,6 +59,14 @@ invoiceRoutes.post("/", async (req, res, next) => {
       return res.status(400).json({ error: CART_SELECTION_ERROR });
     }
     data.quotation = savedQuotation;
+    // Idempotency: reject a resubmission that carries the same unique token.
+    const submissionToken = String(data.submissionToken ?? "").trim() || undefined;
+    if (submissionToken) {
+      const duplicate = await prisma.invoice.findUnique({ where: { submissionToken }, select: { invoiceNo: true, status: true } });
+      if (duplicate) {
+        return res.status(409).json({ code: "ALREADY_SUBMITTED", error: "This invoice was already submitted.", invoiceNo: duplicate.invoiceNo });
+      }
+    }
     const existingInvoice = await prisma.invoice.findFirst({ where: { quotationId: quotation.id }, select: { invoiceNo: true, status: true } });
     if (existingInvoice) {
       return res.status(409).json({
@@ -54,7 +77,31 @@ invoiceRoutes.post("/", async (req, res, next) => {
     }
 
     const pricing = calculatePricing(data.quotation);
-    const invoiceNo = data.invoiceNo || `A${String((await prisma.invoice.count()) + 1).padStart(5, "0")}`;
+    // Amount must match the system calculation. The client-generated PDF amount
+    // is cross-checked here; mismatches are rejected instead of stored.
+    const pdfAmount = Number(data.invoicePdfAmount ?? savedQuotation.pricingSnapshot?.total ?? 0);
+    if (Number.isFinite(pdfAmount) && pdfAmount > 0 && Math.abs(pdfAmount - Number(pricing.total)) > 0.01) {
+      return res.status(409).json({
+        code: "AMOUNT_MISMATCH",
+        error: "The amount on the invoice does not match the system price. Please refresh the page and resubmit.",
+        systemTotal: pricing.total
+      });
+    }
+    // Collision-safe numbering: skip any already-used invoice numbers.
+    const usedInvoiceNos = new Set((await prisma.invoice.findMany({ select: { invoiceNo: true } })).map((invoice) => invoice.invoiceNo));
+    const requestedInvoiceNo = String(data.invoiceNo ?? "").trim().toUpperCase();
+    let invoiceNo: string;
+    if (requestedInvoiceNo && !usedInvoiceNos.has(requestedInvoiceNo)) {
+      invoiceNo = requestedInvoiceNo;
+    } else if (requestedInvoiceNo && usedInvoiceNos.has(requestedInvoiceNo)) {
+      return res.status(409).json({
+        code: "INVOICE_NUMBER_CONFLICT",
+        error: "The invoice number was just used. Retrying with the next available number.",
+        nextInvoiceNo: await getNextAvailableInvoiceNo(usedInvoiceNos, requestedInvoiceNo)
+      });
+    } else {
+      invoiceNo = await getNextAvailableInvoiceNo(usedInvoiceNos);
+    }
     const invoicePdfFile = filesByField.get("invoicePdf");
     if (invoicePdfFile && invoicePdfFile.mimeType !== "application/pdf") {
       return res.status(400).json({ error: "The submitted invoice document must be a PDF." });
@@ -67,13 +114,54 @@ invoiceRoutes.post("/", async (req, res, next) => {
       ? await uploadCloudinaryBuffer(invoicePdfFile, cloudinaryFolders.invoicePdfs, `${invoiceNo}-${Date.now()}.pdf`)
       : await uploadCloudinaryDataUrl(data.invoicePdfDataUrl, cloudinaryFolders.invoicePdfs, `${invoiceNo}-${Date.now()}.pdf`);
 
-    const invoice = await prisma.invoice.create({
+    const invoiceStatus = (data.invoiceStatus ?? "SUBMITTED") as InvoiceStatus;
+    const paymentStatus = (receiptUpload ? "RECEIPT_UPLOADED" : "UNPAID") as PaymentStatus;
+    // Receipt auto-verification: compare the declared receipt amount against
+    // the invoice total and check the receiving account against the whitelist.
+    // Mismatches are NOT silently accepted — they fall back to manual review.
+    const receiptAmount = Number(data.receiptAmount);
+    const receiptAccount = String(data.receiptAccount ?? "").trim();
+    const receiptBank = String(data.receiptBank ?? "").trim();
+    const hasValidReceiptAmount = Number.isFinite(receiptAmount) && receiptAmount > 0 && Math.abs(receiptAmount - Number(pricing.total)) <= 0.01;
+    const accountAllowed = PAYMENT_ACCOUNT_WHITELIST.length === 0 || PAYMENT_ACCOUNT_WHITELIST.some((account) => account === receiptAccount);
+    const receiptVerification =
+      receiptUpload && hasValidReceiptAmount && accountAllowed
+        ? { status: "AUTO_VERIFIED" as const, note: "Auto-verified: amount and receiving account matched." }
+        : receiptUpload
+          ? {
+              status: "MANUAL_REVIEW" as const,
+              note: [
+                !Number.isFinite(receiptAmount) || receiptAmount <= 0 ? "Receipt amount was not provided." : Math.abs(receiptAmount - Number(pricing.total)) > 0.01 ? `Receipt amount (RM ${Number.isFinite(receiptAmount) ? receiptAmount.toFixed(2) : "?"}) does not match invoice total (RM ${Number(pricing.total).toFixed(2)}).` : null,
+                !accountAllowed ? "Receiving account is not in the allowed list." : null
+              ]
+                .filter(Boolean)
+                .join(" ")
+            }
+          : null;
+    let resolvedInvoiceStatus = invoiceStatus;
+    let resolvedPaymentStatus = paymentStatus;
+    if (receiptUpload && receiptVerification?.status === "AUTO_VERIFIED") {
+      resolvedInvoiceStatus = "SUBMITTED";
+      resolvedPaymentStatus = "VERIFIED";
+    } else if (receiptUpload && receiptVerification?.status === "MANUAL_REVIEW") {
+      resolvedInvoiceStatus = "PENDING_PAYMENT_REVIEW";
+      resolvedPaymentStatus = "RECEIPT_UPLOADED";
+    }
+    try {
+      assertValidInvoiceStatePair(resolvedInvoiceStatus, resolvedPaymentStatus);
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal invoice state combination." });
+    }
+
+    const invoice = await prisma.$transaction(async (tx) => {
+    const createdInvoice = await tx.invoice.create({
       data: {
         invoiceNo,
         quotationId: quotation.id,
         customerId: quotation.customerId,
-        status: (data.invoiceStatus ?? "SUBMITTED") as InvoiceStatus,
-        paymentStatus: (receiptUpload ? "RECEIPT_UPLOADED" : "UNPAID") as PaymentStatus,
+        submissionToken: submissionToken ?? null,
+        status: resolvedInvoiceStatus,
+        paymentStatus: resolvedPaymentStatus,
         eventAddress: data.eventAddress || null,
         dressCode: data.dressCode === "Custom" ? data.customDressCode || data.dressCode : data.dressCode || null,
         environmentNotes: [data.environment, data.environmentNotes].filter(Boolean).join(" - ") || null,
@@ -169,7 +257,12 @@ invoiceRoutes.post("/", async (req, res, next) => {
                 cloudinaryPublicId: receiptUpload.cloudinaryPublicId,
                 fileName: data.receiptName || "receipt",
                 mimeType: receiptUpload.mimeType,
-                status: "RECEIPT_UPLOADED"
+                status: "RECEIPT_UPLOADED",
+                receiptAmount: Number.isFinite(receiptAmount) && receiptAmount > 0 ? receiptAmount : null,
+                receiptAccount: receiptAccount || null,
+                receiptBank: receiptBank || null,
+                verificationStatus: receiptVerification?.status ?? null,
+                verificationNote: receiptVerification?.note ?? null
               }
             }
           : undefined
@@ -178,9 +271,9 @@ invoiceRoutes.post("/", async (req, res, next) => {
     });
 
     if (customMenuUpload) {
-      await prisma.invoiceFile.create({
+      await tx.invoiceFile.create({
         data: {
-          invoiceId: invoice.id,
+          invoiceId: createdInvoice.id,
           fileUrl: customMenuUpload.fileUrl,
           cloudinaryPublicId: customMenuUpload.cloudinaryPublicId,
           fileName: data.customMenuFile?.fileName || filesByField.get("customMenuFile")?.fileName || "custom-menu",
@@ -207,9 +300,9 @@ invoiceRoutes.post("/", async (req, res, next) => {
           ? await uploadCloudinaryBuffer(filesByField.get(formField), group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || filesByField.get(formField)?.fileName || "design"}`)
           : await uploadCloudinaryDataUrl(design?.dataUrl, group.folder, `${invoiceNo}-${group.type}-${designKey}-${design?.fileName || "design"}`);
         if (!upload) continue;
-        await prisma.customizationFile.create({
+        await tx.customizationFile.create({
           data: {
-            invoiceId: invoice.id,
+            invoiceId: createdInvoice.id,
             type: group.type,
             designKey,
             fileUrl: upload.fileUrl,
@@ -222,12 +315,94 @@ invoiceRoutes.post("/", async (req, res, next) => {
       }
     }
 
+    // Linkage: once the invoice is created, the source quotation is locked to
+    // CONVERTED_TO_INVOICE so it can no longer be edited or re-invoiced.
+    await tx.quotation.update({
+      where: { id: quotation.id },
+      data: {
+        status: "CONVERTED_TO_INVOICE",
+        statusHistory: {
+          create: {
+            fromStatus: quotation.status,
+            toStatus: "CONVERTED_TO_INVOICE",
+            changedBy: "system",
+            changeSummary: `Invoice ${invoiceNo} created. Quotation is now locked.`
+          }
+        }
+      }
+    });
+    return createdInvoice;
+    });
+
+    // Notifications for the submitted invoice and its receipt.
+    const invoiceLink = `/customer/invoice?no=${encodeURIComponent(invoiceNo)}`;
+    const adminInvoiceLink = `/admin/invoices?no=${encodeURIComponent(invoiceNo)}`;
+    const customerContact = {
+      name: quotation.customer.name,
+      phone: quotation.customer.phone,
+      email: quotation.customer.email
+    };
+    await sendNotification({
+      type: "INVOICE_SUBMITTED",
+      recipient: { role: "admin", name: "Hour Coffee Admin" },
+      title: `New invoice ${invoiceNo}`,
+      message: `${quotation.customer.name} submitted invoice ${invoiceNo} (RM ${Number(pricing.total).toFixed(2)}).`,
+      referenceNo: invoiceNo,
+      link: adminInvoiceLink
+    });
+    await sendNotification({
+      type: "INVOICE_SUBMITTED",
+      recipient: { role: "customer", ...customerContact },
+      title: `Invoice ${invoiceNo} submitted`,
+      message: `Your invoice ${invoiceNo} was received. Total: RM ${Number(pricing.total).toFixed(2)}.`,
+      referenceNo: invoiceNo,
+      link: invoiceLink
+    });
+    if (receiptUpload && receiptVerification?.status === "AUTO_VERIFIED") {
+      await sendNotification({
+        type: "RECEIPT_VERIFIED",
+        recipient: { role: "customer", ...customerContact },
+        title: `Payment confirmed for ${invoiceNo}`,
+        message: `Your payment receipt was auto-verified and payment for ${invoiceNo} is confirmed.`,
+        referenceNo: invoiceNo,
+        link: invoiceLink
+      });
+    } else if (receiptUpload && receiptVerification?.status === "MANUAL_REVIEW") {
+      await sendNotification({
+        type: "RECEIPT_PENDING_REVIEW",
+        recipient: { role: "admin", name: "Hour Coffee Admin" },
+        title: `Receipt needs review for ${invoiceNo}`,
+        message: `A receipt for ${invoiceNo} needs manual review. Reason: ${receiptVerification.note}`,
+        referenceNo: invoiceNo,
+        link: adminInvoiceLink
+      });
+      await sendNotification({
+        type: "RECEIPT_PENDING_REVIEW",
+        recipient: { role: "customer", ...customerContact },
+        title: `Receipt uploaded for ${invoiceNo}`,
+        message: `Your receipt for ${invoiceNo} was uploaded and is being reviewed.`,
+        referenceNo: invoiceNo,
+        link: invoiceLink
+      });
+    }
+
     const saved = await prisma.invoice.findUnique({
       where: { invoiceNo },
       include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
     });
     res.status(201).json(toInvoicePayload(saved));
   } catch (error) {
+    if (isUniqueConflict(error, "invoiceNo")) {
+      const used = new Set((await prisma.invoice.findMany({ select: { invoiceNo: true } })).map((invoice) => invoice.invoiceNo));
+      return res.status(409).json({
+        code: "INVOICE_NUMBER_CONFLICT",
+        error: "The invoice number was just used. Retrying with the next available number.",
+        nextInvoiceNo: await getNextAvailableInvoiceNo(used)
+      });
+    }
+    if (isUniqueConflict(error, "submissionToken")) {
+      return res.status(409).json({ code: "ALREADY_SUBMITTED", error: "This invoice was already submitted." });
+    }
     next(error);
   }
 });
