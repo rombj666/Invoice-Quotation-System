@@ -68,6 +68,16 @@ export function prepareAdminQuotationEdit(originalQuotationNo: string, data: Quo
   });
 }
 
+export function generateAdminInvoice(quotationNo: string, data: InvoiceDetails, pdf: Blob) {
+  const form = new FormData();
+  form.append("payload", JSON.stringify(data));
+  form.append("invoicePdf", pdf, `${data.invoiceNo}.pdf`);
+  return request<InvoiceDetails>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}/generate-invoice`, {
+    method: "POST",
+    body: form
+  });
+}
+
 function extraChargeForm(pdf: Blob, quotationNo: string, payload: ExtraChargeInput | Record<string, never>) {
   const form = new FormData();
   form.append("payload", JSON.stringify(payload));
@@ -107,4 +117,12 @@ export function returnAdminQuotation(quotationNo: string, returnReason: string) 
   const form = new FormData();
   form.append("payload", JSON.stringify({ status: "RETURNED_FOR_EDIT", returnReason }));
   return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}`, { method: "PATCH", body: form });
+}
+
+export function verifyInvoicePayment(invoiceNo: string) {
+  return request<{ invoiceNo: string; paymentStatus: "VERIFIED" }>(`/api/admin/invoices/${encodeURIComponent(invoiceNo)}/verify-payment`, { method: "POST" });
+}
+
+export function getCustomerPortalToken(quotationNo: string) {
+  return request<{ quotationNo: string; token: string }>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}/portal`, { method: "POST" });
 }

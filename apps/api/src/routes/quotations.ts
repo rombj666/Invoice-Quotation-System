@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Prisma, QuotationStatus } from "@prisma/client";
 import {
   CART_STYLE_LABELS,
@@ -45,6 +46,7 @@ function errorMessage(error: unknown): string {
 
 export function toQuotationPayload(record: any) {
   const metadata = record.metadata ?? {};
+  const { portalToken: _portalToken, ...publicMetadata } = metadata;
   const storedDates = Array.isArray(record.dates) ? record.dates : [];
   const needsHydration = storedDates.length > 0 && (!metadata.beverageSnapshots || !metadata.drinkDistributionModeByDate);
   const hydrated = needsHydration ? (() => {
@@ -65,8 +67,8 @@ export function toQuotationPayload(record: any) {
         if (drink.isExcluded) excludedBeverageIdsByDate[serviceDate.id].push(id);
       }
     });
-    return { ...metadata, beverageSnapshots, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
-  })() : metadata;
+    return { ...publicMetadata, beverageSnapshots, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
+  })() : publicMetadata;
   return {
     ...hydrated,
     pricingSnapshot: {
@@ -732,7 +734,7 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
 quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
   try {
     await expireOverdueQuotations();
-    const current = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, select: { id: true, status: true, expiresAt: true } });
+    const current = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, select: { id: true, status: true, expiresAt: true, metadata: true } });
     if (!current) return res.status(404).json({ error: "Quotation not found" });
     if (current.expiresAt && new Date(current.expiresAt).getTime() < Date.now()) {
       return res.status(409).json({ error: "This quotation has expired and can no longer be approved." });
@@ -742,10 +744,12 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
     } catch (error) {
       return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal quotation status transition." });
     }
+    const metadata = (current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata) ? current.metadata : {}) as Record<string, unknown>;
     const quotation = await prisma.quotation.update({
       where: { quotationNo: req.params.quotationNo },
       data: {
         status: "APPROVED",
+        metadata: toJsonValue({ ...metadata, portalToken: typeof metadata.portalToken === "string" ? metadata.portalToken : randomBytes(32).toString("base64url") }),
         statusHistory: { create: { fromStatus: current.status, toStatus: "APPROVED", changedBy: "admin", changeSummary: "Quotation approved." } }
       },
       include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }

@@ -9,7 +9,7 @@ import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../.
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
-import { returnAdminQuotation } from "../../../../lib/admin-api";
+import { getCustomerPortalToken, returnAdminQuotation } from "../../../../lib/admin-api";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
@@ -27,6 +27,7 @@ export default function AdminQuotationDetailPage() {
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [returnReason, setReturnReason] = useState("");
   const [isReturning, setIsReturning] = useState(false);
+  const [portalLink, setPortalLink] = useState("");
 
   useEffect(() => {
     loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
@@ -53,8 +54,9 @@ export default function AdminQuotationDetailPage() {
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
   const isReturned = status === "RETURNED_FOR_EDIT";
-  const statusLabel = isReturned ? "RETURNED FOR EDIT" : isApproved ? "APPROVED" : "PENDING APPROVAL";
-  const statusClass = isReturned ? "returned" : isApproved ? "approved" : "pending";
+  const statusLabel = status.replaceAll("_", " ");
+  const statusClass = isReturned ? "returned" : isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending";
+  const canEditQuotation = status === "DRAFT" || status === "PENDING_APPROVAL";
 
   async function approve() {
     if (!window.confirm("Are you sure you want to approve this quotation?")) return;
@@ -99,6 +101,12 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
+  async function customerPortal() {
+    setError("");
+    try { const result = await getCustomerPortalToken(currentQuotation.quotationNo); setPortalLink(`${window.location.origin}/portal/${result.token}`); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create customer portal link."); }
+  }
+
   return (
     <main className="admin-page">
       <Card className="admin-card">
@@ -108,8 +116,10 @@ export default function AdminQuotationDetailPage() {
             <span className={`admin-status-badge large ${statusClass}`}>{statusLabel}</span>
           </div>
           <div className="admin-actions">
-            <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link>
-            {!isApproved && !isReturned ? (
+            {isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customer Portal</button> : null}
+            {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+            {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
+            {status === "PENDING_APPROVAL" ? (
               <>
                 <button className="admin-approve-button large" type="button" onClick={approve}>
                   Approve Quotation
@@ -127,7 +137,7 @@ export default function AdminQuotationDetailPage() {
             </button>
           </div>
         </div>
-        {showReturnForm ? (
+        {showReturnForm && status === "PENDING_APPROVAL" ? (
           <div className="admin-return-form">
             <label htmlFor="returnReason">
               <strong>Reason for returning this quotation</strong> (the customer will see this and be asked to edit and resubmit)
@@ -151,6 +161,7 @@ export default function AdminQuotationDetailPage() {
         ) : null}
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
+        {portalLink ? <div className="ok-summary"><strong>Customer Portal Link</strong><p>{portalLink}</p><div className="admin-file-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div></div> : null}
         <div className="detail-grid">
           <section>
             <h3>Customer Info</h3>

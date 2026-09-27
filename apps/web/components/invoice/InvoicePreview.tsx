@@ -2,8 +2,8 @@
 
 import type { QuotationData } from "../../types/quotation";
 import type { InvoiceDetails } from "../../types/invoice";
-import { calculatePricing, getBaristasNeeded } from "../../lib/invoice-pricing";
-import { getAddonDisplayName } from "../../lib/addons";
+import { getBaristasNeeded } from "../../lib/invoice-pricing";
+import { calculateQuotationPricing } from "../../lib/pricing";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
 import { getAllProvidedBeverageNames, getProvidedBeverageNames } from "../../lib/beverages";
@@ -21,7 +21,7 @@ export function InvoicePreview({
   documentId?: string;
   showDownloadButton?: boolean;
 }) {
-  const pricing = calculatePricing(quotation);
+  const pricing = calculateQuotationPricing(quotation);
   const firstDate = quotation.serviceDates[0];
   const beverageNames = getAllProvidedBeverageNames(quotation).join(", ");
   const providedBeveragesByDate = quotation.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(quotation, date.id) }));
@@ -62,6 +62,7 @@ export function InvoicePreview({
           <span className="label-small">Billed To</span>
           <strong>{quotation.customer.companyName || quotation.customer.name}</strong>
           <p>{quotation.customer.companyRegNo ? `Reg: ${quotation.customer.companyRegNo}` : null}</p>
+          <p>{quotation.customer.billingAddress || "-"}</p>
           <p>{quotation.customer.name}</p>
           <p>{quotation.customer.phone}</p>
           <p>{quotation.customer.email}</p>
@@ -70,15 +71,13 @@ export function InvoicePreview({
 
       {invoice ? (
         <div className="invoice-section">
-          <h3>Event & Payment Details</h3>
+          <h3>Event Details</h3>
           <div className="invoice-summary-grid">
-            <div><span>Event address</span><strong>{invoice.eventAddress || quotation.fullAddress || quotation.location}</strong></div>
-            <div><span>Dress code</span><strong>{invoice.dressCode === "Custom" ? invoice.customDressCode : invoice.dressCode || "-"}</strong></div>
-            <div><span>Environment</span><strong>{invoice.environment || "-"}</strong></div>
+            <div><span>Event area</span><strong>{invoice.eventArea === "Others" ? invoice.eventAreaOther || "Others" : invoice.eventArea || "-"}</strong></div>
+            <div><span>Event address</span><strong>{invoice.eventAddress || "-"}</strong></div>
             <div><span>Invoice status</span><strong>{(invoice.invoiceStatus ?? "SUBMITTED").replaceAll("_", " ")}</strong></div>
             <div><span>Payment status</span><strong>{(invoice.paymentStatus ?? "UNPAID").replaceAll("_", " ")}</strong></div>
           </div>
-          {invoice.environmentNotes ? <p>{invoice.environmentNotes}</p> : null}
         </div>
       ) : null}
 
@@ -134,46 +133,33 @@ export function InvoicePreview({
         </thead>
         <tbody>
           <tr>
-            <td>Coffee Catering</td>
+            <td>{quotation.packageSnapshot?.name || "Coffee Catering"}</td>
             <td>
               {beverageNames || "Beverages saved with quotation"}
             </td>
             <td className="number-cell">1</td>
-            <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
-            <td className="amount-cell">{formatMoney(pricing.baseAmount)}</td>
+            <td className="amount-cell">{formatMoney(pricing.packageAmount)}</td>
+            <td className="amount-cell">{formatMoney(pricing.packageAmount)}</td>
           </tr>
-          {pricing.extraBaristaFee > 0 ? (
-            <tr>
-              <td>Additional Barista Fee</td>
-              <td>Extra barista(s) required</td>
-              <td className="number-cell">1</td>
-              <td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td>
-              <td className="amount-cell">{formatMoney(pricing.extraBaristaFee)}</td>
-            </tr>
-          ) : null}
-          {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <tr key={`extra-hours-${entry.serviceDateId}`}><td>Extra Serving Hour</td><td>{formatCompactDate(entry.date)} · {entry.cups} cups served for {entry.exactServiceHours} hours · {entry.extraServingHours} additional hour(s) × RM{entry.rate}</td><td className="number-cell">{entry.extraServingHours}</td><td className="amount-cell">{formatMoney(entry.rate)}</td><td className="amount-cell">{formatMoney(entry.fee)}</td></tr>)}
-          {pricing.machineRentalFee > 0 ? (
-            <tr>
-              <td>Machine Rental</td>
-              <td>Additional coffee machine rental</td>
-              <td className="number-cell">1</td>
-              <td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td>
-              <td className="amount-cell">{formatMoney(pricing.machineRentalFee)}</td>
-            </tr>
-          ) : null}
-          {pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee > 0 ? (
-            <tr>
-              <td>
-                Add-ons
-              </td>
-              <td>{[...quotation.selectedAddons.map((addon) => getAddonDisplayName(addon.name)), quotation.hasCupSleeves ? "Custom Cup Sleeves" : "", quotation.hasCupStickers ? "Custom Cup Stickers" : ""].filter(Boolean).join(", ")}</td>
-              <td className="number-cell">1</td>
-              <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
-              <td className="amount-cell">{formatMoney(pricing.addonTotal + pricing.cupSleeveFee + pricing.cupStickerFee)}</td>
-            </tr>
-          ) : null}
+          {(quotation.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description || "Additional charge"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
         </tbody>
       </table>
+
+      {(quotation.packageSnapshot?.perks.length || quotation.selectedAddons.length || quotation.hasCupSleeves || quotation.hasCupStickers) ? <div className="invoice-section"><h3>Package Features &amp; Add-ons</h3><p>{[
+        ...(quotation.packageSnapshot?.perks.map((perk) => perk.name) ?? []),
+        ...quotation.selectedAddons.map((addon) => addon.name),
+        quotation.hasCupSleeves ? "Custom Cup Sleeves" : "",
+        quotation.hasCupStickers ? "Custom Cup Stickers" : ""
+      ].filter(Boolean).join(", ")}</p></div> : null}
+
+      {quotation.pricingSnapshot ? <div className="invoice-section"><h3>Pricing Breakdown</h3><div className="invoice-summary-grid">
+        {quotation.pricingSnapshot.cupRevenue !== undefined ? <div><span>Drinks / cups</span><strong>{formatMoney(quotation.pricingSnapshot.cupRevenue)}</strong></div> : null}
+        {quotation.pricingSnapshot.sleeveCharge ? <div><span>Cup sleeves</span><strong>{formatMoney(quotation.pricingSnapshot.sleeveCharge)}</strong></div> : null}
+        {quotation.pricingSnapshot.selectionCharge ? <div><span>Package features / add-ons</span><strong>{formatMoney(quotation.pricingSnapshot.selectionCharge)}</strong></div> : null}
+        {pricing.extraBaristaFee ? <div><span>Extra baristas</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+        {quotation.packageSnapshot?.extendedDayCharge ? <div><span>Extended service days</span><strong>{formatMoney(quotation.packageSnapshot.extendedDayCharge)}</strong></div> : null}
+        {quotation.pricingSnapshot.travel ? <div><span>Travel</span><strong>{formatMoney(quotation.pricingSnapshot.travel)}</strong></div> : null}
+      </div></div> : null}
 
       {hasDateSpecificDrinkPreferences ? <div className="invoice-section">
         <h3>Drink Preferences</h3>

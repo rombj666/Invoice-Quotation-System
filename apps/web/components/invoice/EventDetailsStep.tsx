@@ -41,7 +41,7 @@ export function EventDetailsStep({ eventAddress, dressCode, customDressCode, env
           </button>
         ))}
       </div>
-      <TextInput label="Environment notes" value={environmentNotes} onChange={(event) => onEnvironmentNotes(event.target.value)} placeholder="Optional setup notes" />
+      <TextInput label="Environment notes" value={environmentNotes} onChange={(event) => onEnvironmentNotes(event.target.value)} placeholder="Setup notes" />
     </div>
   );
 }

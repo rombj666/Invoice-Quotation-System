@@ -16,7 +16,8 @@ type Props = {
   onDesigns: (designs: CustomizationByDate) => void;
 };
 
-function emptySleeveDesign(logo: CustomizationLogo): CustomizationDesign {
+function sleeveDesign(logos: CustomizationLogo[]): CustomizationDesign {
+  const logo = logos[0];
   return {
     fileName: logo.fileName,
     dataUrl: logo.dataUrl,
@@ -25,7 +26,7 @@ function emptySleeveDesign(logo: CustomizationLogo): CustomizationDesign {
     rotation: logo.rotation,
     x: logo.x,
     y: logo.y,
-    logos: [logo]
+    logos
   };
 }
 
@@ -33,7 +34,7 @@ function readFile(file: File, callback: (logo: CustomizationLogo) => void) {
   const reader = new FileReader();
   reader.onload = () => {
     const dataUrl = String(reader.result);
-    callback({ id: "logo1", fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y: 50 });
+    callback({ id: crypto.randomUUID(), fileName: file.name, dataUrl, originalDataUrl: dataUrl, size: 34, rotation: 0, x: 50, y: 50 });
   };
   reader.readAsDataURL(file);
 }
@@ -42,26 +43,28 @@ export function CupSleeveCustomizer({ mode, serviceDates, designs, activeDate, o
   const [templateMissing, setTemplateMissing] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [selectedLogoId, setSelectedLogoId] = useState("");
   const dates = serviceDates.map((date) => date.serviceDate);
   const selectedDate = dates.includes(activeDate) ? activeDate : dates[0] ?? "";
   const activeKey = mode === "same" ? "shared" : selectedDate;
   const active = designs[activeKey];
-  const logo = active?.logos?.[0] ?? (active ? { id: "logo1", fileName: active.fileName, dataUrl: active.dataUrl, originalDataUrl: active.originalDataUrl, size: active.size, rotation: active.rotation, x: active.x, y: active.y } : undefined);
+  const logos = active?.logos?.length ? active.logos : active ? [{ id: "legacy-logo", fileName: active.fileName, dataUrl: active.dataUrl, originalDataUrl: active.originalDataUrl, size: active.size, rotation: active.rotation, x: active.x, y: active.y }] : [];
+  const logo = logos.find((item) => item.id === selectedLogoId) ?? logos[0];
 
-  function setLogo(nextLogo: CustomizationLogo) {
-    onDesigns({ ...designs, [activeKey]: emptySleeveDesign(nextLogo) });
+  function setLogos(nextLogos: CustomizationLogo[]) {
+    if (!nextLogos.length) { const next = { ...designs }; delete next[activeKey]; onDesigns(next); return; }
+    onDesigns({ ...designs, [activeKey]: sleeveDesign(nextLogos) });
   }
 
-  function removeLogo() {
-    const nextDesigns = { ...designs };
-    delete nextDesigns[activeKey];
-    onDesigns(nextDesigns);
+  function removeLogo(id: string) {
+    setLogos(logos.filter((item) => item.id !== id));
+    setSelectedLogoId("");
   }
 
   function updateLogo(patch: Partial<CustomizationLogo>) {
     if (!logo) return;
     const nextSize = Math.min(68, Math.max(8, patch.size ?? logo.size));
-    setLogo({ ...logo, ...patch, size: nextSize });
+    setLogos(logos.map((item) => item.id === logo.id ? { ...item, ...patch, size: nextSize } : item));
   }
 
   function moveLogo(event: PointerEvent<HTMLImageElement>) {
@@ -70,7 +73,7 @@ export function CupSleeveCustomizer({ mode, serviceDates, designs, activeDate, o
     const rect = previewRef.current.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
-    setLogo({ ...logo, x: Math.min(92, Math.max(8, x)), y: Math.min(88, Math.max(12, y)) });
+    setLogos(logos.map((item) => item.id === logo.id ? { ...item, x: Math.min(92, Math.max(8, x)), y: Math.min(88, Math.max(12, y)) } : item));
   }
 
   return (
@@ -90,29 +93,30 @@ export function CupSleeveCustomizer({ mode, serviceDates, designs, activeDate, o
       <div className="sleeve-preview">
         <div className="sleeve-template-preview" ref={previewRef}>
           <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.sleeveTemplateUrl} alt="Sleeve template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
-          {logo ? (
+          {logos.length ? logos.map((layer) => (
             <img
-              className={`sleeve-template-overlay sleeve-logo-layer ${dragging ? "dragging" : ""}`}
-              src={logo.originalDataUrl ?? logo.dataUrl}
+              key={layer.id}
+              className={`sleeve-template-overlay sleeve-logo-layer ${dragging && logo?.id === layer.id ? "dragging" : ""}`}
+              src={layer.originalDataUrl ?? layer.dataUrl}
               alt="Cup sleeve logo"
-              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); moveLogo(event); }}
-              onPointerMove={(event) => { if (dragging) moveLogo(event); }}
+              onPointerDown={(event) => { setSelectedLogoId(layer.id); event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); }}
+              onPointerMove={(event) => { if (dragging && logo?.id === layer.id) moveLogo(event); }}
               onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDragging(false); }}
               onPointerCancel={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDragging(false); }}
-              style={{ width: `${logo.size}%`, left: `${logo.x}%`, top: `${logo.y}%`, transform: `translate(-50%, -50%) rotate(${logo.rotation}deg)` }}
+              style={{ width: `${layer.size}%`, left: `${layer.x}%`, top: `${layer.y}%`, transform: `translate(-50%, -50%) rotate(${layer.rotation}deg)`, outline: logo?.id === layer.id ? "2px solid #32634c" : undefined }}
             />
-          ) : <span>Sleeve design area</span>}
+          )) : <span>Sleeve design area</span>}
         </div>
       </div>
       {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
 
       <div className="sleeve-logo-controls">
         <label className="upload-box">
-          <strong>{logo ? "Replace sleeve design" : "Upload sleeve design"}</strong>
+          <strong>Add sleeve artwork</strong>
           <span>PNG or JPG only</span>
-          <input type="file" accept="image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) readFile(file, setLogo); }} />
+          <input type="file" accept="image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) readFile(file, (next) => { setSelectedLogoId(next.id); setLogos([...logos, next]); }); event.currentTarget.value = ""; }} />
         </label>
-        {logo ? <><p className="upload-ok">Uploaded: {logo.fileName}</p><button type="button" className="secondary-mini-button" onClick={removeLogo}>Remove</button></> : null}
+        {logo ? <><p className="upload-ok">Selected: {logo.fileName} · {logos.length} layer(s)</p><button type="button" className="secondary-mini-button" onClick={() => removeLogo(logo.id)}>Remove selected layer</button></> : null}
       </div>
 
       {logo ? (

@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { InvoiceShell } from "../../components/invoice/InvoiceShell";
+import { LegacyInvoiceEntry } from "../../components/invoice/LegacyInvoiceEntry";
 
 export default function InvoicePage() {
   return (
     <Suspense fallback={<main className="hc-page">Loading invoice...</main>}>
-      <InvoiceShell />
+      <LegacyInvoiceEntry />
     </Suspense>
   );
 }

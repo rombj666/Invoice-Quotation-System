@@ -14,6 +14,7 @@ import { adminBeverageRoutes, beverageRoutes } from "./routes/beverages";
 import { adminPackageRoutes, packageRoutes } from "./routes/packages";
 import { customerRoutes } from "./routes/customers";
 import { notificationRoutes } from "./routes/notifications";
+import { portalRoutes } from "./routes/portal";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -32,6 +33,7 @@ app.use("/api/locked-dates", lockedDateRoutes);
 app.use("/api/beverages", beverageRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/portal", portalRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/customers", customerRoutes);

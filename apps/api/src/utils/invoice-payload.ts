@@ -23,6 +23,7 @@ export function toInvoicePayload(record: any) {
     });
     return { ...quotation, beverageSnapshots, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
   })() : quotation;
+  const latestReceipt = [...(record.paymentReceipts ?? [])].sort((left: any, right: any) => new Date(right.uploadedAt ?? 0).getTime() - new Date(left.uploadedAt ?? 0).getTime())[0];
   return {
     ...metadata,
     quotation: hydratedQuotation,
@@ -33,8 +34,9 @@ export function toInvoicePayload(record: any) {
     invoicePdfPublicId: record.invoicePdfPublicId,
     createdAt: record.createdAt?.toISOString?.() ?? record.createdAt,
     updatedAt: record.updatedAt?.toISOString?.() ?? record.updatedAt,
-    receiptUrl: record.paymentReceipts?.[0]?.fileUrl,
-    receiptMimeType: record.paymentReceipts?.[0]?.mimeType,
+    receiptUrl: latestReceipt?.fileUrl,
+    receiptName: latestReceipt?.fileName ?? metadata.receiptName ?? "",
+    receiptMimeType: latestReceipt?.mimeType,
     invoiceFiles: record.invoiceFiles?.map((file: any) => ({
       fileUrl: file.fileUrl,
       fileName: file.fileName,
