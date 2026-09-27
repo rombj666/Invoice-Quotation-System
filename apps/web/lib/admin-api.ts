@@ -113,12 +113,6 @@ export function updateAdminInvoice(originalInvoiceNo: string, data: InvoiceDetai
   return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(originalInvoiceNo)}`, { method: "PATCH", body: form });
 }
 
-export function returnAdminQuotation(quotationNo: string, returnReason: string) {
-  const form = new FormData();
-  form.append("payload", JSON.stringify({ status: "RETURNED_FOR_EDIT", returnReason }));
-  return request<QuotationData>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}`, { method: "PATCH", body: form });
-}
-
 export function verifyInvoicePayment(invoiceNo: string) {
   return request<{ invoiceNo: string; paymentStatus: "VERIFIED" }>(`/api/admin/invoices/${encodeURIComponent(invoiceNo)}/verify-payment`, { method: "POST" });
 }

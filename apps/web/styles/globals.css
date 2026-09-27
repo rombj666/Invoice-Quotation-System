@@ -2089,7 +2089,11 @@ p {
   text-decoration: none;
 }
 
-.admin-sidebar nav a:hover,
+.admin-sidebar nav a:hover {
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+}
+
 .admin-sidebar nav a.active {
   background: #C9A227;
   color: #fff;
@@ -2326,6 +2330,53 @@ p {
 .admin-edit-actions { display:flex; gap:10px; margin-top:20px; }
 .admin-edit-layout { align-items:start; display:grid; gap:26px; grid-template-columns:minmax(0,1fr) minmax(360px,440px); }
 .admin-edit-layout > .admin-form-grid { min-width:0; }
+.admin-editor-topbar { display:flex; align-items:center; gap:20px; border-bottom:1px solid #e7dece; padding-bottom:22px; margin-bottom:24px; }
+.admin-editor-topbar > div { flex:1; min-width:0; }
+.admin-editor-topbar h1 { margin:0; overflow-wrap:anywhere; }
+.admin-editor-topbar .admin-eyebrow { margin:0 0 4px; }
+.admin-editor-workspace { display:grid; grid-template-columns:220px minmax(0,1fr); gap:24px; align-items:start; }
+.admin-editor-sections { display:grid; gap:8px; position:sticky; top:24px; }
+.admin-editor-sections button { display:flex; align-items:center; gap:12px; min-height:48px; padding:12px 14px; border:1px solid #e1d5c4; border-radius:10px; background:#faf7f1; color:#3e2723; font:inherit; font-size:14px; font-weight:600; cursor:pointer; text-align:left; }
+.admin-editor-sections button span { color:#88775e; font-size:11px; font-variant-numeric:tabular-nums; }
+.admin-editor-sections button:hover { background:#eee3d0; }
+.admin-editor-sections button.active { background:#3e2723; border-color:#3e2723; color:#fff9ee; box-shadow:inset 4px 0 #d8bd86; }
+.admin-editor-sections button.active span { color:#e4cfa6; }
+.admin-editor-main { min-width:0; }
+.admin-editor-panel { min-height:380px; }
+.admin-editor-panel > section { margin:0; padding:24px; border:1px solid #e7dece; border-radius:14px; background:#faf8f4; min-width:0; }
+.admin-editor-panel h2 { margin:0 0 20px; font-size:22px; color:#3e2723; }
+.admin-editor-panel .admin-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.admin-editor-panel .admin-section-heading h2 { margin:0; }
+.admin-editor-panel .admin-field { margin-bottom:16px; }
+.admin-editor-panel .admin-inline-fields { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); }
+.admin-editor-panel .admin-checkbox-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.admin-editor-panel .admin-drink-editor { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+.admin-editor-panel .admin-date-editor { min-width:0; }
+.admin-editor-panel .admin-date-editor h3 { margin-top:0; }
+.admin-section-editor .admin-editor-button,
+.admin-editor-panel button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 16px; border:1px solid #cebea7; border-radius:9px; background:#fff; color:#3e2723; font:inherit; font-size:14px; font-weight:600; line-height:1.4; text-decoration:none; cursor:pointer; }
+.admin-section-editor .admin-editor-button:hover,
+.admin-editor-panel button:hover { background:#f0e7d8; }
+.admin-section-editor .admin-editor-button.primary { background:#3e2723; border-color:#3e2723; color:#fff9ee; }
+.admin-section-editor .admin-editor-button.primary:hover { background:#563a30; }
+.admin-section-editor button:disabled { opacity:.55; cursor:not-allowed; }
+.admin-section-editor button:focus-visible,
+.admin-section-editor a:focus-visible { outline:3px solid #bb9758; outline-offset:3px; }
+.admin-editor-footer { position:sticky; bottom:0; display:flex; justify-content:flex-end; align-items:center; gap:12px; padding:16px 0; margin-top:20px; background:#fff; border-top:1px solid #e7dece; z-index:5; }
+.admin-editor-panel > .admin-editor-preview { background:#fff; overflow-x:auto; }
+@media (max-width:1100px) {
+  .admin-editor-workspace { grid-template-columns:minmax(0,1fr); gap:18px; }
+  .admin-editor-sections { position:static; display:flex; overflow-x:auto; padding:3px 3px 10px; }
+  .admin-editor-sections button { flex:0 0 auto; white-space:nowrap; }
+}
+@media (max-width:600px) {
+  .admin-editor-topbar { gap:12px; flex-wrap:wrap; }
+  .admin-editor-topbar > div { order:3; flex-basis:100%; }
+  .admin-editor-topbar > a:last-child { margin-left:auto; }
+  .admin-editor-panel > section { padding:16px; }
+  .admin-editor-panel .admin-inline-fields { grid-template-columns:minmax(0,1fr); }
+  .admin-editor-footer > * { flex:1; }
+}
 .admin-edit-live-preview { position:sticky; top:22px; }
 .admin-preview-panel { background:#fff; border:1px solid #e6ddca; border-radius:16px; box-shadow:0 10px 34px rgb(62 39 35 / 8%); padding:20px; }
 .admin-preview-panel .invoice-card { box-shadow:none; margin:0; }

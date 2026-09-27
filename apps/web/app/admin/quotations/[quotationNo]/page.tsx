@@ -9,7 +9,7 @@ import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../.
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
-import { getCustomerPortalToken, returnAdminQuotation } from "../../../../lib/admin-api";
+import { getCustomerPortalToken } from "../../../../lib/admin-api";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
@@ -24,9 +24,6 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [showReturnForm, setShowReturnForm] = useState(false);
-  const [returnReason, setReturnReason] = useState("");
-  const [isReturning, setIsReturning] = useState(false);
   const [portalLink, setPortalLink] = useState("");
 
   useEffect(() => {
@@ -70,27 +67,6 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
-  async function returnForChanges() {
-    if (!returnReason.trim()) {
-      setError("Please enter a reason so the customer knows what to change.");
-      return;
-    }
-    setError("");
-    setSuccess("");
-    setIsReturning(true);
-    try {
-      const updated = await returnAdminQuotation(currentQuotation.quotationNo, returnReason.trim());
-      setQuotation(updated);
-      setSuccess("Quotation returned for changes. The customer has been notified.");
-      setShowReturnForm(false);
-      setReturnReason("");
-    } catch (returnError) {
-      setError(returnError instanceof Error ? returnError.message : "Unable to return quotation.");
-    } finally {
-      setIsReturning(false);
-    }
-  }
-
   async function remove() {
     setError("");
     try {
@@ -124,9 +100,6 @@ export default function AdminQuotationDetailPage() {
                 <button className="admin-approve-button large" type="button" onClick={approve}>
                   Approve Quotation
                 </button>
-                <button className="admin-return-button large" type="button" onClick={() => { setError(""); setShowReturnForm((visible) => !visible); }}>
-                  Return for Changes
-                </button>
               </>
             ) : null}
             {isReturned ? (
@@ -137,28 +110,6 @@ export default function AdminQuotationDetailPage() {
             </button>
           </div>
         </div>
-        {showReturnForm && status === "PENDING_APPROVAL" ? (
-          <div className="admin-return-form">
-            <label htmlFor="returnReason">
-              <strong>Reason for returning this quotation</strong> (the customer will see this and be asked to edit and resubmit)
-            </label>
-            <textarea
-              id="returnReason"
-              value={returnReason}
-              onChange={(event) => setReturnReason(event.target.value)}
-              rows={3}
-              placeholder="e.g. Please change the service date, minimum baristas are insufficient for this cup count, ..."
-            />
-            <div className="admin-return-form-actions">
-              <button className="admin-return-button large" type="button" disabled={isReturning} onClick={returnForChanges}>
-                {isReturning ? "Returning..." : "Return Quotation"}
-              </button>
-              <button className="hc-button hc-button-secondary" type="button" onClick={() => { setShowReturnForm(false); setReturnReason(""); }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : null}
         {error ? <p className="error">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
         {portalLink ? <div className="ok-summary"><strong>Customer Portal Link</strong><p>{portalLink}</p><div className="admin-file-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div></div> : null}
