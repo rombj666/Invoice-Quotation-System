@@ -11,7 +11,6 @@ import { calculateQuotationPricing, getServiceHoursExact } from "../utils/pricin
 import { calculateQuotationPricing as calculatePackagePricing, getQuotationPackageInput } from "@hour-coffee/shared";
 import { prisma } from "../utils/prisma";
 import { sendNotification } from "../services/notifications";
-import { applyCurrentProductPricing, ensureProductAvailabilityDefaults } from "../utils/product-availability";
 import { toQuotationPayload } from "./quotations";
 import { validateAndNormalizeDrinkSelections } from "../utils/drink-selection";
 import { assertValidInvoiceStatePair, assertValidInvoiceTransition, assertValidQuotationTransition, canQuotationCreateInvoice, expireOverdueQuotations } from "../utils/state-machine";
@@ -21,7 +20,6 @@ export const adminRecordRoutes = Router();
 const quotationStatuses = new Set<QuotationStatus>(["DRAFT", "PENDING_APPROVAL", "RETURNED_FOR_EDIT", "APPROVED", "REVIEWED", "SENT", "CONVERTED_TO_INVOICE", "CANCELLED"]);
 const invoiceStatuses = new Set<InvoiceStatus>(["DRAFT", "SUBMITTED", "PENDING_PAYMENT_REVIEW", "PAID", "CONFIRMED", "CANCELLED"]);
 const paymentStatuses = new Set<PaymentStatus>(["UNPAID", "RECEIPT_UPLOADED", "VERIFIED", "REJECTED"]);
-const drinkNames: Record<string, string> = { americano: "Americano", latte: "Cafe Latte", chocolate: "Dark Chocolate", lemonade: "Lemonade" };
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -134,9 +132,8 @@ adminRecordRoutes.post("/quotations/:quotationNo/preview", async (req, res, next
     const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
     if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
-    await ensureProductAvailabilityDefaults();
-    const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-    const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
+
+    const pricedData = normalizedDrinks.data;
     const pricing = calculateQuotationPricing(pricedData, data.extraCharges ?? []);
     const packageInput = getQuotationPackageInput(pricedData);
     const packageBreakdown = packageInput ? calculatePackagePricing(packageInput) : null;
@@ -195,9 +192,8 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
       const normalizedDrinks = await validateAndNormalizeDrinkSelections(data, true);
       if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
       if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
-      await ensureProductAvailabilityDefaults();
-      const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-      const pricedData = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
+
+      const pricedData = normalizedDrinks.data;
       const pricing = calculateQuotationPricing(pricedData, data.extraCharges);
       if (!/^Q\d{5}$/.test(quotationNo)) return res.status(400).json({ error: "Quotation number must use the format Q00001." });
       const pdfUpload = isReturnOnly ? null : await uploadCloudinaryBuffer(pdfFile, cloudinaryFolders.quotationPdfs, `${quotationNo}-${Date.now()}.pdf`);
@@ -239,9 +235,6 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
               serviceDate: new Date(`${date.serviceDate}T12:00:00Z`), cups: Number(date.cups || 0),
               serviceStartTime: date.startTime, serviceEndTime: date.endTime,
               serviceHours: getServiceHoursExact(date), baristaCount: pricing.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? 0, extraBaristaFee: pricing.perDate.find((entry) => entry.date === date.serviceDate)?.extraBaristaFee ?? 0, distributionMode: pricedData.drinkDistributionModeByDate[date.id],
-              drinks: { create: Object.entries(pricedData.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({
-                drinkId, beverageId: drinkId, drinkName: pricedData.beverageSnapshots[drinkId]?.name ?? drinkNames[drinkId] ?? drinkId, imageUrlSnapshot: pricedData.beverageSnapshots[drinkId]?.imageUrl ?? null, icedAvailableSnapshot: pricedData.beverageSnapshots[drinkId]?.icedAvailable ?? true, hotAvailableSnapshot: pricedData.beverageSnapshots[drinkId]?.hotAvailable ?? false, isExcluded: pricedData.excludedBeverageIdsByDate[date.id]?.includes(drinkId) ?? false, iceCups: Number(quantity.ice || 0), hotCups: Number(quantity.hot || 0), totalCups: Number(quantity.ice || 0) + Number(quantity.hot || 0)
-              })) }
             })) },
             addons: { create: [
               ...pricedData.selectedAddons.map((addon: any) => ({ name: addon.name, price: addon.price || 0, isIncluded: !!addon.isIncluded, metadata: toJsonValue(addon) })),
@@ -297,7 +290,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
 
     const current = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { customer: true, dates: { include: { drinks: true } }, invoices: { select: { invoiceNo: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      include: { customer: true, dates: true, invoices: { select: { invoiceNo: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     if (!current) return res.status(404).json({ error: "Quotation not found." });
     if (current.invoices.length) return res.status(409).json({ error: "An invoice already exists for this quotation.", invoiceNo: current.invoices[0].invoiceNo });
@@ -313,9 +306,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
     if (normalizedDrinks.error || !normalizedDrinks.data) return res.status(400).json({ error: normalizedDrinks.error });
     if (hasCartAddonConflict(data.selectedAddons)) return res.status(400).json({ error: CART_SELECTION_ERROR });
 
-    await ensureProductAvailabilityDefaults();
-    const pricingItems = await prisma.productAvailability.findMany({ where: { category: "Add-on Features" } });
-    const confirmed = applyCurrentProductPricing(normalizedDrinks.data, pricingItems);
+    const confirmed = normalizedDrinks.data;
     const pricing = calculateQuotationPricing(confirmed, confirmed.extraCharges ?? []);
     const confirmedPackageInput = getQuotationPackageInput(confirmed);
     const confirmedPackageBreakdown = confirmedPackageInput ? calculatePackagePricing(confirmedPackageInput) : null;
@@ -351,18 +342,8 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
           finalSubtotalAmount: pricing.subtotal, finalDiscountAmount: pricing.discountAmount, finalTotalAmount: pricing.total,
           invoicePdfUrl: pdfUpload.fileUrl, invoicePdfPublicId: pdfUpload.cloudinaryPublicId, metadata,
           items: { create: itemData },
-          drinkSnapshots: { create: confirmed.serviceDates.flatMap((serviceDate: any) => Object.entries(confirmed.drinkOrders?.[serviceDate.id] ?? {}).map(([beverageId, quantities]: [string, any]) => ({
-            serviceDateId: serviceDate.id, serviceDate: new Date(`${serviceDate.serviceDate}T12:00:00Z`), beverageId,
-            beverageName: confirmed.beverageSnapshots?.[beverageId]?.name ?? beverageId,
-            imageUrlSnapshot: confirmed.beverageSnapshots?.[beverageId]?.imageUrl ?? null,
-            icedAvailableSnapshot: confirmed.beverageSnapshots?.[beverageId]?.icedAvailable ?? true,
-            hotAvailableSnapshot: confirmed.beverageSnapshots?.[beverageId]?.hotAvailable ?? false,
-            iceCups: Number(quantities.ice || 0), hotCups: Number(quantities.hot || 0),
-            isExcluded: confirmed.excludedBeverageIdsByDate?.[serviceDate.id]?.includes(beverageId) ?? false,
-            distributionMode: confirmed.drinkDistributionModeByDate?.[serviceDate.id] ?? "HOUR_COFFEE_DECIDES"
-          }))) }
         },
-        include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+        include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
       });
       await tx.quotation.update({ where: { id: current.id }, data: { status: "CONVERTED_TO_INVOICE", statusHistory: { create: { fromStatus: "APPROVED", toStatus: "CONVERTED_TO_INVOICE", changedBy: "admin", changeSummary: `Generated unpaid invoice ${invoiceNo}.` } } } });
       return created;

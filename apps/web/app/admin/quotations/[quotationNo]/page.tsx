@@ -4,6 +4,7 @@ import { extraChargeDateLabel } from "../../../../lib/extra-charge-dates";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { CustomizationLinkModal } from "../../../../components/admin/CustomizationLinkModal";
 import { AdminSectionEditor } from "../../../../components/admin/AdminSectionEditor";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
@@ -87,7 +88,7 @@ export default function AdminQuotationDetailPage() {
   return <main className="admin-page"><Card className="admin-card">
     <AdminSectionEditor title={quotation.quotationNo} backHref="/admin/quotations" activeSection={activeSection} onSectionChange={setActiveSection}
       actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
-{isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customer Portal</button> : null}
+{isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customization Link</button> : null}
 {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
 {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
 {status === "PENDING_APPROVAL" ? (
@@ -161,7 +162,7 @@ export default function AdminQuotationDetailPage() {
     >
         {error ? <p className="error" role="alert">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
-        {portalLink ? <div className="admin-record-actions"><a href={portalLink} target="_blank" rel="noreferrer">Open Customer Portal</a><button type="button" onClick={() => navigator.clipboard.writeText(portalLink)}>Copy Customer Portal Link</button></div> : null}
     </AdminSectionEditor>
+    {portalLink ? <CustomizationLinkModal url={portalLink} onClose={() => setPortalLink("")} /> : null}
   </Card></main>;
 }

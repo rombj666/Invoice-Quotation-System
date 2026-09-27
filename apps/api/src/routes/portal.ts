@@ -14,10 +14,10 @@ async function resolvePortal(token: string) {
   const quotations = await prisma.quotation.findMany({
     include: {
       customer: true,
-      dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } },
+      dates: { orderBy: { serviceDate: "asc" } },
       extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } },
       statusHistory: { orderBy: { createdAt: "desc" } },
-      invoices: { orderBy: { createdAt: "desc" }, take: 1, include: { paymentReceipts: { orderBy: { uploadedAt: "desc" } }, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } } }
+      invoices: { orderBy: { createdAt: "desc" }, take: 1, include: { paymentReceipts: { orderBy: { uploadedAt: "desc" } }, customizationFiles: true, invoiceFiles: true } }
     }
   });
   const direct = quotations.find((quotation) => (quotation.metadata as any)?.portalToken === token);

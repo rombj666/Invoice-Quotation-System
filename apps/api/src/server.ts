@@ -1,7 +1,6 @@
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
-import { adminProductAvailabilityRoutes } from "./routes/admin-product-availability";
 import { fileRoutes } from "./routes/files";
 import { invoiceRoutes } from "./routes/invoices";
 import { quotationRoutes } from "./routes/quotations";
@@ -37,7 +36,6 @@ app.use("/api/portal", portalRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/admin/product-availability", adminProductAvailabilityRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);
 app.use("/api/admin/beverages", adminBeverageRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);

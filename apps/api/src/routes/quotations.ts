@@ -47,30 +47,8 @@ function errorMessage(error: unknown): string {
 export function toQuotationPayload(record: any) {
   const metadata = record.metadata ?? {};
   const { portalToken: _portalToken, ...publicMetadata } = metadata;
-  const storedDates = Array.isArray(record.dates) ? record.dates : [];
-  const needsHydration = storedDates.length > 0 && (!metadata.beverageSnapshots || !metadata.drinkDistributionModeByDate);
-  const hydrated = needsHydration ? (() => {
-    const beverageSnapshots: Record<string, any> = { ...(metadata.beverageSnapshots ?? {}) };
-    const drinkOrders: Record<string, any> = {};
-    const drinkDistributionModeByDate: Record<string, string> = {};
-    const excludedBeverageIdsByDate: Record<string, string[]> = {};
-    (metadata.serviceDates ?? []).forEach((serviceDate: any, index: number) => {
-      const storedDate = storedDates[index];
-      if (!storedDate) return;
-      drinkDistributionModeByDate[serviceDate.id] = storedDate.distributionMode ?? (metadata.letHourCoffeeDecideDrinks ? "HOUR_COFFEE_DECIDES" : "MANUAL");
-      excludedBeverageIdsByDate[serviceDate.id] = [];
-      drinkOrders[serviceDate.id] = {};
-      for (const drink of storedDate.drinks ?? []) {
-        const id = drink.beverageId ?? drink.drinkId;
-        beverageSnapshots[id] = { id, name: drink.drinkName, imageUrl: drink.imageUrlSnapshot ?? undefined, icedAvailable: drink.icedAvailableSnapshot, hotAvailable: drink.hotAvailableSnapshot };
-        drinkOrders[serviceDate.id][id] = { ice: drink.iceCups, hot: drink.hotCups };
-        if (drink.isExcluded) excludedBeverageIdsByDate[serviceDate.id].push(id);
-      }
-    });
-    return { ...publicMetadata, beverageSnapshots, drinkOrders, drinkDistributionModeByDate, excludedBeverageIdsByDate };
-  })() : publicMetadata;
   return {
-    ...hydrated,
+    ...publicMetadata,
     pricingSnapshot: {
       ...metadata.pricingSnapshot,
       packageAmount: metadata.packageSnapshot?.price ?? metadata.pricingSnapshot?.packageAmount
@@ -505,20 +483,6 @@ quotationRoutes.post("/", async (req, res, next) => {
             baristaCount: manpower.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? 0,
             extraBaristaFee: manpower.perDate.find((entry) => entry.date === date.serviceDate)?.extraBaristaFee ?? 0,
             distributionMode: data.drinkDistributionModeByDate[date.id],
-            drinks: {
-              create: Object.entries(data.drinkOrders[date.id] ?? {}).map(([drinkId, quantity]: [string, any]) => ({
-                drinkId,
-                beverageId: drinkId,
-                drinkName: data.beverageSnapshots[drinkId]?.name ?? drinkId,
-                imageUrlSnapshot: data.beverageSnapshots[drinkId]?.imageUrl ?? null,
-                icedAvailableSnapshot: data.beverageSnapshots[drinkId]?.icedAvailable ?? true,
-                hotAvailableSnapshot: data.beverageSnapshots[drinkId]?.hotAvailable ?? false,
-                isExcluded: data.excludedBeverageIdsByDate[date.id]?.includes(drinkId) ?? false,
-                iceCups: quantity.ice || 0,
-                hotCups: quantity.hot || 0,
-                totalCups: (quantity.ice || 0) + (quantity.hot || 0)
-              }))
-            }
           }))
         },
         addons: {
@@ -600,7 +564,7 @@ quotationRoutes.get("/", async (_req, res, next) => {
     await expireOverdueQuotations();
     const quotations = await prisma.quotation.findMany({
       orderBy: { createdAt: "desc" },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     res.json(quotations.map(toQuotationPayload));
   } catch (error) {
@@ -613,7 +577,7 @@ quotationRoutes.get("/:quotationNo", async (req, res, next) => {
     await expireOverdueQuotations();
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     res.json(toQuotationPayload(quotation));
@@ -631,12 +595,12 @@ quotationRoutes.post("/find", async (req, res, next) => {
       where: { quotationNo: normalizedQuotationNo },
       include: {
         customer: true,
-        dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } },
+        dates: { orderBy: { serviceDate: "asc" } },
         extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } },
         invoices: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+          include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
         }
       }
     });
@@ -708,7 +672,7 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
     await expireOverdueQuotations();
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
-      include: { customer: true, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      include: { customer: true, dates: { orderBy: { serviceDate: "asc" } }, invoices: { select: { id: true }, take: 1 }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     if (!quotation || !customerIdentityMatches(quotation.customer, req.body, true)) {
       return res.status(404).json({ access: "NOT_FOUND" });
@@ -752,7 +716,7 @@ quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
         metadata: toJsonValue({ ...metadata, portalToken: typeof metadata.portalToken === "string" ? metadata.portalToken : randomBytes(32).toString("base64url") }),
         statusHistory: { create: { fromStatus: current.status, toStatus: "APPROVED", changedBy: "admin", changeSummary: "Quotation approved." } }
       },
-      include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     await sendNotification({
       type: "QUOTATION_APPROVED",
@@ -885,7 +849,7 @@ quotationRoutes.patch("/:quotationNo/resubmit", async (req, res, next) => {
             create: { fromStatus: "RETURNED_FOR_EDIT", toStatus: "PENDING_APPROVAL", changedBy: "customer", changeSummary: "Customer edited and resubmitted the quotation." }
           }
         },
-        include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+        include: { customer: true, invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
       });
     });
     logQuotationPdf("database_save", {
@@ -938,7 +902,7 @@ quotationRoutes.delete("/:quotationNo", async (req, res, next) => {
         voidReason: reason,
         statusHistory: { create: { fromStatus: current.status, toStatus: "CANCELLED", changedBy: "admin", changeSummary: `Voided: ${reason}` } }
       },
-      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" }, include: { drinks: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
+      include: { invoices: { select: { id: true } }, dates: { orderBy: { serviceDate: "asc" } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     res.json({ voided: true, quotation: toQuotationPayload(quotation) });
   } catch (error) {

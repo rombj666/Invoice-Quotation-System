@@ -138,14 +138,6 @@ adminBeverageRoutes.delete("/:id", async (req, res, next) => {
   try {
     const current = await prisma.beverage.findUnique({ where: { id: req.params.id } });
     if (!current) return res.status(404).json({ error: "Beverage not found." });
-    const [quotationReferences, invoiceReferences] = await Promise.all([
-      prisma.quotationDrink.count({ where: { beverageId: current.id } }),
-      prisma.invoiceDrinkSnapshot.count({ where: { beverageId: current.id } })
-    ]);
-    if (quotationReferences + invoiceReferences > 0) {
-      const archived = await prisma.beverage.update({ where: { id: current.id }, data: { isArchived: true, isAvailable: false } });
-      return res.status(409).json({ error: "This beverage is referenced by historical documents and was archived instead.", beverage: serializeBeverage(archived) });
-    }
     await prisma.beverage.delete({ where: { id: current.id } });
     if (current.publicId) void deleteCloudinaryImage(current.publicId).catch((error) => console.error("Unable to clean up deleted beverage image.", { beverageId: current.id, publicId: current.publicId, error }));
     res.status(204).send();

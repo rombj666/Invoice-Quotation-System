@@ -151,37 +151,12 @@ model QuotationDate {
   baristaCount       Int
   extraBaristaFee    Decimal               @default(0) @db.Decimal(10, 2)
   distributionMode   DrinkDistributionMode @default(MANUAL)
-  drinks             QuotationDrink[]
   customizationFiles CustomizationFile[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
   @@index([quotationId])
   @@index([serviceDate])
-}
-
-model QuotationDrink {
-  id                    String        @id @default(cuid())
-  quotationDateId       String
-  quotationDate         QuotationDate @relation(fields: [quotationDateId], references: [id], onDelete: Cascade)
-  drinkId               String
-  drinkName             String
-  beverageId            String?
-  beverage              Beverage?     @relation(fields: [beverageId], references: [id], onDelete: SetNull)
-  imageUrlSnapshot      String?
-  icedAvailableSnapshot Boolean       @default(true)
-  hotAvailableSnapshot  Boolean       @default(false)
-  isExcluded            Boolean       @default(false)
-  iceCups               Int           @default(0)
-  hotCups               Int           @default(0)
-  totalCups             Int
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-
-  @@unique([quotationDateId, beverageId])
-  @@index([quotationDateId])
-  @@index([drinkId])
-  @@index([beverageId])
 }
 
 model QuotationAddon {
@@ -227,7 +202,6 @@ model Invoice {
   invoiceFiles        InvoiceFile[]
   internalNotes       InternalNote[]
   statusHistory       StatusHistory[]
-  drinkSnapshots      InvoiceDrinkSnapshot[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -236,28 +210,6 @@ model Invoice {
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
-}
-
-model InvoiceDrinkSnapshot {
-  id                    String                @id @default(cuid())
-  invoiceId             String
-  invoice               Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  serviceDateId         String
-  serviceDate           DateTime
-  beverageId            String?
-  beverageName          String
-  imageUrlSnapshot      String?
-  icedAvailableSnapshot Boolean               @default(true)
-  hotAvailableSnapshot  Boolean               @default(false)
-  iceCups               Int                   @default(0)
-  hotCups               Int                   @default(0)
-  isExcluded            Boolean               @default(false)
-  distributionMode      DrinkDistributionMode
-  createdAt             DateTime              @default(now())
-
-  @@index([invoiceId])
-  @@index([beverageId])
-  @@index([serviceDateId])
 }
 
 model InvoiceItem {
@@ -413,7 +365,6 @@ model Beverage {
   isAvailable   Boolean          @default(true)
   isArchived    Boolean          @default(false)
   displayOrder  Int              @default(0)
-  drinks        QuotationDrink[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -429,22 +380,6 @@ model AdminUser {
   role         AdminRole @default(STAFF)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-}
-
-model ProductAvailability {
-  id            String   @id @default(cuid())
-  category      String
-  itemKey       String   @unique
-  itemName      String
-  isAvailable   Boolean  @default(true)
-  pricingType   String?
-  price         Decimal? @db.Decimal(10, 2)
-  pricingConfig Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([category])
-  @@index([isAvailable])
 }
 
 model QuotationPackage {

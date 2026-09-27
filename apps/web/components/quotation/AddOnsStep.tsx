@@ -9,12 +9,9 @@ import {
   DEFAULT_ADDON_PRICING,
   FIXED_ADDON_DEFAULTS,
   calculateSelectedAddonTotal,
-  getConfiguredAddonPricing,
-  getConfiguredFixedPrice,
   hasCartAddonConflict,
 } from "../../lib/addons";
 import { formatMoney } from "../../lib/formatters";
-import { addonAvailabilityKeys, flattenAvailability, loadProductAvailability, type AvailabilityItem } from "../../lib/product-availability";
 import { getCupSleevePrice, getCupStickerPrice, getMachineRentalFee } from "../../lib/invoice-pricing";
 import { StepNavigation } from "../common/StepNavigation";
 
@@ -96,7 +93,6 @@ function DesignOptions({
 }
 
 export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = true, embedded = false, nextLabel, nextDisabled = false, submissionError = "" }: Props) {
-  const [availability, setAvailability] = useState<Record<string, AvailabilityItem>>({});
   const [availabilityWarning, setAvailabilityWarning] = useState("");
   const customizationOptions = data.customizationOptions ?? {
     cart: { mode: "same" as const, designCount: 1 },
@@ -107,8 +103,8 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
   const allSmallDates = data.serviceDates.length > 0 && (Number.isFinite(data.totalCups) ? Number(data.totalCups) < 100 : data.serviceDates.every((date) => date.cups < 100));
   const machineRentalFee = getMachineRentalFee(data.serviceDates, data.drinkOrders);
   const enoughLeadTime = hasEnoughLeadTime(data);
-  function fixedAddon(name: keyof typeof FIXED_ADDON_DEFAULTS, item: AvailabilityItem | undefined): QuotationAddon {
-    const configuredPrice = getConfiguredFixedPrice(item, FIXED_ADDON_DEFAULTS[name]);
+  function fixedAddon(name: keyof typeof FIXED_ADDON_DEFAULTS): QuotationAddon {
+    const configuredPrice = FIXED_ADDON_DEFAULTS[name];
     const savedPrice = data.selectedAddons.find((addon) => addon.name === name)?.price;
     return { name, price: !useLatestPrices && savedPrice !== undefined ? savedPrice : configuredPrice };
   }
@@ -118,32 +114,13 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
   };
   const optionalAddons: QuotationAddon[] = [
     { name: CUSTOM_BRANDED_CART_ADDON_NAME, price: FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME] },
-    fixedAddon("Custom Menu", availability.custom_menu),
-    fixedAddon("Custom Latte Art Stencil", availability.custom_latte_art_stencil)
+    fixedAddon("Custom Menu"),
+    fixedAddon("Custom Latte Art Stencil")
   ];
   const [brandedCartAddon, ...otherOptionalAddons] = optionalAddons;
   const coffeeCartSelected = hasAddon(data, COFFEE_CART_ADDON_NAME);
   const hasCartConflict = hasCartAddonConflict(data.selectedAddons);
-  const activePricing = data.addonPricing ?? (useLatestPrices ? getConfiguredAddonPricing(availability) : DEFAULT_ADDON_PRICING);
-
-  useEffect(() => {
-    loadProductAvailability().then((groups) => setAvailability(flattenAvailability(groups))).catch(() => setAvailability({}));
-  }, []);
-
-  useEffect(() => {
-    if (!useLatestPrices || !Object.keys(availability).length) return;
-    const latestPricing = getConfiguredAddonPricing(availability);
-    const latestFixedPrices: Record<string, number> = {
-      [COFFEE_CART_ADDON_NAME]: FIXED_ADDON_DEFAULTS[COFFEE_CART_ADDON_NAME],
-      [CUSTOM_BRANDED_CART_ADDON_NAME]: FIXED_ADDON_DEFAULTS[CUSTOM_BRANDED_CART_ADDON_NAME],
-      "Custom Menu": getConfiguredFixedPrice(availability.custom_menu, FIXED_ADDON_DEFAULTS["Custom Menu"]),
-      "Custom Latte Art Stencil": getConfiguredFixedPrice(availability.custom_latte_art_stencil, FIXED_ADDON_DEFAULTS["Custom Latte Art Stencil"])
-    };
-    const selectedAddons = data.selectedAddons.map((addon) => latestFixedPrices[addon.name] === undefined ? addon : { ...addon, price: latestFixedPrices[addon.name] });
-    const pricesChanged = selectedAddons.some((addon, index) => addon.price !== data.selectedAddons[index]?.price);
-    const pricingChanged = JSON.stringify(data.addonPricing) !== JSON.stringify(latestPricing);
-    if (pricesChanged || pricingChanged) setData({ ...data, selectedAddons, addonPricing: latestPricing });
-  }, [availability, data, setData, useLatestPrices]);
+  const activePricing = data.addonPricing ?? DEFAULT_ADDON_PRICING;
 
   useEffect(() => {
     const needsLeadTimeRemoval = !enoughLeadTime && data.selectedAddons.some((addon) => leadTimeAddonNames.has(addon.name));
@@ -177,25 +154,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     }
   }, [data, customizationOptions, enoughLeadTime, setData]);
 
-  function isAvailable(name: string): boolean {
-    const key = addonAvailabilityKeys[name];
-    return !key || availability[key]?.isAvailable !== false;
-  }
-
-  function unavailableLabel(name: string) {
-    return isAvailable(name) ? null : <span className="unavailable-badge">Unavailable</span>;
-  }
-
-  function hasUnavailableSelected() {
-    return (
-      data.selectedAddons.some((addon) => !isAvailable(addon.name)) ||
-      (data.hasCupStickers && !isAvailable("Custom Cup Stickers")) ||
-      (data.hasCupSleeves && !isAvailable("Custom Cup Sleeves"))
-    );
-  }
-
   function toggleAddon(addon: QuotationAddon) {
-    if (!isAvailable(addon.name)) return;
     if (leadTimeAddonNames.has(addon.name) && !enoughLeadTime) {
       setAvailabilityWarning("This add-on requires at least 2 weeks lead time.");
       return;
@@ -223,17 +182,12 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
       toggleAddon(coffeeCartAddon);
       return;
     }
-    if (!isAvailable(COFFEE_CART_ADDON_NAME)) return;
     toggleAddon(coffeeCartAddon);
   }
 
   function handleNext() {
     if (hasCartConflict) {
       setAvailabilityWarning(CART_SELECTION_ERROR);
-      return;
-    }
-    if (hasUnavailableSelected()) {
-      setAvailabilityWarning("This item is currently unavailable. Please contact Hour Coffee.");
       return;
     }
     onNext();
@@ -259,9 +213,9 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
     const isCustomBrandedCart = addon.name === CUSTOM_BRANDED_CART_ADDON_NAME;
     return (
       <div className={`addon-card-shell ${isSelected ? "active" : ""}`} key={addon.name}>
-        <button className={`addon-card addon-card-selectable ${isCustomBrandedCart ? "cart-option-card" : ""} ${isSelected ? "active" : ""}`} type="button" aria-pressed={isSelected} disabled={((!isAvailable(addon.name) || (leadTimeAddonNames.has(addon.name) && !enoughLeadTime)) && !isSelected)} onClick={() => toggleAddon(addon)}>
+        <button className={`addon-card addon-card-selectable ${isCustomBrandedCart ? "cart-option-card" : ""} ${isSelected ? "active" : ""}`} type="button" aria-pressed={isSelected} disabled={leadTimeAddonNames.has(addon.name) && !enoughLeadTime && !isSelected} onClick={() => toggleAddon(addon)}>
           <div className="addon-card-copy">
-            <div className="addon-card-title-row"><strong>{isCustomBrandedCart ? "Branded Cart" : addon.name} {unavailableLabel(addon.name)}</strong><span className={`addon-selection-status ${isSelected ? "selected" : ""}`}>{isSelected ? "Selected" : "Select"}</span></div>
+            <div className="addon-card-title-row"><strong>{isCustomBrandedCart ? "Branded Cart" : addon.name}</strong><span className={`addon-selection-status ${isSelected ? "selected" : ""}`}>{isSelected ? "Selected" : "Select"}</span></div>
             <p>{isCustomBrandedCart ? "Cart with customer logo. 2-week lead time." : leadTimeAddonNames.has(addon.name) ? "2-week lead time" : "Optional add-on"}</p>
           </div>
           <span className="addon-price">{formatMoney(addon.price)}</span>
@@ -294,18 +248,18 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         </div>
       ) : null}
 
-      {isAvailable("Smart QR Ordering System") ? <div className="addon-card active addon-card-included">
+      <div className="addon-card active addon-card-included">
         <div className="addon-card-copy">
-          <div className="addon-card-title-row"><strong>Smart QR Ordering System {unavailableLabel("Smart QR Ordering System")}</strong><span className="addon-selection-status">Included</span></div>
+          <div className="addon-card-title-row"><strong>Smart QR Ordering System</strong><span className="addon-selection-status">Included</span></div>
           <p>Included with every service.</p>
         </div>
         <span className="addon-price">FREE</span>
-      </div> : null}
+      </div>
 
-      {allSmallDates && isAvailable("Premium Table Setup") ? (
+      {allSmallDates ? (
         <div className="addon-card active addon-card-included">
           <div className="addon-card-copy">
-            <div className="addon-card-title-row"><strong>Premium Table Setup {unavailableLabel("Premium Table Setup")}</strong><span className="addon-selection-status">Included</span></div>
+            <div className="addon-card-title-row"><strong>Premium Table Setup</strong><span className="addon-selection-status">Included</span></div>
             <p>Included for 50 to 99 cup orders.</p>
           </div>
           <span className="addon-price">FREE</span>
@@ -317,29 +271,29 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         <span>Choose one cart style. Selecting another cart replaces the current selection.</span>
       </div>
 
-      {data.serviceDates.length && (isAvailable(COFFEE_CART_ADDON_NAME) || coffeeCartSelected) ? (
-        <button type="button" className={`addon-card addon-card-selectable cart-option-card ${coffeeCartSelected ? "active" : ""}`} aria-pressed={coffeeCartSelected} disabled={!isAvailable(COFFEE_CART_ADDON_NAME) && !coffeeCartSelected} onClick={setCoffeeCart}>
+      {data.serviceDates.length > 0 ? (
+        <button type="button" className={`addon-card addon-card-selectable cart-option-card ${coffeeCartSelected ? "active" : ""}`} aria-pressed={coffeeCartSelected} onClick={setCoffeeCart}>
           <div className="addon-card-copy">
-            <div className="addon-card-title-row"><strong>Standard Cart {unavailableLabel(COFFEE_CART_ADDON_NAME)}</strong><span className={`addon-selection-status ${coffeeCartSelected ? "selected" : ""}`}>{coffeeCartSelected ? "Selected" : "Select"}</span></div>
+            <div className="addon-card-title-row"><strong>Standard Cart</strong><span className={`addon-selection-status ${coffeeCartSelected ? "selected" : ""}`}>{coffeeCartSelected ? "Selected" : "Select"}</span></div>
             <p>Cart without customer logo.</p>
           </div>
           <span className="addon-price">{formatMoney(coffeeCartAddon.price)}</span>
         </button>
       ) : null}
 
-      {isAvailable(brandedCartAddon.name) || hasAddon(data, brandedCartAddon.name) ? renderOptionalAddon(brandedCartAddon) : null}
+      {renderOptionalAddon(brandedCartAddon)}
 
       <div className="addon-group-heading">
         <strong>Other add-ons</strong>
         <span>Select any additional items for the quotation.</span>
       </div>
 
-      {otherOptionalAddons.filter((addon) => isAvailable(addon.name) || hasAddon(data, addon.name)).map(renderOptionalAddon)}
+      {otherOptionalAddons.map(renderOptionalAddon)}
 
-      {isAvailable("Custom Cup Stickers") || data.hasCupStickers ? <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
-        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupStickers ? "active" : ""}`} aria-pressed={data.hasCupStickers} disabled={!isAvailable("Custom Cup Stickers") && !data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
+      <div className={`addon-card-shell ${data.hasCupStickers ? "active" : ""}`}>
+        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupStickers ? "active" : ""}`} aria-pressed={data.hasCupStickers} onClick={() => setData({ ...data, hasCupStickers: !data.hasCupStickers })}>
           <div className="addon-card-copy">
-            <div className="addon-card-title-row"><strong>Custom Cup Stickers {unavailableLabel("Custom Cup Stickers")}</strong><span className={`addon-selection-status ${data.hasCupStickers ? "selected" : ""}`}>{data.hasCupStickers ? "Selected" : "Select"}</span></div>
+            <div className="addon-card-title-row"><strong>Custom Cup Stickers</strong><span className={`addon-selection-status ${data.hasCupStickers ? "selected" : ""}`}>{data.hasCupStickers ? "Selected" : "Select"}</span></div>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span className="addon-price">{formatMoney(getCupStickerPrice(totalCups, activePricing.cupSticker))}</span>
@@ -347,12 +301,12 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         {data.hasCupStickers ? (
           <DesignOptions label="Cup sticker" option={customizationOptions.sticker} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sticker", option)} />
         ) : null}
-      </div> : null}
+      </div>
 
-      {isAvailable("Custom Cup Sleeves") || data.hasCupSleeves ? <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
-        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupSleeves ? "active" : ""}`} aria-pressed={data.hasCupSleeves} disabled={!isAvailable("Custom Cup Sleeves") && !data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
+      <div className={`addon-card-shell ${data.hasCupSleeves ? "active" : ""}`}>
+        <button type="button" className={`addon-card addon-card-selectable ${data.hasCupSleeves ? "active" : ""}`} aria-pressed={data.hasCupSleeves} onClick={() => setData({ ...data, hasCupSleeves: !data.hasCupSleeves })}>
           <div className="addon-card-copy">
-            <div className="addon-card-title-row"><strong>Custom Cup Sleeves {unavailableLabel("Custom Cup Sleeves")}</strong><span className={`addon-selection-status ${data.hasCupSleeves ? "selected" : ""}`}>{data.hasCupSleeves ? "Selected" : "Select"}</span></div>
+            <div className="addon-card-title-row"><strong>Custom Cup Sleeves</strong><span className={`addon-selection-status ${data.hasCupSleeves ? "selected" : ""}`}>{data.hasCupSleeves ? "Selected" : "Select"}</span></div>
             <p>Price adjusted by cup quantity. 2-week lead time.</p>
           </div>
           <span className="addon-price">{formatMoney(getCupSleevePrice(totalCups, activePricing.cupSleeve))}</span>
@@ -360,7 +314,7 @@ export function AddOnsStep({ data, setData, onBack, onNext, useLatestPrices = tr
         {data.hasCupSleeves ? (
           <DesignOptions label="Cup sleeve" option={customizationOptions.sleeve} selectedDateCount={data.serviceDates.length} onChange={(option) => updateCustomizationOption("sleeve", option)} />
         ) : null}
-      </div> : null}
+      </div>
 
       <div className="addon-total"><span>Add-on Total</span><strong>{formatMoney(selectedTotal)}</strong></div>
       {hasCartConflict ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}

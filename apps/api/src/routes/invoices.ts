@@ -33,7 +33,7 @@ async function invoiceForCustomizationToken(token: string) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const paid = await prisma.invoice.findMany({
     where: { paymentStatus: "VERIFIED", status: { not: "CANCELLED" } },
-    include: { quotation: true, paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+    include: { quotation: true, paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
   });
   return paid.find((invoice) => (invoice.quotation.metadata as any)?.portalToken === token || (invoice.metadata as any)?.customizationAccess?.tokenHash === tokenHash) ?? null;
 }
@@ -128,7 +128,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
     const filesByField = new Map((multipart?.files ?? []).map((file) => [file.fieldName, file]));
     const quotation = await prisma.quotation.findUnique({
       where: { quotationNo: data.quotation.quotationNo },
-      include: { customer: true, dates: { include: { drinks: true } } }
+      include: { customer: true, dates: true }
     });
     if (!quotation) return res.status(404).json({ error: "Quotation not found" });
     await expireOverdueQuotations();
@@ -319,21 +319,6 @@ invoiceRoutes.post("/", async (req, res, next) => {
               : [])
           ]
         },
-        drinkSnapshots: {
-          create: quotation.dates.flatMap((date) => date.drinks.map((drink) => ({
-            serviceDateId: date.id,
-            serviceDate: date.serviceDate,
-            beverageId: drink.beverageId,
-            beverageName: drink.drinkName,
-            imageUrlSnapshot: drink.imageUrlSnapshot,
-            icedAvailableSnapshot: drink.icedAvailableSnapshot,
-            hotAvailableSnapshot: drink.hotAvailableSnapshot,
-            iceCups: drink.iceCups,
-            hotCups: drink.hotCups,
-            isExcluded: drink.isExcluded,
-            distributionMode: date.distributionMode
-          })))
-        },
         paymentReceipts: receiptUpload
           ? {
               create: {
@@ -351,7 +336,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
             }
           : undefined
       },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } }, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
 
     if (customMenuUpload) {
@@ -472,7 +457,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
 
     const saved = await prisma.invoice.findUnique({
       where: { invoiceNo },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     res.status(201).json(toInvoicePayload(saved));
   } catch (error) {
@@ -495,7 +480,7 @@ invoiceRoutes.get("/", async (_req, res, next) => {
   try {
     const invoices = await prisma.invoice.findMany({
       orderBy: { createdAt: "desc" },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } } }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     res.json(invoices.map(toInvoicePayload));
   } catch (error) {
@@ -507,7 +492,7 @@ invoiceRoutes.get("/:invoiceNo", async (req, res, next) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { invoiceNo: req.params.invoiceNo },
-      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, drinkSnapshots: { orderBy: { serviceDate: "asc" } }, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
+      include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } }
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
     res.json(toInvoicePayload(invoice));

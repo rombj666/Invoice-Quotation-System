@@ -2377,6 +2377,7 @@ p {
 .admin-price-row { display:flex; justify-content:space-between; align-items:baseline; gap:20px; padding:10px 0; border-bottom:1px solid #e7dece; }
 .admin-price-row.total { font-size:22px; margin-top:20px; border-top:2px solid #d8bd86; }
 .admin-editor-panel .admin-service-date-fields { grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) auto; align-items:end; }
+.admin-editor-panel .admin-service-date-fields:has(input[type="time"]) { grid-template-columns:minmax(140px,1fr) repeat(2,minmax(100px,1fr)) auto; }
 .admin-editor-panel .admin-service-date-fields .admin-field { margin-bottom:0; }
 .admin-editor-panel .admin-service-date-fields > button { align-self:end; }
 .admin-addon-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
@@ -2405,7 +2406,7 @@ p {
   .admin-editor-topbar > a:last-child { margin-left:auto; }
   .admin-editor-panel > section { padding:16px; }
   .admin-editor-panel .admin-inline-fields { grid-template-columns:minmax(0,1fr); }
-  .admin-editor-panel .admin-service-date-fields,.admin-summary-grid { grid-template-columns:minmax(0,1fr); }
+  .admin-editor-panel .admin-service-date-fields,.admin-editor-panel .admin-service-date-fields:has(input[type="time"]),.admin-summary-grid { grid-template-columns:minmax(0,1fr); }
   .admin-addon-cards { grid-template-columns:minmax(0,1fr); }
   .admin-editor-footer > * { flex:1; }
 }

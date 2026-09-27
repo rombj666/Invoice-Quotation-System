@@ -14,8 +14,7 @@ import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/format
 import type { CustomizationByDate } from "../../../../types/customization";
 import type { InvoiceDetails } from "../../../../types/invoice";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
-import { DocumentCard } from "../../../../components/admin/DocumentCard";
-import { getProvidedBeverageNames } from "../../../../lib/beverages";
+import { getCustomerCustomizationSteps } from "../../../../lib/customization-flow";
 import { getCustomerPortalToken, verifyInvoicePayment } from "../../../../lib/admin-api";
 
 function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Image" | "File" {
@@ -40,34 +39,6 @@ function FileActions({ fileUrl, openLabel, downloadLabel, fileName }: { fileUrl:
         {downloadLabel}
       </a>
     </div>
-  );
-}
-
-function ReceiptPreview({ fileUrl, fileName, mimeType }: { fileUrl?: string; fileName?: string; mimeType?: string }) {
-  if (!fileUrl) {
-    return (
-      <section>
-        <h3>Receipt</h3>
-        <p>No file uploaded.</p>
-      </section>
-    );
-  }
-
-  const label = fileLabel(mimeType, fileUrl);
-  return (
-    <section>
-      <h3>Receipt</h3>
-      <p className="admin-file-type">File type: {label}</p>
-      <p>{fileName || "Uploaded file"}</p>
-      {label === "PDF" ? (
-        <FileActions fileUrl={fileUrl} fileName={fileName} openLabel="Open Receipt PDF" downloadLabel="Download Receipt PDF" />
-      ) : (
-        <>
-          <img className="admin-image-preview" src={fileUrl} alt="Payment receipt" />
-          <FileActions fileUrl={fileUrl} fileName={fileName} openLabel="Open Receipt Image" downloadLabel="Download Receipt Image" />
-        </>
-      )}
-    </section>
   );
 }
 
@@ -108,7 +79,7 @@ function GenericFilePreview({
 }
 
 function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title: string; designs?: CustomizationByDate; urls?: InvoiceDetails["customizationUrls"]; type: string; keySuffix?: string }) {
-  const storedUrls = (urls ?? []).filter((file) => file.type === type && (!keySuffix || file.designKey.endsWith(keySuffix)));
+  const storedUrls = (urls ?? []).filter((file) => file.type === type && (!keySuffix || file.designKey.replace(/:\d+$/, "").endsWith(keySuffix)));
   const entries = Object.entries(designs ?? {}).filter(([key, design]) => design?.dataUrl && (!keySuffix || key.endsWith(keySuffix)));
   return (
     <section>
@@ -169,7 +140,8 @@ export default function AdminInvoiceDetailPage() {
   const currentInvoice = invoice;
   const quotation = currentInvoice.quotation;
   const pricing = calculatePricing(quotation);
-  const addonAmount = pricing.addonTotal + pricing.cupStickerFee + pricing.cupSleeveFee;
+  const savedPricing = (invoice as InvoiceDetails & { pricingSnapshot?: { subtotal: number; discountAmount: number; total: number } }).pricingSnapshot ?? quotation.pricingSnapshot;
+  const customizationSteps = getCustomerCustomizationSteps(quotation);
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
 
   async function verifyPayment() {
@@ -195,14 +167,13 @@ export default function AdminInvoiceDetailPage() {
 {invoice.paymentStatus !== "VERIFIED" ? <button type="button" disabled={verifying || invoice.paymentStatus !== "RECEIPT_UPLOADED"} onClick={verifyPayment}>{verifying ? "Verifying..." : "Verify Payment"}</button> : null}</>}
       sections={[
         { id: "summary", label: "Summary", content: <><section><h2>Summary</h2><dl className="admin-summary-grid"><div><dt>Customer Name</dt><dd>{quotation.customer.name}</dd></div><div><dt>Phone</dt><dd>{quotation.customer.phone}</dd></div><div><dt>Email</dt><dd>{quotation.customer.email}</dd></div><div><dt>Total Cups</dt><dd>{pricing.totalCups}</dd></div><div><dt>Event Address</dt><dd>{invoice.eventAddress}</dd></div><div><dt>Event Date(s)</dt><dd>{quotation.serviceDates.map((date) => formatDateLabel(date.serviceDate)).join(", ")}</dd></div><div><dt>Payment Receipt</dt><dd>{invoice.receiptUrl || invoice.receiptDataUrl ? <FileActions fileUrl={(invoice.receiptUrl || invoice.receiptDataUrl)!} fileName={invoice.receiptName} openLabel="View" downloadLabel="Download" /> : "-"}</dd></div></dl></section></> },
-        { id: "reference", label: "Reference & Status", content: <><section>
+        { id: "customer", label: "Customer & Reference", content: <><section>
             <h3>Invoice</h3>
             <p>Invoice No.: {invoice.invoiceNo}</p>
             <p>Linked Quotation No.: {quotation.quotationNo}</p>
             <p>Invoice status: {invoice.invoiceStatus ?? "SUBMITTED"}</p>
             <p>Payment status: {invoice.paymentStatus ?? "RECEIPT_UPLOADED"}</p>
-          </section></> },
-        { id: "customer", label: "Customer & Billing", content: <><section>
+          </section><section>
             <h3>Customer Info</h3>
             <p>{quotation.customer.name}</p>
             <p>{quotation.customer.phone}</p>
@@ -210,24 +181,19 @@ export default function AdminInvoiceDetailPage() {
             <p>{quotation.customer.companyName || "-"}</p>
             <p>{quotation.customer.billingAddress}</p>
           </section></> },
-        { id: "event", label: "Event Details", content: <><section>
+        { id: "event", label: "Event & Service Dates", content: <><section>
             <h3>Event Details</h3>
             <p>Event address: {invoice.eventAddress}</p>
             <p>Dress code: {invoice.dressCode === "Custom" ? invoice.customDressCode : invoice.dressCode}</p>
             <p>Environment: {invoice.environment}</p>
             <p>Environment notes: {invoice.environmentNotes || "-"}</p>
-          </section></> },
-        { id: "dates", label: "Service Dates", content: <><section>
+          {invoice.customizationSubmission?.eventAddress ? <p>Setup address: {invoice.customizationSubmission.eventAddress}</p> : null}</section><section>
             <h3>Service Dates</h3>
             {quotation.serviceDates.map((date) => (
               <p key={date.id}>
                 {formatDateLabel(date.serviceDate)} - {date.cups} cups - {formatTime(date.startTime)} to {formatTime(date.endTime)}
               </p>
             ))}
-          </section></> },
-        { id: "drinks", label: "Drink Preferences", content: <><section>
-            <h3>Drink Preferences</h3>
-            {quotation.serviceDates.map((date) => <div key={date.id}><strong>{formatDateLabel(date.serviceDate)}</strong><p>Drinks provided: {getProvidedBeverageNames(quotation, date.id).join(", ") || "None"}</p></div>)}
           </section></> },
         { id: "addons", label: "Add-ons", content: <><section>
             <h3>Add-ons</h3>
@@ -239,19 +205,18 @@ export default function AdminInvoiceDetailPage() {
             {!addonRows.length ? <p>No add-ons selected.</p> : null}
             {hasCartAddonConflict(quotation.selectedAddons) ? <div className="warn-summary">{CART_SELECTION_ERROR}</div> : null}
           </section></> },
-        { id: "pricing", label: "Price Breakdown", content: <><section>
-            <h3>Final Total</h3>
-            <p>Base: {formatMoney(pricing.baseAmount)}</p>
+        { id: "review", label: "Review & Documents", content: <><section>
+            <h2>Price Breakdown</h2>
+            <p>Base / {pricing.totalCups} cups: {formatMoney(pricing.baseAmount)}</p>
             {pricing.extraBaristaFee > 0 ? <p>Extra barista fee: {formatMoney(pricing.extraBaristaFee)}</p> : null}
             {pricing.extraServingHoursByDate.filter((entry) => entry.fee > 0).map((entry) => <p key={entry.serviceDateId}>Extra Serving Hour — {formatDateLabel(entry.date)}: {entry.cups} cups served for {entry.exactServiceHours} hours; {entry.extraServingHours} additional hour(s) × RM{entry.rate} = {formatMoney(entry.fee)}</p>)}
             {pricing.machineRentalFee > 0 ? <p>Machine rental: {formatMoney(pricing.machineRentalFee)}</p> : null}
-            {addonAmount > 0 ? <p>Add-ons: {formatMoney(addonAmount)}</p> : null}
-            <p>Subtotal: {formatMoney(pricing.subtotal)}</p>
-            {pricing.discountAmount > 0 ? <p>Discount: {formatMoney(pricing.discountAmount)}</p> : null}
-            <p>Total: {formatMoney(pricing.total)}</p>
-          </section></> },
-        { id: "receipt", label: "Payment Receipt", content: <><ReceiptPreview fileUrl={invoice.receiptUrl ?? invoice.receiptDataUrl} fileName={invoice.receiptName} mimeType={invoice.receiptMimeType} /></> },
-        { id: "documents", label: "Documents", content: <><DocumentCard documentLabel="Invoice PDF" fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} />
+            <h3>Add-ons</h3>{addonRows.length ? addonRows.map((addon) => <p key={addon.name}>{addon.name}: {addon.price > 0 ? formatMoney(addon.price) : "Included"}</p>) : <p>-</p>}
+<h3>Extra Charges</h3>{(quotation.extraCharges ?? []).map((charge) => <p key={charge.id}>{charge.title}: {formatMoney(charge.amount)}</p>)}{!quotation.extraCharges?.length ? <p>-</p> : null}
+
+            {(savedPricing?.discountAmount ?? pricing.discountAmount) > 0 ? <p>Discount: {formatMoney(savedPricing?.discountAmount ?? pricing.discountAmount)}</p> : null}
+            <p>Total: {formatMoney(savedPricing?.total ?? pricing.total)}</p>
+          </section><section><h2>Documents</h2><h3>Invoice PDF</h3>{invoice.invoicePdfUrl ? <FileActions fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} openLabel="View" downloadLabel="Download" /> : <p>-</p>}<h3>Payment Receipt</h3>{invoice.receiptUrl || invoice.receiptDataUrl ? <FileActions fileUrl={(invoice.receiptUrl || invoice.receiptDataUrl)!} fileName={invoice.receiptName} openLabel="View" downloadLabel="Download" /> : <p>-</p>}</section>
 {invoice.customMenuFile?.fileUrl ? (
             <GenericFilePreview title="Custom Menu File" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />
           ) : null}
@@ -259,13 +224,12 @@ export default function AdminInvoiceDetailPage() {
             <GenericFilePreview key={file.fileUrl} title="Invoice File" fileUrl={file.fileUrl} fileName={file.fileName} mimeType={file.mimeType} />
           ))}</> },
         { id: "notes", label: "Notes & History", content: <>{invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
-{invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}</> },
-        { id: "cart", label: "Cart Artwork", content: <><CustomizationPreview title="Cart Design Image" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" /></> },
-        { id: "stickers", label: "Cup Artwork", content: <><CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
-<CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" /></> },
-        { id: "sleeves", label: "Sleeve Artwork", content: <><CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" /></> },
-        { id: "latte", label: "Latte Artwork", content: <><CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" /></> },
-        { id: "setup", label: "Customization Setup", content: <>{invoice.customizationSubmission ? <section><h3>Customization Submission</h3><p>Submitted: {new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p><p>Setup address: {invoice.customizationSubmission.eventAddress || "-"}</p></section> : null}</> },
+{invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}{invoice.customizationSubmission?.submittedAt ? <section><h3>Customization submitted</h3><p>{new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p></section> : null}</> },
+        ...((customizationSteps.includes("cart") || Object.keys(invoice.cartDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CART_DESIGN")) ? [{ id: "cart", label: "Cart Artwork", content: <><CustomizationPreview title="Cart Design Image" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" /></> }] : []),
+        ...((customizationSteps.includes("sticker") || Object.keys(invoice.stickerDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CUP_STICKER" && file.designKey !== "latte-art")) ? [{ id: "stickers", label: "Cup Artwork", content: <><CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
+<CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" /></> }] : []),
+        ...((customizationSteps.includes("sleeve") || Object.keys(invoice.sleeveDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CUP_SLEEVE")) ? [{ id: "sleeves", label: "Sleeve Artwork", content: <><CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" /></> }] : []),
+        ...((customizationSteps.includes("latte") || invoice.customizationUrls?.some((file) => file.designKey === "latte-art")) ? [{ id: "latte", label: "Latte Artwork", content: <><CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" /></> }] : []),
       ]}
     >
         {actionError ? <p className="error" role="alert">{actionError}</p> : null}
