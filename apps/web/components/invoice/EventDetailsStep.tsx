@@ -17,7 +17,7 @@ type Props = {
 
 export function EventDetailsStep({ eventAddress, dressCode, customDressCode, environment, environmentNotes, onEventAddress, onDressCode, onCustomDressCode, onEnvironment, onEnvironmentNotes }: Props) {
   return (
-    <div>
+    <div className="customize-details-fields">
       <h2>Event Details</h2>
       <p className="step-copy">Quick setup info for our team.</p>
       <label className="hc-field">

@@ -97,42 +97,47 @@ export function CupStickerCustomizer({ mode, serviceDates, designs, activeDate, 
   }
 
   return (
-    <div>
-      <h2>Cup Sticker Logo</h2>
-      <p className="step-copy">Upload one logo for both cup sticker previews.</p>
-      {mode === "per-date" && serviceDates.length > 1 ? (
-        <label className="hc-field">
-          <span>Editing design</span>
-          <select className="design-select" value={selectedDate} onChange={(event) => onActiveDate(event.target.value)}>
-            {serviceDates.map((date) => <option value={date.serviceDate} key={date.serviceDate}>{formatCustomizationDate(date.serviceDate)}</option>)}
-          </select>
-        </label>
-      ) : null}
-      <div className="cup-template-grid">
-        {preview("hotCup", "Hot cup", CUSTOMIZATION_ASSETS.hotCupTemplateUrl, "hot")}
-        {preview("coldCup", "Cold cup", CUSTOMIZATION_ASSETS.coldCupTemplateUrl, "cold")}
+    <div className="customize-step customize-sticker-step">
+      <div className="customize-preview-pane">
+        <div className="cup-template-grid">
+          {preview("hotCup", "Hot cup", CUSTOMIZATION_ASSETS.hotCupTemplateUrl, "hot")}
+          {preview("coldCup", "Cold cup", CUSTOMIZATION_ASSETS.coldCupTemplateUrl, "cold")}
+        </div>
+        {missingTemplates.hot || missingTemplates.cold ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
       </div>
-      {missingTemplates.hot || missingTemplates.cold ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
-      <label className="upload-box">
-        <strong>Tap to upload same logo for both cups</strong>
-        <span>PNG or JPG only</span>
-        <input type="file" accept="image/png,image/jpeg" onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
-        }} />
-      </label>
-      {activeDesign ? (
-        <>
-          <p className="upload-ok">Uploaded: {activeDesign.fileName}</p>
-          <p className="upload-ok">Same logo is applied to both cup templates.</p>
-          <label className="range-field">
-            Logo size
-            <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={Math.min(bounds.max, Math.max(bounds.min, activeDesign.widthRatio ?? activeDesign.size / 100))} onChange={(event) => updateWidth(Number(event.target.value))} />
+
+      <div className="customize-controls-pane">
+        <h2>Cup Sticker Logo</h2>
+        <p className="step-copy">Upload one logo for both cup sticker previews.</p>
+        {mode === "per-date" && serviceDates.length > 1 ? (
+          <label className="hc-field">
+            <span>Editing design</span>
+            <select className="design-select" value={selectedDate} onChange={(event) => onActiveDate(event.target.value)}>
+              {serviceDates.map((date) => <option value={date.serviceDate} key={date.serviceDate}>{formatCustomizationDate(date.serviceDate)}</option>)}
+            </select>
           </label>
-          {logoSizeMm ? <div className="mini-summary">Logo size: {logoSizeMm.width.toFixed(1)} mm x {logoSizeMm.height.toFixed(1)} mm</div> : null}
-          <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
-        </>
-      ) : null}
+        ) : null}
+        <label className="upload-box">
+          <strong>Tap to upload same logo for both cups</strong>
+          <span>PNG or JPG only</span>
+          <input type="file" accept="image/png,image/jpeg" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
+          }} />
+        </label>
+        {activeDesign ? (
+          <>
+            <p className="upload-ok">Uploaded: {activeDesign.fileName}</p>
+            <p className="upload-ok">Same logo is applied to both cup templates.</p>
+            <label className="range-field">
+              Logo size
+              <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={Math.min(bounds.max, Math.max(bounds.min, activeDesign.widthRatio ?? activeDesign.size / 100))} onChange={(event) => updateWidth(Number(event.target.value))} />
+            </label>
+            {logoSizeMm ? <div className="mini-summary">Logo size: {logoSizeMm.width.toFixed(1)} mm x {logoSizeMm.height.toFixed(1)} mm</div> : null}
+            <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

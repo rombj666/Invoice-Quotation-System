@@ -78,58 +78,63 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
   }
 
   return (
-    <div>
-      <h2>Cart Logo</h2>
-      <p className="step-copy">Upload your logo to preview it centered on the cart's white front panel.</p>
-      {mode === "per-date" && serviceDates.length > 1 ? (
-        <label className="hc-field">
-          <span>Editing design</span>
-          <select className="design-select" value={selectedDate} onChange={(event) => onActiveDate(event.target.value)}>
-            {serviceDates.map((date) => <option value={date.serviceDate} key={date.serviceDate}>{formatCustomizationDate(date.serviceDate)}</option>)}
-          </select>
-        </label>
-      ) : null}
-      <div className="cart-preview">
-        <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.cartTemplateUrl} alt="Cart template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
-        <div
-          className={`cart-template-overlay cart-design-panel ${SHOW_CUSTOMIZATION_BOUNDARIES ? "custom-boundary-debug" : ""}`}
-          style={{ left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.width * 100}%`, height: `${area.height * 100}%` }}
-        >
-          {active && rect ? (
-            <img
-              src={active.originalDataUrl ?? active.dataUrl}
-              alt="Cart logo preview"
-              style={{
-                width: `${rect.widthRatio * 100}%`,
-                left: `${rect.centerXRatio * 100}%`,
-                top: `${rect.centerYRatio * 100}%`,
-                transform: "translate(-50%, -50%)"
-              }}
-            />
-          ) : <span>Cart logo preview</span>}
-          {SHOW_CUSTOMIZATION_BOUNDARIES && rect ? <small className="custom-debug-label">x {rect.centerXRatio.toFixed(3)} y {rect.centerYRatio.toFixed(3)} w {rect.widthRatio.toFixed(3)}</small> : null}
+    <div className="customize-step customize-cart-step">
+      <div className="customize-preview-pane">
+        <div className="cart-preview">
+          <img className="custom-template-img" src={CUSTOMIZATION_ASSETS.cartTemplateUrl} alt="Cart template" onLoad={() => setTemplateMissing(false)} onError={() => setTemplateMissing(true)} />
+          <div
+            className={`cart-template-overlay cart-design-panel ${SHOW_CUSTOMIZATION_BOUNDARIES ? "custom-boundary-debug" : ""}`}
+            style={{ left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.width * 100}%`, height: `${area.height * 100}%` }}
+          >
+            {active && rect ? (
+              <img
+                src={active.originalDataUrl ?? active.dataUrl}
+                alt="Cart logo preview"
+                style={{
+                  width: `${rect.widthRatio * 100}%`,
+                  left: `${rect.centerXRatio * 100}%`,
+                  top: `${rect.centerYRatio * 100}%`,
+                  transform: "translate(-50%, -50%)"
+                }}
+              />
+            ) : <span>Cart logo preview</span>}
+            {SHOW_CUSTOMIZATION_BOUNDARIES && rect ? <small className="custom-debug-label">x {rect.centerXRatio.toFixed(3)} y {rect.centerYRatio.toFixed(3)} w {rect.widthRatio.toFixed(3)}</small> : null}
+          </div>
         </div>
+        {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
       </div>
-      {templateMissing ? <p className="template-missing">Template image not found. Please add the image file in public/assets/customization.</p> : null}
-      <label className="upload-box">
-        <strong>Tap to upload logo</strong>
-        <span>PNG or JPG only</span>
-        <input type="file" accept="image/png,image/jpeg" onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
-        }} />
-      </label>
-      {active && rect ? (
-        <>
-          <p className="upload-ok">Uploaded: {active.fileName}</p>
-          <label className="range-field">
-            Logo size
-            <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={rect.widthRatio} onChange={(event) => updateWidth(Number(event.target.value))} />
+
+      <div className="customize-controls-pane">
+        <h2>Cart Logo</h2>
+        <p className="step-copy">Upload your logo to preview it centered on the cart's white front panel.</p>
+        {mode === "per-date" && serviceDates.length > 1 ? (
+          <label className="hc-field">
+            <span>Editing design</span>
+            <select className="design-select" value={selectedDate} onChange={(event) => onActiveDate(event.target.value)}>
+              {serviceDates.map((date) => <option value={date.serviceDate} key={date.serviceDate}>{formatCustomizationDate(date.serviceDate)}</option>)}
+            </select>
           </label>
-          <div className="mini-summary">Logo size: {widthCm.toFixed(1)} cm x {heightCm.toFixed(1)} cm ({Math.round(rect.widthRatio * 100)}%)</div>
-          <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
-        </>
-      ) : null}
+        ) : null}
+        <label className="upload-box">
+          <strong>Tap to upload logo</strong>
+          <span>PNG or JPG only</span>
+          <input type="file" accept="image/png,image/jpeg" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) readFile(file, (design) => onDesigns({ ...designs, [activeKey]: design }));
+          }} />
+        </label>
+        {active && rect ? (
+          <>
+            <p className="upload-ok">Uploaded: {active.fileName}</p>
+            <label className="range-field">
+              Logo size
+              <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={rect.widthRatio} onChange={(event) => updateWidth(Number(event.target.value))} />
+            </label>
+            <div className="mini-summary">Logo size: {widthCm.toFixed(1)} cm x {heightCm.toFixed(1)} cm ({Math.round(rect.widthRatio * 100)}%)</div>
+            <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

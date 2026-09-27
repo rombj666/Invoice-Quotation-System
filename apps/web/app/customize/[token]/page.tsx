@@ -9,6 +9,7 @@ import { CartLogoCustomizer } from "../../../components/customization/CartLogoCu
 import { CupSleeveCustomizer } from "../../../components/customization/CupSleeveCustomizer";
 import { CupStickerCustomizer } from "../../../components/customization/CupStickerCustomizer";
 import { EventDetailsStep } from "../../../components/invoice/EventDetailsStep";
+import { LATTE_PHYSICAL } from "../../../lib/customization-layout";
 import { getCustomerCustomizationSteps } from "../../../lib/customization-flow";
 import { loadCustomization, submitCustomization } from "../../../lib/customization-storage";
 import type { CustomizationByDate } from "../../../types/customization";
@@ -48,19 +49,21 @@ export function CustomizationFlow({ token, onComplete }: { token: string; onComp
   }
 
   if (!invoice) return <main className="hc-page"><Card><h2>Customization</h2><p className={error ? "error" : undefined}>{error || "Loading..."}</p></Card></main>;
-  if (complete) return <main className="hc-page"><Card><h2>Customization Submitted</h2><p>Thank you. Your event setup and artwork have been sent to Hour Coffee.</p>{customMenu ? <p>Custom Menu: A4 · 21 × 29.7 cm</p> : null}{latteArt ? <p>Latte Art / Print Pen: 8 cm diameter print area</p> : null}</Card></main>;
+  if (complete) return <main className="hc-page"><Card><h2>Customization Submitted</h2><p>Thank you. Your event setup and artwork have been sent to Hour Coffee.</p>{customMenu ? <p>Custom Menu: A4 · 21 × 29.7 cm</p> : null}{latteArt ? <p>Latte Art / Print Pen: {LATTE_PHYSICAL.printDiameterCm} cm diameter print area · {LATTE_PHYSICAL.artworkWidthCm} × {LATTE_PHYSICAL.artworkHeightCm} cm artwork</p> : null}</Card></main>;
 
-  return <main className="hc-page invoice-page"><div className="team-topbar">Hour Coffee - Customization</div><Card className="wide-card invoice-flow-card">
-    <div className="progress-header"><div className="progress-text">Step {stepIndex + 1} of {steps.length}</div><div className="progress-bar-line">{steps.map((step, index) => <span className={`progress-dot ${index <= stepIndex ? "active" : ""}`} key={step} />)}</div></div>
-    {current === "details" ? <EventDetailsStep eventAddress={eventAddress} dressCode={dressCode} customDressCode={customDressCode} environment={environment} environmentNotes={environmentNotes} onEventAddress={setEventAddress} onDressCode={setDressCode} onCustomDressCode={setCustomDressCode} onEnvironment={setEnvironment} onEnvironmentNotes={setEnvironmentNotes} /> : null}
-    {current === "cart" ? <CartLogoCustomizer mode={invoice.quotation.customizationOptions?.cart?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={cartDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setCartDesigns} /> : null}
-    {current === "sleeve" ? <CupSleeveCustomizer mode={invoice.quotation.customizationOptions?.sleeve?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={sleeveDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setSleeveDesigns} /> : null}
-    {current === "sticker" ? <CupStickerCustomizer mode={invoice.quotation.customizationOptions?.sticker?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={stickerDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setStickerDesigns} /> : null}
-    {current === "menu" ? <ArtworkCustomizer kind="menu" file={customMenu} onFile={setCustomMenu} /> : null}
-    {current === "latte" ? <ArtworkCustomizer kind="latte" file={latteArt} onFile={setLatteArt} /> : null}
-    {current === "finish" ? <div><h2>Finish Customization</h2><p className="step-copy">Submit the event setup and any artwork you added.</p></div> : null}
-    {error ? <p className="error">{error}</p> : null}
-    <StepNavigation canGoBack={stepIndex > 0} onBack={() => setStepIndex((index) => Math.max(0, index - 1))} onNext={current === "finish" ? finish : () => setStepIndex((index) => Math.min(steps.length - 1, index + 1))} nextLabel={current === "finish" ? submitting ? "SUBMITTING..." : "FINISH CUSTOMIZATION" : "CONTINUE"} nextDisabled={submitting} />
+  return <main className="hc-page invoice-page customize-page"><div className="team-topbar">Hour Coffee - Customization</div><Card className="wide-card invoice-flow-card">
+    <div className="progress-header customize-progress-header"><div className="progress-text">Step {stepIndex + 1} of {steps.length}</div><div className="progress-bar-line">{steps.map((step, index) => <span className={`progress-dot ${index <= stepIndex ? "active" : ""}`} key={step} />)}</div></div>
+    <div className="customize-step-body">
+      {current === "details" ? <div className="customize-step customize-details-step"><EventDetailsStep eventAddress={eventAddress} dressCode={dressCode} customDressCode={customDressCode} environment={environment} environmentNotes={environmentNotes} onEventAddress={setEventAddress} onDressCode={setDressCode} onCustomDressCode={setCustomDressCode} onEnvironment={setEnvironment} onEnvironmentNotes={setEnvironmentNotes} /></div> : null}
+      {current === "cart" ? <CartLogoCustomizer mode={invoice.quotation.customizationOptions?.cart?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={cartDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setCartDesigns} /> : null}
+      {current === "sleeve" ? <CupSleeveCustomizer mode={invoice.quotation.customizationOptions?.sleeve?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={sleeveDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setSleeveDesigns} /> : null}
+      {current === "sticker" ? <CupStickerCustomizer mode={invoice.quotation.customizationOptions?.sticker?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={stickerDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setStickerDesigns} /> : null}
+      {current === "menu" ? <ArtworkCustomizer kind="menu" file={customMenu} onFile={setCustomMenu} /> : null}
+      {current === "latte" ? <ArtworkCustomizer kind="latte" file={latteArt} onFile={setLatteArt} /> : null}
+      {current === "finish" ? <div className="customize-step customize-finish-step"><div className="customize-finish-card"><h2>Finish Customization</h2><p className="step-copy">Submit the event setup and any artwork you added.</p></div></div> : null}
+      {error ? <p className="error">{error}</p> : null}
+    </div>
+    <div className="customize-nav"><StepNavigation canGoBack={stepIndex > 0} onBack={() => setStepIndex((index) => Math.max(0, index - 1))} onNext={current === "finish" ? finish : () => setStepIndex((index) => Math.min(steps.length - 1, index + 1))} nextLabel={current === "finish" ? submitting ? "SUBMITTING..." : "FINISH CUSTOMIZATION" : "CONTINUE"} nextDisabled={submitting} /></div>
   </Card></main>;
 }
 

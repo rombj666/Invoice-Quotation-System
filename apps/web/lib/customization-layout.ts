@@ -17,6 +17,13 @@ type LayoutConfig = {
 export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 70 };
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
 
+export const LATTE_PHYSICAL = {
+  printDiameterCm: 8,
+  artworkWidthCm: 5,
+  artworkHeightCm: 5,
+  artworkAreaRatio: 5 / 8
+} as const;
+
 const CUP_DISPLAY_MAX_LOGO_SIZE_MM = 50;
 
 const CART_PHYSICAL_AREA_CM = { width: 90, height: 90 };
