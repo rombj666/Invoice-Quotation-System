@@ -13,7 +13,7 @@ import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
 import { getAllProvidedBeverageNames } from "../../lib/beverages";
 import { Button } from "../common/Button";
-import { submittedQuotationStorageKey } from "./QuotationShell";
+import { completeQuotationForm, quotationSuccessPath } from "../../lib/quotation-form-state";
 
 type Props = {
   data: QuotationData;
@@ -89,8 +89,8 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
         setActiveQuotationNo(quotationNo);
         await afterQuotationNumberPaint();
       });
-      window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({ quotationNo: saved.quotationNo, status: "submitted", submittedAt: new Date().toISOString() }));
-      router.push(`/quotation/submitted?quotationNo=${encodeURIComponent(saved.quotationNo)}`);
+      completeQuotationForm(saved.quotationNo);
+      router.replace(quotationSuccessPath);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Unable to submit quotation. Please try again.");
     } finally {

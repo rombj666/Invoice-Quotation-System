@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { completeQuotationForm, hasSubmittedQuotation, quotationDraftStorageKey, quotationSuccessPath, submittedQuotationStorageKey } from "../../lib/quotation-form-state";
 import { getMinimumSelectableDate, toLocalIsoDate } from "../../lib/calendar";
 import { openCustomerQuotationWhatsApp } from "../../lib/contact";
 import { formatDateLabel, formatMoney } from "../../lib/formatters";
@@ -20,8 +22,6 @@ import { QuotationReviewStep } from "./QuotationReviewStep";
 import { trackGaEvent } from "../../lib/ga";
 
 const totalSteps = 2;
-const draftStorageKey = "hourCoffeeQuotationDraft";
-export const submittedQuotationStorageKey = "hourCoffeeLastSubmittedQuotation";
 const gaMilestoneStorageKey = "hourCoffeeQuotationGaMilestones";
 
 const PACKAGE_ORDER: Record<PackageCode, number> = {
@@ -131,6 +131,8 @@ function trackGaMilestoneOnce(
 }
 
 export function QuotationShell({ editQuotation }: { editQuotation?: QuotationData }) {
+  const router = useRouter();
+  const completed = useRef(false);
   const [step, setStep] = useState(0);
   const [data, setData] = useState<QuotationData>(() => editQuotation ? { ...initialQuotation(), ...editQuotation } : initialQuotation());
   const [resubmitted, setResubmitted] = useState(false);
@@ -148,7 +150,6 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
   const [pdfData, setPdfData] = useState<QuotationData | null>(null);
   const engagedVisitDate = useRef("");
   const submitting = useRef(false);
-  const submittedContact = useRef<Parameters<typeof openCustomerQuotationWhatsApp>[0] | null>(null);
   const minimumDate = useMemo(() => toLocalIsoDate(getMinimumSelectableDate()), []);
 
   const displayPackages = useMemo(
@@ -175,11 +176,24 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
       trackGaMilestoneOnce("quotation_view");
       trackQuotationEvent("STEP2_VISITED");
     } else {
+      if (hasSubmittedQuotation()) {
+        completed.current = true;
+        window.localStorage.removeItem(quotationDraftStorageKey);
+        router.replace(quotationSuccessPath);
+        return;
+      }
       let restoredStep = 0;
-      const savedDraft = window.localStorage.getItem(draftStorageKey);
+      const savedDraft = window.localStorage.getItem(quotationDraftStorageKey);
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft) as { version?: number; step?: number; data?: QuotationData };
+          if (parsed.data?.quotationPdfUrl && parsed.data.quotationPdfPublicId) {
+            // Recover drafts left behind by the previous post-submit behavior.
+            completed.current = true;
+            completeQuotationForm(parsed.data.quotationNo);
+            router.replace(quotationSuccessPath);
+            return;
+          }
           if (parsed.version === 7 && parsed.data?.customer && Array.isArray(parsed.data.serviceDates)) {
             const savedDuration = parsed.data.serviceDuration === "FULL_DAY" || parsed.data.serviceDuration === "HALF_DAY"
               ? parsed.data.serviceDuration
@@ -189,13 +203,14 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
             restoredStep = parsed.step === 1 ? 1 : 0;
           }
         } catch {
-          window.localStorage.removeItem(draftStorageKey);
+          window.localStorage.removeItem(quotationDraftStorageKey);
         }
       }
       trackQuotationEvent("OPEN");
       trackGaMilestoneOnce("quotation_view");
       if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
     }
+    setReady(true);
     loadLockedDates().then((dates) => { setLockedDates(dates); setLocksLoading(false); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load date availability. Please reload the page."));
 
@@ -204,13 +219,36 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
         item.name.trim().toLowerCase() === "conference" ? { ...item, availableOptions: [] } : item
       )))
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load packages."))
-      .finally(() => { setPackagesLoading(false); setReady(true); });
+      .finally(() => { setPackagesLoading(false); });
   }, []);
 
+  // Persist each committed edit before paint, including immediately before refresh/close.
+  useLayoutEffect(() => {
+    if (!ready || editQuotation || completed.current || hasSubmittedQuotation()) return;
+    window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 7, step, data }));
+  }, [data, ready, step, editQuotation]);
+
   useEffect(() => {
-    if (!ready || editQuotation) return;
-    window.localStorage.setItem(draftStorageKey, JSON.stringify({ version: 7, step, data }));
-  }, [data, ready, step]);
+    if (editQuotation) return;
+    const returnToSuccess = () => {
+      if (!hasSubmittedQuotation()) return;
+      completed.current = true;
+      window.localStorage.removeItem(quotationDraftStorageKey);
+      setReady(false);
+      setData(initialQuotation());
+      setPdfData(null);
+      router.replace(quotationSuccessPath);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === submittedQuotationStorageKey) returnToSuccess();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("pageshow", returnToSuccess);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("pageshow", returnToSuccess);
+    };
+  }, [editQuotation, router]);
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -417,13 +455,8 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
       return;
     }
 
-    const existingContact = submittedContact.current ?? (data.quotationPdfUrl && data.quotationPdfPublicId ? {
-      quotation: data,
-      packageName: data.packageSnapshot?.name ?? selectedPackage?.name ?? "",
-      estimatedTotal: data.pricingSnapshot?.total ?? selectedPreview?.finalTotal ?? 0
-    } : null);
-    if (existingContact) {
-      openCustomerQuotationWhatsApp(existingContact);
+    if (completed.current || hasSubmittedQuotation()) {
+      router.replace(quotationSuccessPath);
       return;
     }
     if (!selectedPackage) return setError("Choose a package first.");
@@ -463,22 +496,32 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
         setPdfData((current) => current ? { ...current, quotationNo: nextQuotationNo } : current);
         await afterPdfPaint();
       });
-      trackGaMilestoneOnce("generate_lead", {
-        quotation_no: saved.quotationNo
-      });
-      submittedContact.current = { quotation: saved, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal };
-      setData(saved);
-      window.localStorage.setItem(submittedQuotationStorageKey, JSON.stringify({ quotationNo: saved.quotationNo, status: "submitted", submittedAt: new Date().toISOString() }));
-      openCustomerQuotationWhatsApp(submittedContact.current, whatsappWindow);
+      completed.current = true;
+      completeQuotationForm(saved.quotationNo);
+      setData(initialQuotation());
+      setStep(0);
+      setPreview(null);
+      setPackageTotals({});
+      setPdfData(null);
+      setReady(false);
+      try {
+        trackGaMilestoneOnce("generate_lead", { quotation_no: saved.quotationNo });
+        openCustomerQuotationWhatsApp({ quotation: saved, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal }, whatsappWindow);
+      } finally {
+        router.replace(quotationSuccessPath);
+      }
     } catch (reason) {
       whatsappWindow?.close();
-      setError(reason instanceof Error ? reason.message : "Unable to submit quotation. Please try again.");
+      if (!completed.current) setError(reason instanceof Error ? reason.message : "Unable to submit quotation. Please try again.");
+      else router.replace(quotationSuccessPath);
     } finally {
       submitting.current = false;
       setIsSubmitting(false);
       setPdfData(null);
     }
   }
+
+  if (!ready || completed.current) return <main className="hc-page"><Card><p>{completed.current ? "Opening confirmation…" : "Loading quotation…"}</p></Card></main>;
 
   if (resubmitted) {
     return <main className="hc-page quotation-workspace">
