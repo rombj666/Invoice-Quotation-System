@@ -39,7 +39,7 @@ export default function GenerateInvoicePage() {
         const existing = invoices.find((item) => item.quotation.quotationNo === params.quotationNo);
         if (existing) return router.replace(`/admin/invoices/${existing.invoiceNo}`);
         if (!loaded) return setError("Quotation not found.");
-        if (loaded.status !== "APPROVED") return setError("Only approved quotations can generate an invoice.");
+        if (!["PENDING_APPROVAL", "APPROVED"].includes(loaded.status ?? "PENDING_APPROVAL")) return setError("Only submitted quotations can generate an invoice.");
         setEventAddress(loaded.fullAddress || loaded.location || "");
         setQuotation({ ...structuredClone(loaded), invoiceServiceTiming: true, totalCups: undefined, serviceDuration: undefined, serviceDates: loaded.serviceDates.map((date) => ({ ...date, durationMode: undefined })) });
         setInvoiceNo(nextNo);
@@ -88,7 +88,7 @@ export default function GenerateInvoicePage() {
   }
 
   return <main className="admin-page"><Card className="admin-card admin-edit-card">
-    <div className="admin-page-header"><div><p className="admin-eyebrow">Approved quotation {quotation.quotationNo}</p><h1>Generate Invoice</h1><p>Confirm the final invoice snapshot without changing the approved quotation.</p></div><Link className="admin-link-button" href={`/admin/quotations/${quotation.quotationNo}`}>Cancel</Link></div>
+    <div className="admin-page-header"><div><p className="admin-eyebrow">Quotation {quotation.quotationNo}</p><h1>Generate Invoice</h1><p>Confirm the final invoice snapshot without changing the submitted quotation.</p></div><Link className="admin-link-button" href={`/admin/quotations/${quotation.quotationNo}`}>Cancel</Link></div>
     <div className="admin-invoice-steps" aria-label="Invoice generation progress"><button className={step === 1 ? "active" : ""} onClick={() => setStep(1)}>1. Customer &amp; Company</button><button className={step === 2 ? "active" : ""} onClick={() => next(2)}>2. Event &amp; Order</button><button className={step === 3 ? "active" : ""} onClick={() => next(3)}>3. Review &amp; Generate</button></div>
     {error ? <p className="error">{error}</p> : null}
 
@@ -107,12 +107,12 @@ export default function GenerateInvoicePage() {
       <label className="admin-field"><span>Event Address</span><textarea rows={4} value={eventAddress} onChange={(e) => setEventAddress(e.target.value)} placeholder="Exact venue address" /></label>
       <label className="admin-field"><span>Discount Percent</span><input type="number" min="0" max="100" step="0.01" value={quotation.discountPercent} onChange={(e) => patch({ discountPercent: Number(e.target.value) })} /></label>
     </div></section>
-    <section className="admin-edit-section"><h2>Service Dates</h2><button type="button" onClick={addDate}>Add Date</button>{quotation.serviceDates.map((item) => <div className="admin-inline-fields" key={item.id}>
+    <section className="admin-edit-section invoice-service-date-editor"><div className="admin-section-heading"><h2>Service Dates</h2><button className="admin-link-button" type="button" onClick={addDate}>+ Add Date</button></div>{quotation.serviceDates.map((item) => <div className="invoice-service-date-row" key={item.id}>
       <label className="admin-field"><span>Date</span><input type="date" value={item.serviceDate} onChange={(e) => date(item.id, { serviceDate: e.target.value })} /></label>
       <label className="admin-field"><span>Cups</span><input type="number" min="50" value={item.cups} onChange={(e) => date(item.id, { cups: Number(e.target.value) })} /></label>
       <label className="admin-field"><span>Start Time</span><input type="time" value={item.startTime} onChange={(e) => date(item.id, { startTime: e.target.value })} /></label>
       <label className="admin-field"><span>End Time</span><input type="time" value={item.endTime} onChange={(e) => date(item.id, { endTime: e.target.value })} /></label>
-      <button type="button" disabled={quotation.serviceDates.length === 1} onClick={() => removeDate(item.id)}>Remove Date</button>
+      <button className="admin-link-button invoice-remove-date" type="button" aria-label={`Remove service date ${item.serviceDate || "new date"}`} disabled={quotation.serviceDates.length === 1} onClick={() => removeDate(item.id)}>Remove</button>
     </div>)}<p aria-live="polite">{pricingError || (pricing ? `Total: ${formatMoney(pricing.total)}` : "Complete the service dates to calculate pricing.")}</p></section>
     <section className="admin-edit-section"><h2>Package, Features &amp; Charges</h2><p><strong>{quotation.packageSnapshot?.name || "Saved quotation package"}</strong></p>{quotation.packageSnapshot?.perks.map((perk) => <p key={perk.id}>✓ {perk.name}</p>)}{quotation.selectedAddons.map((addon) => <label className="admin-field" key={addon.name}><span>{addon.name}</span><input type="number" min="0" step="0.01" value={addon.price} onChange={(e) => patch({ selectedAddons: quotation.selectedAddons.map((item) => item.name === addon.name ? { ...item, price: Number(e.target.value) } : item) })} /></label>)}{(quotation.extraCharges ?? []).map((charge) => <div key={charge.id}><label className="admin-field"><span>{charge.title}</span><input type="number" min="0" step="0.01" value={charge.amount} onChange={(e) => patch({ extraCharges: quotation.extraCharges?.map((item) => item.id === charge.id ? { ...item, amount: Number(e.target.value) } : item) })} /></label>{charge.appliesToAllDates === false ? <fieldset><legend>Applicable service dates</legend>{quotation.serviceDates.map((date) => <label key={date.id}><input type="checkbox" checked={charge.serviceDateIds?.includes(date.id) ?? false} onChange={(event) => patch({ extraCharges: quotation.extraCharges?.map((item) => item.id === charge.id ? { ...item, serviceDateIds: event.target.checked ? [...(item.serviceDateIds ?? []), date.id] : item.serviceDateIds?.filter((id) => id !== date.id) } : item) })} />{date.serviceDate || "New date"}</label>)}{!charge.serviceDateIds?.length ? <p className="error">Choose a remaining service date for this charge.</p> : null}</fieldset> : null}</div>)}</section>
     <div className="admin-edit-actions"><button className="hc-button hc-button-secondary" onClick={() => setStep(1)}>Back</button><button className="hc-button hc-button-primary" onClick={() => next(3)}>Review Invoice</button></div></> : null}

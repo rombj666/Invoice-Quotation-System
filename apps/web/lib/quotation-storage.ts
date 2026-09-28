@@ -176,12 +176,6 @@ export async function loadPreviousQuotationSummary(
   }
 }
 
-export function approveQuotation(quotationNo: string): Promise<QuotationData> {
-  return request<QuotationData>(`/api/quotations/${encodeURIComponent(quotationNo)}/approve`, {
-    method: "PATCH"
-  });
-}
-
 // Customer resubmission after admin returns the quotation for changes. The
 // quotation number is preserved; the editable fields plus a freshly generated
 // PDF are sent so the record and document stay in sync.

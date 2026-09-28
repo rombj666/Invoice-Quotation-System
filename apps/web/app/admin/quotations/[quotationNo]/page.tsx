@@ -10,7 +10,7 @@ import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
-import { approveQuotation, deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
+import { deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
 import { getCustomerPortalToken } from "../../../../lib/admin-api";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
@@ -52,22 +52,11 @@ export default function AdminQuotationDetailPage() {
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
   const isApproved = status === "APPROVED";
+  const canGenerateInvoice = !quotation.hasInvoice && ["PENDING_APPROVAL", "APPROVED"].includes(status);
   const isReturned = status === "RETURNED_FOR_EDIT";
   const statusLabel = status.replaceAll("_", " ");
   const statusClass = isReturned ? "returned" : isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending";
   const canEditQuotation = !quotation.hasInvoice && (status === "DRAFT" || status === "PENDING_APPROVAL");
-
-  async function approve() {
-    if (!window.confirm("Are you sure you want to approve this quotation?")) return;
-    setError("");
-    setSuccess("");
-    try {
-      setQuotation(await approveQuotation(currentQuotation.quotationNo));
-      setSuccess("Quotation approved successfully.");
-    } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
-    }
-  }
 
   async function remove() {
     setError("");
@@ -89,15 +78,8 @@ export default function AdminQuotationDetailPage() {
     <AdminSectionEditor title={quotation.quotationNo} backHref="/admin/quotations" activeSection={activeSection} onSectionChange={setActiveSection}
       actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
 {isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customization Link</button> : null}
-{currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+{currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : canGenerateInvoice ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
 {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
-{status === "PENDING_APPROVAL" && !quotation.hasInvoice ? (
-              <>
-                <button className="admin-approve-button large" type="button" onClick={approve}>
-                  Approve Quotation
-                </button>
-              </>
-            ) : null}
 {isReturned ? (
               <span className="admin-status-note">Waiting for customer to resubmit</span>
             ) : null}

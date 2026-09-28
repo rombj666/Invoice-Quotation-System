@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../lib/contact";
 import { calculateQuotationPricing } from "../../../lib/pricing";
-import { approveQuotation, deleteQuotation, loadAllQuotations } from "../../../lib/quotation-storage";
+import { deleteQuotation, loadAllQuotations } from "../../../lib/quotation-storage";
 import { formatDateLabel, formatMalaysiaDateInput, formatMoney } from "../../../lib/formatters";
 import type { QuotationData } from "../../../types/quotation";
 
@@ -30,19 +30,6 @@ export default function AdminQuotationListPage() {
   useEffect(() => {
     refresh();
   }, []);
-
-  async function approve(quotationNo: string) {
-    if (!window.confirm("Are you sure you want to approve this quotation?")) return;
-    setError("");
-    setSuccess("");
-    try {
-      const approved = await approveQuotation(quotationNo);
-      setQuotations((current) => current.map((quotation) => (quotation.quotationNo === quotationNo ? approved : quotation)));
-      setSuccess("Quotation approved successfully.");
-    } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Unable to approve quotation.");
-    }
-  }
 
   async function remove(quotationNo: string) {
     await deleteQuotation(quotationNo);
@@ -99,11 +86,7 @@ export default function AdminQuotationListPage() {
                       <div className="admin-actions">
                         <Link href={`/admin/quotations/${quotation.quotationNo}`}>View</Link>
                         {!quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? <Link href={`/admin/quotations/${quotation.quotationNo}/edit`}>Edit</Link> : null}
-                        {!isApproved && !quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? (
-                          <button className="admin-approve-button" type="button" onClick={() => approve(quotation.quotationNo)}>
-                            Approve Quotation
-                          </button>
-                        ) : null}
+                        {!quotation.hasInvoice && ["PENDING_APPROVAL", "APPROVED"].includes(status) ? <Link className="admin-approve-button" href={`/admin/quotations/${quotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
                         {!isApproved && !quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? (
                           <button type="button" onClick={() => remove(quotation.quotationNo)}>
                             Delete

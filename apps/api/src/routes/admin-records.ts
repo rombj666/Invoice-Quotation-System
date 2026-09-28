@@ -354,7 +354,11 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
       ...(confirmed.extraCharges ?? []).map((charge: any) => ({ itemType: "OTHER" as InvoiceItemType, name: charge.title, description: charge.description || null, quantity: 1, unitPrice: Number(charge.amount), amount: Number(charge.amount), metadata: toJsonValue({ serviceDateIds: charge.serviceDateIds ?? [], appliesToAllDates: charge.appliesToAllDates ?? true }) }))
     ];
     const invoice = await prisma.$transaction(async (tx) => {
-      await assertQuotationEditable(tx, current.id);
+      const lockedQuotation = await assertQuotationEditable(tx, current.id);
+      const lockedGuard = canQuotationCreateInvoice(lockedQuotation.status, lockedQuotation.expiresAt);
+      if (!lockedGuard.allowed) throw new QuotationReadOnlyError(lockedGuard.reason);
+      assertValidQuotationTransition(lockedQuotation.status, "CONVERTED_TO_INVOICE");
+      const quotationMetadata = (lockedQuotation.metadata ?? {}) as Record<string, unknown>;
       const created = await tx.invoice.create({
         data: {
           invoiceNo, quotationId: current.id, customerId: current.customerId,
@@ -365,7 +369,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
         },
         include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
       });
-      await tx.quotation.update({ where: { id: current.id }, data: { status: "CONVERTED_TO_INVOICE", statusHistory: { create: { fromStatus: "APPROVED", toStatus: "CONVERTED_TO_INVOICE", changedBy: "admin", changeSummary: `Generated unpaid invoice ${invoiceNo}.` } } } });
+      await tx.quotation.update({ where: { id: current.id }, data: { status: "CONVERTED_TO_INVOICE", metadata: toJsonValue({ ...quotationMetadata, portalToken: typeof quotationMetadata.portalToken === "string" ? quotationMetadata.portalToken : randomBytes(32).toString("base64url") }), statusHistory: { create: { fromStatus: lockedQuotation.status, toStatus: "CONVERTED_TO_INVOICE", changedBy: "admin", changeSummary: `Generated unpaid invoice ${invoiceNo}.` } } } });
       return created;
     });
     res.status(201).json(toInvoicePayload(invoice));

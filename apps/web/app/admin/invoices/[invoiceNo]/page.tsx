@@ -4,6 +4,7 @@ import { customizationPhysicalSize, physicalSizeLabels } from "../../../../lib/c
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ArtworkComparison } from "../../../../components/admin/ArtworkComparison";
 import { AdminSectionEditor } from "../../../../components/admin/AdminSectionEditor";
 import { CustomizationLinkModal } from "../../../../components/admin/CustomizationLinkModal";
 import { Card } from "../../../../components/common/Card";
@@ -222,10 +223,10 @@ export default function AdminInvoiceDetailPage() {
           ))}</> },
         { id: "notes", label: "Notes & History", content: <>{invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
 {invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}{invoice.customizationSubmission?.submittedAt ? <section><h3>Customization submitted</h3><p>{new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p></section> : null}</> },
-        ...((customizationSteps.includes("cart") || Object.keys(invoice.cartDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CART_DESIGN")) ? [{ id: "cart", label: "Cart Artwork", content: <><CustomizationPreview title="Cart Design Image" designs={invoice.cartDesigns} urls={invoice.customizationUrls} type="CART_DESIGN" /></> }] : []),
+        ...((customizationSteps.includes("cart") || Object.keys(invoice.cartDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CART_DESIGN")) ? [{ id: "cart", label: "Cart Artwork", content: <><ArtworkComparison kind="cart" designs={invoice.cartDesigns} urls={invoice.customizationUrls} /></> }] : []),
         ...((customizationSteps.includes("sticker") || Object.keys(invoice.stickerDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CUP_STICKER" && file.designKey !== "latte-art")) ? [{ id: "stickers", label: "Cup Artwork", content: <><CustomizationPreview title="Hot Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":hot" />
 <CustomizationPreview title="Cold Cup Design Image" designs={invoice.stickerDesigns} urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix=":cold" /></> }] : []),
-        ...((customizationSteps.includes("sleeve") || Object.keys(invoice.sleeveDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CUP_SLEEVE")) ? [{ id: "sleeves", label: "Sleeve Artwork", content: <><CustomizationPreview title="Cup Sleeve Design Image" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} type="CUP_SLEEVE" /></> }] : []),
+        ...((customizationSteps.includes("sleeve") || Object.keys(invoice.sleeveDesigns ?? {}).length > 0 || invoice.customizationUrls?.some((file) => file.type === "CUP_SLEEVE")) ? [{ id: "sleeves", label: "Sleeve Artwork", content: <><ArtworkComparison kind="sleeve" designs={invoice.sleeveDesigns} urls={invoice.customizationUrls} /></> }] : []),
         ...((customizationSteps.includes("latte") || invoice.customizationUrls?.some((file) => file.designKey === "latte-art")) ? [{ id: "latte", label: "Latte Artwork", content: <><CustomizationPreview title="Latte Art / Print Pen Artwork · 8 cm print area" urls={invoice.customizationUrls} type="CUP_STICKER" keySuffix="latte-art" /></> }] : []),
       ]}
     >

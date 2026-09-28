@@ -19,7 +19,7 @@ export const QUOTATION_FINAL_STATUSES: ReadonlySet<QuotationStatus> = new Set<Qu
 // Legal transitions: from -> allowed target statuses.
 const QUOTATION_TRANSITIONS: Record<QuotationStatus, ReadonlySet<QuotationStatus>> = {
   DRAFT: new Set(["PENDING_APPROVAL", "CANCELLED", "EXPIRED"]),
-  PENDING_APPROVAL: new Set(["APPROVED", "RETURNED_FOR_EDIT", "CANCELLED", "EXPIRED"]),
+  PENDING_APPROVAL: new Set(["CONVERTED_TO_INVOICE", "APPROVED", "RETURNED_FOR_EDIT", "CANCELLED", "EXPIRED"]),
   APPROVED: new Set(["REVIEWED", "SENT", "CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
   REVIEWED: new Set(["SENT", "APPROVED", "CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
   SENT: new Set(["CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
@@ -48,7 +48,7 @@ export function canQuotationCreateInvoice(
   if (status === "CANCELLED") return { allowed: false, reason: "The quotation has been cancelled and can no longer be invoiced." };
   if (status === "EXPIRED") return { allowed: false, reason: "The quotation has expired and can no longer be invoiced." };
   if (status === "CONVERTED_TO_INVOICE") return { allowed: false, reason: "This quotation already has an invoice." };
-  if (status !== "APPROVED") return { allowed: false, reason: "The quotation is still pending approval." };
+  if (status !== "PENDING_APPROVAL" && status !== "APPROVED") return { allowed: false, reason: "Only submitted quotations can generate an invoice." };
   if (expiresAt && new Date(expiresAt).getTime() < now.getTime()) {
     return { allowed: false, reason: "The quotation has expired and can no longer be invoiced." };
   }
