@@ -31,6 +31,7 @@ export type InvoiceDetails = {
   receiptUrl?: string;
   receiptMimeType?: string;
   invoiceFiles?: Array<{
+    metadata?: { physicalSize?: unknown; kind?: string };
     fileUrl: string;
     fileName: string;
     mimeType?: string;

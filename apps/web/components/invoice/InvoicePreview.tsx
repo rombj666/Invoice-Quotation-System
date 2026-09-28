@@ -2,11 +2,10 @@
 
 import type { QuotationData } from "../../types/quotation";
 import type { InvoiceDetails } from "../../types/invoice";
-import { getBaristasNeeded } from "../../lib/invoice-pricing";
 import { calculateQuotationPricing } from "../../lib/pricing";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
-import { getAllProvidedBeverageNames, getProvidedBeverageNames } from "../../lib/beverages";
+import presentation from "../common/PdfPresentation.module.css";
 
 export function InvoicePreview({
   invoiceNo,
@@ -22,10 +21,18 @@ export function InvoicePreview({
   showDownloadButton?: boolean;
 }) {
   const pricing = calculateQuotationPricing(quotation);
-  const firstDate = quotation.serviceDates[0];
-  const beverageNames = getAllProvidedBeverageNames(quotation).join(", ");
-  const providedBeveragesByDate = quotation.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(quotation, date.id) }));
-  const hasDateSpecificDrinkPreferences = new Set(providedBeveragesByDate.map(({ names }) => names.join("|"))).size > 1;
+  const selectedFeatures = [...(quotation.packageSnapshot?.perks.map((perk) => perk.name) ?? []), ...quotation.selectedAddons.map((addon) => addon.name)];
+  const features = [...new Map([
+    ...selectedFeatures,
+    quotation.hasCupSleeves && !selectedFeatures.some((name) => /cup[ -]?sleeve/i.test(name)) ? "Custom Cup Sleeves" : "",
+    quotation.hasCupStickers && !selectedFeatures.some((name) => /cup[ -]?sticker/i.test(name)) ? "Custom Cup Stickers" : ""
+  ].map((name) => name.trim()).filter(Boolean).map((name) => [name.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " "), name])).values()];
+  const savedInvoice = invoice as (InvoiceDetails & { pricingSnapshot?: { total: number } }) | undefined;
+  // Stored invoices display their confirmed total; unsaved previews use the existing engine.
+  const total = savedInvoice?.createdAt
+    ? savedInvoice.pricingSnapshot?.total ?? savedInvoice.quotation.pricingSnapshot?.total ?? pricing.total
+    : pricing.total;
+  const baristas = (date: QuotationData["serviceDates"][number]) => pricing.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? 0;
 
   return (
     <div className="invoice-preview-wrap">
@@ -69,51 +76,32 @@ export function InvoicePreview({
         </div>
       </div>
 
-      {invoice ? (
-        <div className="invoice-section">
-          <h3>Event Details</h3>
-          <div className="invoice-summary-grid">
-            <div><span>Event area</span><strong>{invoice.eventArea === "Others" ? invoice.eventAreaOther || "Others" : invoice.eventArea || "-"}</strong></div>
-            <div><span>Event address</span><strong>{invoice.eventAddress || "-"}</strong></div>
-            <div><span>Invoice status</span><strong>{(invoice.invoiceStatus ?? "SUBMITTED").replaceAll("_", " ")}</strong></div>
-            <div><span>Payment status</span><strong>{(invoice.paymentStatus ?? "UNPAID").replaceAll("_", " ")}</strong></div>
-          </div>
+      <div className="invoice-section">
+        <h3>Event / Order</h3>
+        <div className="invoice-summary-grid">
+          <div><span>Event Address</span><strong>{invoice?.eventAddress || quotation.fullAddress || quotation.location || "-"}</strong></div>
+          <div><span>Total Cups</span><strong>{pricing.totalCups}</strong></div>
+          <div><span>Selected Package</span><strong>{quotation.packageSnapshot?.name || "Coffee Catering"}</strong></div>
         </div>
-      ) : null}
+      </div>
 
       <div className="invoice-section">
-        <h3>Event Summary</h3>
-        <div className="invoice-summary-grid">
-          <div>
-            <span>Total cups</span>
-            <strong>{pricing.totalCups}</strong>
-          </div>
-          <div>
-            <span>First service time</span>
-            <strong>{firstDate ? `${formatTime(firstDate.startTime)} to ${formatTime(firstDate.endTime)}` : "-"}</strong>
-          </div>
-          <div>
-            <span>First date barista(s)</span>
-            <strong>{firstDate ? getBaristasNeeded(firstDate) : "-"}</strong>
-          </div>
-        </div>
+        <h3>Service Dates</h3>
         <div className="table-scroll">
           <table className="invoice-table compact invoice-service-table">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Time</th>
-                <th>Cups</th>
-                <th>Barista(s)</th>
+                <th>Start Time – End Time</th>
+                <th>Total Baristas</th>
               </tr>
             </thead>
             <tbody>
               {quotation.serviceDates.map((date) => (
                 <tr key={date.id}>
                   <td className="date-cell">{formatCompactDate(date.serviceDate)}</td>
-                  <td>{formatTime(date.startTime)} to {formatTime(date.endTime)}</td>
-                  <td className="number-cell">{date.cups}</td>
-                  <td className="number-cell">{getBaristasNeeded(date)}</td>
+                  <td>{formatTime(date.startTime)} – {formatTime(date.endTime)}</td>
+                  <td className="number-cell">{baristas(date)}</td>
                 </tr>
               ))}
             </tbody>
@@ -121,65 +109,7 @@ export function InvoicePreview({
         </div>
       </div>
 
-      <table className="invoice-table invoice-item-table">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Description</th>
-            <th>Qty</th>
-            <th>Rate</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>{quotation.packageSnapshot?.name || "Coffee Catering"}</td>
-            <td>
-              {beverageNames || "Beverages saved with quotation"}
-            </td>
-            <td className="number-cell">1</td>
-            <td className="amount-cell">{formatMoney(pricing.packageAmount)}</td>
-            <td className="amount-cell">{formatMoney(pricing.packageAmount)}</td>
-          </tr>
-          {(quotation.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description || "Additional charge"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
-        </tbody>
-      </table>
-
-      {(quotation.packageSnapshot?.perks.length || quotation.selectedAddons.length || quotation.hasCupSleeves || quotation.hasCupStickers) ? <div className="invoice-section"><h3>Package Features &amp; Add-ons</h3><p>{[
-        ...(quotation.packageSnapshot?.perks.map((perk) => perk.name) ?? []),
-        ...quotation.selectedAddons.map((addon) => addon.name),
-        quotation.hasCupSleeves ? "Custom Cup Sleeves" : "",
-        quotation.hasCupStickers ? "Custom Cup Stickers" : ""
-      ].filter(Boolean).join(", ")}</p></div> : null}
-
-      {quotation.pricingSnapshot ? <div className="invoice-section"><h3>Pricing Breakdown</h3><div className="invoice-summary-grid">
-        {quotation.pricingSnapshot.cupRevenue !== undefined ? <div><span>Drinks / cups</span><strong>{formatMoney(quotation.pricingSnapshot.cupRevenue)}</strong></div> : null}
-        {quotation.pricingSnapshot.sleeveCharge ? <div><span>Cup sleeves</span><strong>{formatMoney(quotation.pricingSnapshot.sleeveCharge)}</strong></div> : null}
-        {quotation.pricingSnapshot.selectionCharge ? <div><span>Package features / add-ons</span><strong>{formatMoney(quotation.pricingSnapshot.selectionCharge)}</strong></div> : null}
-        {pricing.extraBaristaFee ? <div><span>Extra baristas</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
-        {quotation.packageSnapshot?.extendedDayCharge ? <div><span>Extended service days</span><strong>{formatMoney(quotation.packageSnapshot.extendedDayCharge)}</strong></div> : null}
-        {quotation.pricingSnapshot.travel ? <div><span>Travel</span><strong>{formatMoney(quotation.pricingSnapshot.travel)}</strong></div> : null}
-      </div></div> : null}
-
-      {hasDateSpecificDrinkPreferences ? <div className="invoice-section">
-        <h3>Drink Preferences</h3>
-        <div className="drink-preferences-summary">{providedBeveragesByDate.map(({ date, names }) => <div key={date.id}><strong>{formatCompactDate(date.serviceDate)}</strong><p>Drinks provided: {names.join(", ") || "None"}</p></div>)}</div>
-      </div> : null}
-
-      <div className="invoice-totals">
-        <div>
-          <span>Subtotal</span>
-          <strong>{formatMoney(pricing.subtotal)}</strong>
-        </div>
-        {pricing.discountAmount > 0 ? <div>
-          <span>Discount</span>
-          <strong>{formatMoney(pricing.discountAmount)}</strong>
-        </div> : null}
-        <div className="final">
-          <span>Total RM</span>
-          <strong>{formatMoney(pricing.total)}</strong>
-        </div>
-      </div>
+      {features.length ? <div className="invoice-section"><h3>WHAT’S INCLUDED</h3><ul className={presentation.inclusions}>{features.map((name) => <li key={name}>{name}</li>)}</ul></div> : null}
 
       <div className="invoice-bank">
         <strong>Bank Details</strong>
@@ -187,6 +117,7 @@ export function InvoicePreview({
         <p>Account Number: 3242195227</p>
         <p>Bank: PUBLIC BANK BERHAD</p>
       </div>
+      <div className={presentation.total}><span>TOTAL</span><strong>{formatMoney(total)}</strong></div>
       <footer>contact@hourcoffee.com.my | WhatsApp +6012-5689129</footer>
     </div>
     {showDownloadButton ? <button className="pdf-btn" type="button" onClick={async () => {

@@ -18,7 +18,8 @@ export function toInvoicePayload(record: any) {
     invoiceFiles: record.invoiceFiles?.map((file: any) => ({
       fileUrl: file.fileUrl,
       fileName: file.fileName,
-      mimeType: file.mimeType
+      mimeType: file.mimeType,
+      metadata: metadata.customizationSubmission?.artworkFiles?.find((entry: any) => entry.fileUrl === file.fileUrl)
     })) ?? [],
     customizationUrls: record.customizationFiles?.map((file: any) => ({
       type: file.type,

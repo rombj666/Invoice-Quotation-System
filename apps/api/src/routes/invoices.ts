@@ -1,10 +1,10 @@
+import { assertQuotationEditable, QuotationReadOnlyError } from "../utils/quotation-edit-lock";
 import { createHash, randomUUID } from "node:crypto";
 import { CustomizationType, InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { cloudinaryFolders, deleteCloudinaryImage, deleteCloudinaryPdf, uploadCloudinaryBuffer, uploadCloudinaryDataUrl, type CloudinaryUpload } from "../services/cloudinary.service";
 import { calculatePricing, hasValidServiceDates } from "../utils/invoice-pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
-import { PAYMENT_ACCOUNT_WHITELIST } from "../config/payment-accounts";
 import { prisma } from "../utils/prisma";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
@@ -32,7 +32,7 @@ async function getNextAvailableInvoiceNo(used: Set<string>, fromNo?: string): Pr
 async function invoiceForCustomizationToken(token: string) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const paid = await prisma.invoice.findMany({
-    where: { paymentStatus: "VERIFIED", status: { not: "CANCELLED" } },
+    where: { paymentStatus: { in: ["RECEIPT_UPLOADED", "VERIFIED"] }, status: { not: "CANCELLED" } },
     include: { quotation: true, paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
   });
   return paid.find((invoice) => (invoice.quotation.metadata as any)?.portalToken === token || (invoice.metadata as any)?.customizationAccess?.tokenHash === tokenHash) ?? null;
@@ -54,7 +54,7 @@ function customizationKinds(quotation: any) {
 invoiceRoutes.get("/customization/:token", async (req, res, next) => {
   try {
     const invoice = await invoiceForCustomizationToken(req.params.token);
-    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or payment has not been verified." });
+    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or a payment receipt has not been uploaded." });
     const payload = toInvoicePayload(invoice);
     delete payload.customizationAccess;
     res.json(payload);
@@ -66,10 +66,11 @@ invoiceRoutes.post("/customization/:token", async (req, res, next) => {
   let committed = false;
   try {
     const invoice = await invoiceForCustomizationToken(req.params.token);
-    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or payment has not been verified." });
+    if (!invoice) return res.status(404).json({ error: "This customization link is invalid or a payment receipt has not been uploaded." });
     if ((invoice.metadata as any)?.customizationSubmission?.submittedAt) return res.json({ ok: true, invoiceNo: invoice.invoiceNo });
     const multipart = await parseMultipartRequest(req, 40 * 1024 * 1024);
     const data = JSON.parse(multipart.fields.payload ?? "{}");
+    if (!Array.isArray(data.acknowledgements) || data.acknowledgements.length !== 5 || !data.acknowledgements.every((value: unknown) => value === true)) return res.status(400).json({ error: "Complete all required acknowledgements before submitting." });
     const metadata = (invoice.metadata ?? {}) as any;
     const allowedKinds = customizationKinds(metadata.quotation ?? {});
     const filesByField = new Map(multipart.files.map((file) => [file.fieldName, file]));
@@ -97,7 +98,7 @@ invoiceRoutes.post("/customization/:token", async (req, res, next) => {
       }
     }
 
-    const setup = { eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString() };
+    const setup = { acknowledgements: data.acknowledgements, artworkFiles: invoiceFiles.map((file) => ({ fileUrl: file.fileUrl, physicalSize: data.physicalSizes?.customMenu ?? null, kind: "customMenu" })), eventAddress: String(data.eventAddress ?? ""), dressCode: String(data.dressCode ?? ""), customDressCode: String(data.customDressCode ?? ""), environment: String(data.environment ?? ""), environmentNotes: String(data.environmentNotes ?? ""), submittedAt: new Date().toISOString() };
     committed = await prisma.$transaction((tx) => finalizeCustomization(tx, invoice.id, setup, invoiceFiles, customizationFiles));
     res.json({ ok: true, invoiceNo: invoice.invoiceNo });
   } catch (error) {
@@ -200,37 +201,11 @@ invoiceRoutes.post("/", async (req, res, next) => {
 
     const invoiceStatus = (data.invoiceStatus ?? "SUBMITTED") as InvoiceStatus;
     const paymentStatus = (receiptUpload ? "RECEIPT_UPLOADED" : "UNPAID") as PaymentStatus;
-    // Receipt auto-verification: compare the declared receipt amount against
-    // the invoice total and check the receiving account against the whitelist.
-    // Mismatches are NOT silently accepted — they fall back to manual review.
     const receiptAmount = Number(data.receiptAmount);
     const receiptAccount = String(data.receiptAccount ?? "").trim();
     const receiptBank = String(data.receiptBank ?? "").trim();
-    const hasValidReceiptAmount = Number.isFinite(receiptAmount) && receiptAmount > 0 && Math.abs(receiptAmount - Number(pricing.total)) <= 0.01;
-    const accountAllowed = PAYMENT_ACCOUNT_WHITELIST.length === 0 || PAYMENT_ACCOUNT_WHITELIST.some((account) => account === receiptAccount);
-    const receiptVerification =
-      receiptUpload && hasValidReceiptAmount && accountAllowed
-        ? { status: "AUTO_VERIFIED" as const, note: "Auto-verified: amount and receiving account matched." }
-        : receiptUpload
-          ? {
-              status: "MANUAL_REVIEW" as const,
-              note: [
-                !Number.isFinite(receiptAmount) || receiptAmount <= 0 ? "Receipt amount was not provided." : Math.abs(receiptAmount - Number(pricing.total)) > 0.01 ? `Receipt amount (RM ${Number.isFinite(receiptAmount) ? receiptAmount.toFixed(2) : "?"}) does not match invoice total (RM ${Number(pricing.total).toFixed(2)}).` : null,
-                !accountAllowed ? "Receiving account is not in the allowed list." : null
-              ]
-                .filter(Boolean)
-                .join(" ")
-            }
-          : null;
-    let resolvedInvoiceStatus = invoiceStatus;
-    let resolvedPaymentStatus = paymentStatus;
-    if (receiptUpload && receiptVerification?.status === "AUTO_VERIFIED") {
-      resolvedInvoiceStatus = "SUBMITTED";
-      resolvedPaymentStatus = "VERIFIED";
-    } else if (receiptUpload && receiptVerification?.status === "MANUAL_REVIEW") {
-      resolvedInvoiceStatus = "PENDING_PAYMENT_REVIEW";
-      resolvedPaymentStatus = "RECEIPT_UPLOADED";
-    }
+    const resolvedInvoiceStatus = invoiceStatus;
+    const resolvedPaymentStatus = paymentStatus;
     try {
       assertValidInvoiceStatePair(resolvedInvoiceStatus, resolvedPaymentStatus);
     } catch (error) {
@@ -238,6 +213,7 @@ invoiceRoutes.post("/", async (req, res, next) => {
     }
 
     const invoice = await prisma.$transaction(async (tx) => {
+    await assertQuotationEditable(tx, quotation.id);
     const createdInvoice = await tx.invoice.create({
       data: {
         invoiceNo,
@@ -330,8 +306,8 @@ invoiceRoutes.post("/", async (req, res, next) => {
                 receiptAmount: Number.isFinite(receiptAmount) && receiptAmount > 0 ? receiptAmount : null,
                 receiptAccount: receiptAccount || null,
                 receiptBank: receiptBank || null,
-                verificationStatus: receiptVerification?.status ?? null,
-                verificationNote: receiptVerification?.note ?? null
+                verificationStatus: null,
+                verificationNote: null
               }
             }
           : undefined
@@ -427,40 +403,13 @@ invoiceRoutes.post("/", async (req, res, next) => {
       referenceNo: invoiceNo,
       link: invoiceLink
     });
-    if (receiptUpload && receiptVerification?.status === "AUTO_VERIFIED") {
-      await sendNotification({
-        type: "RECEIPT_VERIFIED",
-        recipient: { role: "customer", ...customerContact },
-        title: `Payment confirmed for ${invoiceNo}`,
-        message: `Your payment receipt was auto-verified and payment for ${invoiceNo} is confirmed.`,
-        referenceNo: invoiceNo,
-        link: invoiceLink
-      });
-    } else if (receiptUpload && receiptVerification?.status === "MANUAL_REVIEW") {
-      await sendNotification({
-        type: "RECEIPT_PENDING_REVIEW",
-        recipient: { role: "admin", name: "Hour Coffee Admin" },
-        title: `Receipt needs review for ${invoiceNo}`,
-        message: `A receipt for ${invoiceNo} needs manual review. Reason: ${receiptVerification.note}`,
-        referenceNo: invoiceNo,
-        link: adminInvoiceLink
-      });
-      await sendNotification({
-        type: "RECEIPT_PENDING_REVIEW",
-        recipient: { role: "customer", ...customerContact },
-        title: `Receipt uploaded for ${invoiceNo}`,
-        message: `Your receipt for ${invoiceNo} was uploaded and is being reviewed.`,
-        referenceNo: invoiceNo,
-        link: invoiceLink
-      });
-    }
-
     const saved = await prisma.invoice.findUnique({
       where: { invoiceNo },
       include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
     });
     res.status(201).json(toInvoicePayload(saved));
   } catch (error) {
+    if (error instanceof QuotationReadOnlyError) return res.status(409).json({ error: error.message });
     if (isUniqueConflict(error, "invoiceNo")) {
       const used = new Set((await prisma.invoice.findMany({ select: { invoiceNo: true } })).map((invoice) => invoice.invoiceNo));
       return res.status(409).json({

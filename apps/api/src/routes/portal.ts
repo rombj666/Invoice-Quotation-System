@@ -45,8 +45,7 @@ portalRoutes.post("/:token/receipt", async (req, res, next) => {
     const record = await resolvePortal(req.params.token);
     const invoice = record?.invoices[0];
     if (!record || !invoice) return res.status(404).json({ error: "This link is invalid or no longer available." });
-    if (invoice.paymentStatus === "VERIFIED") return res.status(409).json({ error: "Payment has already been verified." });
-    if (invoice.paymentStatus === "RECEIPT_UPLOADED") return res.status(409).json({ error: "A receipt has already been submitted and is waiting for verification." });
+    if (["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus)) return res.status(409).json({ error: "A receipt has already been submitted. Continue with event setup." });
     if (invoice.status === "CANCELLED") return res.status(409).json({ error: "This invoice has been cancelled and can no longer accept payment receipts." });
     try {
       assertValidInvoiceTransition(invoice.status, invoice.paymentStatus, invoice.status, "RECEIPT_UPLOADED");

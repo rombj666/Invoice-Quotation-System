@@ -145,6 +145,7 @@ export type CustomerDetails = {
 };
 
 export type QuotationData = {
+  invoiceServiceTiming?: boolean;
   id?: string;
   quotationNo: string;
   status?:

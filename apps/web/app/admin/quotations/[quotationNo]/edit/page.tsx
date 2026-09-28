@@ -27,7 +27,7 @@ export default function AdminQuotationEditPage() {
 
   useEffect(() => { loadQuotationByNo(params.quotationNo).then((quotation) => quotation && setData({ ...quotation, status: quotation.status ?? "PENDING_APPROVAL" })).catch(() => setError("Unable to load quotation.")); }, [params.quotationNo]);
   useEffect(() => {
-    if (!data) return;
+    if (!data || data.hasInvoice || data.status === "CONVERTED_TO_INVOICE") return;
     let active = true;
     const timer = setTimeout(() => {
       prepareAdminQuotationEdit(params.quotationNo, data).then((prepared) => { if (active) setPreview({ source: data, data: prepared }); }).catch(() => undefined);
@@ -35,6 +35,7 @@ export default function AdminQuotationEditPage() {
     return () => { active = false; clearTimeout(timer); };
   }, [data, params.quotationNo]);
   if (!data) return <main className="admin-page"><Card className="admin-card"><h1>Edit Quotation</h1><p>{error || "Loading..."}</p></Card></main>;
+  if (data.hasInvoice || data.status === "CONVERTED_TO_INVOICE") return <main className="admin-page"><Card><h1>Quotation is read-only</h1><p>An invoice has already been generated for this quotation.</p></Card></main>;
   const drinks = Object.values(data.beverageSnapshots ?? {}).map((drink) => ({ id: drink.id, label: drink.name }));
 
   const patch = (value: Partial<QuotationData>) => setData((current) => current ? { ...current, ...value } : current);

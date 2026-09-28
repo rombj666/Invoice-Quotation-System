@@ -7,15 +7,15 @@ export class FinalSubmissionError extends Error {}
 export async function finalizeCustomization(
   tx: Prisma.TransactionClient,
   invoiceId: string,
-  setup: Record<string, string>,
+  setup: Record<string, unknown>,
   invoiceFiles: Prisma.InvoiceFileCreateManyInput[],
   customizationFiles: Prisma.CustomizationFileCreateManyInput[]
 ) {
   // Serialize retries for the same invoice and read the latest confirmed dates/status.
   await tx.$queryRaw`SELECT "id" FROM "Invoice" WHERE "id" = ${invoiceId} FOR UPDATE`;
   const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
-  if (invoice.paymentStatus !== "VERIFIED" || invoice.status === "CANCELLED") {
-    throw new FinalSubmissionError("Payment must be verified before completing customization.");
+  if (!["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus) || invoice.status === "CANCELLED") {
+    throw new FinalSubmissionError("Upload a payment receipt before completing customization.");
   }
   const metadata = (invoice.metadata ?? {}) as Record<string, any>;
   if (metadata.customizationSubmission?.submittedAt) return false;

@@ -55,7 +55,7 @@ export default function AdminQuotationDetailPage() {
   const isReturned = status === "RETURNED_FOR_EDIT";
   const statusLabel = status.replaceAll("_", " ");
   const statusClass = isReturned ? "returned" : isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending";
-  const canEditQuotation = status === "DRAFT" || status === "PENDING_APPROVAL";
+  const canEditQuotation = !quotation.hasInvoice && (status === "DRAFT" || status === "PENDING_APPROVAL");
 
   async function approve() {
     if (!window.confirm("Are you sure you want to approve this quotation?")) return;
@@ -91,7 +91,7 @@ export default function AdminQuotationDetailPage() {
 {isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customization Link</button> : null}
 {currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : isApproved ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
 {canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
-{status === "PENDING_APPROVAL" ? (
+{status === "PENDING_APPROVAL" && !quotation.hasInvoice ? (
               <>
                 <button className="admin-approve-button large" type="button" onClick={approve}>
                   Approve Quotation

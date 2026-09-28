@@ -38,20 +38,11 @@ function buildTodos(quotation: any, invoice: any, receipt: any): OrderTodo[] {
     if (invoice.paymentStatus === "UNPAID") {
       todos.push({ code: "RECEIPT_UPLOAD", message: `Please upload the payment receipt for invoice ${invoice.invoiceNo}.` });
     }
-    if (invoice.paymentStatus === "RECEIPT_UPLOADED") {
-      if (receipt?.verificationStatus === "MANUAL_REVIEW") {
-        todos.push({ code: "RECEIPT_REVIEWING", message: `Your receipt for ${invoice.invoiceNo} is pending manual review.` });
-      } else if (receipt?.verificationStatus === "AUTO_VERIFIED") {
-        todos.push({ code: "RECEIPT_VERIFIED", message: `Your receipt for ${invoice.invoiceNo} was verified automatically.` });
-      } else {
-        todos.push({ code: "RECEIPT_UPLOADED", message: `Receipt for ${invoice.invoiceNo} uploaded, awaiting verification.` });
-      }
+    if (["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus)) {
+      todos.push({ code: "RECEIPT_UPLOADED", message: `Receipt for ${invoice.invoiceNo} uploaded. Continue with acknowledgements and event setup.` });
     }
     if (invoice.paymentStatus === "REJECTED") {
       todos.push({ code: "RECEIPT_REJECTED", message: `Your receipt for ${invoice.invoiceNo} was rejected. Please upload a valid receipt.` });
-    }
-    if (invoice.paymentStatus === "VERIFIED") {
-      todos.push({ code: "PAYMENT_CONFIRMED", message: `Payment for ${invoice.invoiceNo} was confirmed.` });
     }
   }
   return todos;

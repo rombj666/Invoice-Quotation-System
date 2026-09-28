@@ -131,7 +131,7 @@ function OrdersInner() {
                       <div className="orders-invoice">
                         <p>Invoice: <strong>{order.invoice.invoiceNo}</strong> · {order.invoice.paymentStatus.replace(/_/g, " ")} · {formatMoney(order.invoice.totalAmount)}</p>
                         {order.invoice.receipt ? (
-                          <p>Receipt: {order.invoice.receipt.verificationStatus ?? order.invoice.receipt.status} · uploaded {formatDateLabel(order.invoice.receipt.uploadedAt.slice(0, 10))}</p>
+                          <p>Receipt: {"Uploaded"} · uploaded {formatDateLabel(order.invoice.receipt.uploadedAt.slice(0, 10))}</p>
                         ) : null}
                       </div>
                     ) : null}

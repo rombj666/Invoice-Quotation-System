@@ -113,10 +113,6 @@ export function updateAdminInvoice(originalInvoiceNo: string, data: InvoiceDetai
   return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(originalInvoiceNo)}`, { method: "PATCH", body: form });
 }
 
-export function verifyInvoicePayment(invoiceNo: string) {
-  return request<{ invoiceNo: string; paymentStatus: "VERIFIED" }>(`/api/admin/invoices/${encodeURIComponent(invoiceNo)}/verify-payment`, { method: "POST" });
-}
-
 export function getCustomerPortalToken(quotationNo: string) {
   return request<{ quotationNo: string; token: string }>(`/api/admin/quotations/${encodeURIComponent(quotationNo)}/portal`, { method: "POST" });
 }

@@ -104,6 +104,9 @@ export const CART_STYLE_LABELS: Record<CartStyle, string> = {
 };
 
 export type PricingInput = {
+  // Invoice snapshots may supply explicit allocation; quotation defaults remain unchanged.
+  cupsByDate?: Record<string, number>;
+  durationsByDate?: Record<string, "HALF_DAY" | "FULL_DAY">;
   totalCups: number;
   selectedDates: string[];
   serviceDuration?: "HALF_DAY" | "FULL_DAY";
@@ -189,13 +192,13 @@ export function getCupRate(totalCups: number): number {
 }
 
 /** Integer allocation is chronological; fees are summed in service-date units. */
-export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY", selectedDates: string[], durationsByDate: Record<string, "HALF_DAY" | "FULL_DAY"> = {}) {
+export function getQuotationBaristaPricing(totalCups: number, duration: "HALF_DAY" | "FULL_DAY", selectedDates: string[], durationsByDate: Record<string, "HALF_DAY" | "FULL_DAY"> = {}, cupsByDate: Record<string, number> = {}) {
   const dates = [...selectedDates].sort();
   const cups = Number.isInteger(totalCups) && totalCups >= 0 ? totalCups : 0;
   const base = dates.length ? Math.floor(cups / dates.length) : 0;
   const remainder = dates.length ? cups % dates.length : 0;
   const perDate = dates.map((date, index) => {
-    const cupsForDate = base + (index < remainder ? 1 : 0);
+    const cupsForDate = cupsByDate[date] ?? (base + (index < remainder ? 1 : 0));
     const isFullDay = (durationsByDate[date] ?? duration) === "FULL_DAY";
     const requiredBaristas = Math.ceil(cupsForDate / (isFullDay ? 150 : 100));
     const extraBaristas = Math.max(requiredBaristas - 1, 0);
@@ -223,6 +226,9 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
   if (!Array.isArray(input.selectedDates) || input.selectedDates.length === 0) messages.push("Choose at least one event date.");
   const selectedDates = [...new Set((input.selectedDates ?? []).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort();
   if (selectedDates.length !== (input.selectedDates ?? []).length) messages.push("Event dates must be valid and cannot be duplicated.");
+  if (input.cupsByDate && (selectedDates.some((date) => !Number.isInteger(input.cupsByDate?.[date]) || input.cupsByDate![date] < 50)
+    || selectedDates.reduce((sum, date) => sum + input.cupsByDate![date], 0) !== input.totalCups)) messages.push("Each service date needs at least 50 cups and the cups must match the total.");
+  if (input.durationsByDate && selectedDates.some((date) => !["HALF_DAY", "FULL_DAY"].includes(input.durationsByDate?.[date] ?? ""))) messages.push("Every service date needs valid timing.");
   if (!isPackageCode(input.packageCode)) messages.push("Choose a valid package.");
   if (input.serviceDuration && input.serviceDuration !== "HALF_DAY" && input.serviceDuration !== "FULL_DAY") messages.push("Choose Half Day or Full Day.");
   if (messages.length || !isPackageCode(input.packageCode)) return { valid: false, validationMessages: messages };
@@ -245,6 +251,8 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
     valid: messages.length === 0,
     validationMessages: messages,
     ...(messages.length === 0 ? { normalizedInput: {
+      cupsByDate: input.cupsByDate,
+      durationsByDate: input.durationsByDate,
       totalCups: input.totalCups,
       selectedDates,
       serviceDuration: input.serviceDuration ?? "HALF_DAY",
@@ -283,7 +291,7 @@ export function calculateQuotationPricing(input: PricingInput): PricingResult {
   ];
   const featureKeys = new Set(selectedFeatureNames.map(normalizeFeatureName));
   const serviceDuration = normalized.serviceDuration ?? "HALF_DAY";
-  const { requiredBaristas, extraBaristas, extraBaristaFee } = getQuotationBaristaPricing(normalized.totalCups, serviceDuration, normalized.selectedDates);
+  const { requiredBaristas, extraBaristas, extraBaristaFee } = getQuotationBaristaPricing(normalized.totalCups, serviceDuration, normalized.selectedDates, normalized.durationsByDate, normalized.cupsByDate);
   const cupRate = getCupRate(normalized.totalCups);
   const cupRevenue = normalized.totalCups * cupRate;
   const sleeveCharge = featureKeys.has("standard cup sleeves") ? calculateSleeveCharge(normalized.totalCups) : 0;

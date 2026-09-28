@@ -38,8 +38,6 @@ export function ReceiptUpload({
 
   const enteredAmount = Number(receiptAmount);
   const amountInvalid = receiptAmount.trim() !== "" && !Number.isFinite(enteredAmount);
-  const amountDiffers = receiptAmount.trim() !== "" && Number.isFinite(enteredAmount) && Math.abs(enteredAmount - expectedAmount) > 0.01;
-  const accountDiffers = receiptAccount.trim() !== "" && receiptAccount.trim().replace(/\s/g, "") !== HOUR_COFFEE_ACCOUNT.accountNo;
 
   return (
     <div>
@@ -89,9 +87,6 @@ export function ReceiptUpload({
       </label>
 
       {amountInvalid ? <p className="verification-warning">Please enter a valid receipt amount.</p> : null}
-      {amountDiffers ? <p className="verification-warning">The receipt amount does not match the invoice total (RM {expectedAmount.toFixed(2)}). This receipt will be marked for manual review.</p> : null}
-      {accountDiffers ? <p className="verification-warning">The payer account number does not match our recorded account. This receipt will be marked for manual review.</p> : null}
-      {!amountInvalid && !amountDiffers && !accountDiffers && receiptAmount.trim() !== "" ? <p className="verification-ok">Amount and account match our records. This receipt can be verified automatically.</p> : null}
 
       <label className="upload-box">
         <strong>Tap to upload receipt</strong>

@@ -1,5 +1,6 @@
 "use client";
 
+import { customizationPhysicalSize, physicalSizeLabels } from "../../../../lib/customization-physical-size";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,7 +16,7 @@ import type { CustomizationByDate } from "../../../../types/customization";
 import type { InvoiceDetails } from "../../../../types/invoice";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
 import { getCustomerCustomizationSteps } from "../../../../lib/customization-flow";
-import { getCustomerPortalToken, verifyInvoicePayment } from "../../../../lib/admin-api";
+import { getCustomerPortalToken } from "../../../../lib/admin-api";
 
 function fileLabel(mimeType: string | undefined, fileUrl: string): "PDF" | "Image" | "File" {
   if (mimeType === "application/pdf") return "PDF";
@@ -48,7 +49,9 @@ function GenericFilePreview({
   fileName,
   mimeType,
   openLabel = "Open File",
-  downloadLabel = "Download File"
+  downloadLabel = "Download File",
+  physicalSize,
+  artworkKind
 }: {
   title: string;
   fileUrl?: string;
@@ -56,6 +59,8 @@ function GenericFilePreview({
   mimeType?: string;
   openLabel?: string;
   downloadLabel?: string;
+  physicalSize?: unknown;
+  artworkKind?: string;
 }) {
   if (!fileUrl) {
     return (
@@ -72,6 +77,7 @@ function GenericFilePreview({
       <h3>{title}</h3>
       <p className="admin-file-type">File type: {label}</p>
       <p>{fileName || "File"}</p>
+      {artworkKind ? physicalSizeLabels(physicalSize, customizationPhysicalSize(artworkKind)).map((label) => <p key={label}>{label}</p>) : null}
       {label === "Image" ? <img className="admin-image-preview" src={fileUrl} alt={title} /> : null}
       <FileActions fileUrl={fileUrl} fileName={fileName} openLabel={openLabel} downloadLabel={downloadLabel} />
     </section>
@@ -89,7 +95,7 @@ function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title
           <div className="admin-design-preview" key={`${file.type}-${file.designKey}`}>
             <p className="admin-file-type">File type: {fileLabel(file.mimeType, file.fileUrl)}</p>
             <p>{file.fileName}</p>
-            {file.metadata && typeof file.metadata === "object" && "physicalSize" in file.metadata && file.metadata.physicalSize ? <p>Physical size: {JSON.stringify(file.metadata.physicalSize)}</p> : null}
+            {physicalSizeLabels(file.metadata && typeof file.metadata === "object" && "physicalSize" in file.metadata ? file.metadata.physicalSize : undefined, customizationPhysicalSize(file.type, file.designKey)).map((label) => <p key={label}>{label}</p>)}
             {fileLabel(file.mimeType, file.fileUrl) === "Image" ? <img className="admin-image-preview" src={file.fileUrl} alt={`${title} ${file.designKey}`} /> : null}
             <FileActions fileUrl={file.fileUrl} fileName={file.fileName} openLabel={fileLabel(file.mimeType, file.fileUrl) === "Image" ? "Open Image" : "Open File"} downloadLabel={fileLabel(file.mimeType, file.fileUrl) === "Image" ? "Download Image" : "Download File"} />
           </div>
@@ -100,6 +106,7 @@ function CustomizationPreview({ title, designs, urls, type, keySuffix }: { title
             <div className="admin-design-preview" key={key}>
               <p className="admin-file-type">File type: {fileLabel(undefined, design.dataUrl)}</p>
               <p>{design.fileName}</p>
+              {physicalSizeLabels(design, customizationPhysicalSize(type, key)).map((label) => <p key={label}>{label}</p>)}
               {fileLabel(undefined, design.dataUrl) === "Image" ? <img className="admin-image-preview" src={design.dataUrl} alt={`${title} ${key}`} /> : null}
               <FileActions fileUrl={design.dataUrl} fileName={design.fileName} openLabel={fileLabel(undefined, design.dataUrl) === "Image" ? "Open Image" : "Open File"} downloadLabel={fileLabel(undefined, design.dataUrl) === "Image" ? "Download Image" : "Download File"} />
             </div>
@@ -118,7 +125,6 @@ export default function AdminInvoiceDetailPage() {
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
   const [portalLink, setPortalLink] = useState("");
   const [actionError, setActionError] = useState("");
-  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     loadInvoiceByNo(params.invoiceNo).then(setInvoice);
@@ -144,15 +150,6 @@ export default function AdminInvoiceDetailPage() {
   const customizationSteps = getCustomerCustomizationSteps(quotation);
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
 
-  async function verifyPayment() {
-    setVerifying(true); setActionError("");
-    try {
-      const result = await verifyInvoicePayment(currentInvoice.invoiceNo);
-      setInvoice({ ...currentInvoice, paymentStatus: "VERIFIED" });
-    } catch (reason) { setActionError(reason instanceof Error ? reason.message : "Unable to verify payment."); }
-    finally { setVerifying(false); }
-  }
-
   async function loadPortalLink() {
     setActionError("");
     try { const result = await getCustomerPortalToken(quotation.quotationNo); setPortalLink(`${window.location.origin}/portal/${result.token}`); }
@@ -164,7 +161,7 @@ export default function AdminInvoiceDetailPage() {
       actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
 <Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit Invoice</Link>
 <button type="button" onClick={loadPortalLink}>Customization Link</button>
-{invoice.paymentStatus !== "VERIFIED" ? <button type="button" disabled={verifying || invoice.paymentStatus !== "RECEIPT_UPLOADED"} onClick={verifyPayment}>{verifying ? "Verifying..." : "Verify Payment"}</button> : null}</>}
+</>}
       sections={[
         { id: "summary", label: "Summary", content: <><section><h2>Summary</h2><dl className="admin-summary-grid"><div><dt>Customer Name</dt><dd>{quotation.customer.name}</dd></div><div><dt>Phone</dt><dd>{quotation.customer.phone}</dd></div><div><dt>Email</dt><dd>{quotation.customer.email}</dd></div><div><dt>Total Cups</dt><dd>{pricing.totalCups}</dd></div><div><dt>Event Address</dt><dd>{invoice.eventAddress}</dd></div><div><dt>Event Date(s)</dt><dd>{quotation.serviceDates.map((date) => formatDateLabel(date.serviceDate)).join(", ")}</dd></div><div><dt>Payment Receipt</dt><dd>{invoice.receiptUrl || invoice.receiptDataUrl ? <FileActions fileUrl={(invoice.receiptUrl || invoice.receiptDataUrl)!} fileName={invoice.receiptName} openLabel="View" downloadLabel="Download" /> : "-"}</dd></div></dl></section></> },
         { id: "customer", label: "Customer & Reference", content: <><section>
@@ -218,10 +215,10 @@ export default function AdminInvoiceDetailPage() {
             <p>Total: {formatMoney(savedPricing?.total ?? pricing.total)}</p>
           </section><section><h2>Documents</h2><h3>Invoice PDF</h3>{invoice.invoicePdfUrl ? <FileActions fileUrl={invoice.invoicePdfUrl} fileName={`${invoice.invoiceNo}.pdf`} openLabel="View" downloadLabel="Download" /> : <p>-</p>}<h3>Payment Receipt</h3>{invoice.receiptUrl || invoice.receiptDataUrl ? <FileActions fileUrl={(invoice.receiptUrl || invoice.receiptDataUrl)!} fileName={invoice.receiptName} openLabel="View" downloadLabel="Download" /> : <p>-</p>}</section>
 {invoice.customMenuFile?.fileUrl ? (
-            <GenericFilePreview title="Custom Menu File" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />
+            <GenericFilePreview title="Custom Menu File" artworkKind="customMenu" fileUrl={invoice.customMenuFile.fileUrl} fileName={invoice.customMenuFile.fileName} mimeType={invoice.customMenuFile.mimeType} />
           ) : null}
 {(invoice.invoiceFiles ?? []).map((file) => (
-            <GenericFilePreview key={file.fileUrl} title="Invoice File" fileUrl={file.fileUrl} fileName={file.fileName} mimeType={file.mimeType} />
+            <GenericFilePreview key={file.fileUrl} title={file.metadata?.kind === "customMenu" ? "Custom Menu Artwork" : "Invoice File"} artworkKind={file.metadata?.kind} physicalSize={file.metadata?.physicalSize} fileUrl={file.fileUrl} fileName={file.fileName} mimeType={file.mimeType} />
           ))}</> },
         { id: "notes", label: "Notes & History", content: <>{invoice.internalNotes?.length ? <section><h3>Internal Notes</h3>{invoice.internalNotes.map((note,index)=><p key={`${note.createdAt}-${index}`}>{note.note}<br /><small>{note.createdBy} · {new Date(note.createdAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</small></p>)}</section> : null}
 {invoice.editHistory?.length ? <section><h3>Edit History</h3>{invoice.editHistory.map((entry,index)=><p key={`${entry.changedAt}-${index}`}><strong>{new Date(entry.changedAt).toLocaleString("en-MY",{timeZone:"Asia/Kuala_Lumpur"})}</strong><br />{entry.summary || "Updated"} · {entry.changedBy}</p>)}</section> : null}{invoice.customizationSubmission?.submittedAt ? <section><h3>Customization submitted</h3><p>{new Date(invoice.customizationSubmission.submittedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p></section> : null}</> },

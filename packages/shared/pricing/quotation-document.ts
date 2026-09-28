@@ -1,6 +1,7 @@
 import { PACKAGE_CODES, calculateQuotationPricing, getQuotationBaristaPricing, validatePricingInput, type CartStyle, type PackageCode, type PackageOptionCode, type PricingInput } from "./index";
 
 type QuotationDocumentInput = {
+  invoiceServiceTiming?: boolean;
   totalCups?: number;
   serviceDuration?: "HALF_DAY" | "FULL_DAY";
   serviceDates: Array<{ id: string; serviceDate?: string; cups: number; durationMode?: "HALF_DAY" | "FULL_DAY"; startTime: string; endTime: string }>;
@@ -30,6 +31,10 @@ export function getQuotationPackageInput(data: QuotationDocumentInput): PricingI
   const code = data.packageCode ?? data.packageSnapshot?.packageCode ?? legacyLevels[level] ?? level;
   if (!PACKAGE_CODES.includes(code as PackageCode)) return null;
   return {
+    ...(data.invoiceServiceTiming ? {
+      cupsByDate: Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, date.cups])),
+      durationsByDate: Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, getQuotationServiceHours(date) > 4 ? "FULL_DAY" as const : "HALF_DAY" as const]))
+    } : {}),
     packageCode: code as PackageCode,
     totalCups: data.totalCups ?? data.serviceDates.reduce((sum, date) => sum + date.cups, 0),
     selectedDates: data.serviceDates.map((date) => date.serviceDate ?? date.id).sort(),
@@ -49,7 +54,8 @@ export function calculateQuotationDocumentPricing(data: QuotationDocumentInput, 
   const totalCups = data.totalCups ?? data.serviceDates.reduce((sum, date) => sum + date.cups, 0);
   const manpower = getQuotationBaristaPricing(totalCups, data.serviceDuration ?? "HALF_DAY",
     data.serviceDates.map((date) => date.serviceDate ?? date.id),
-    data.serviceDuration ? {} : Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, getQuotationServiceHours(date) > 4 ? "FULL_DAY" : "HALF_DAY"])));
+    data.serviceDuration ? {} : Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, getQuotationServiceHours(date) > 4 ? "FULL_DAY" : "HALF_DAY"])),
+    data.invoiceServiceTiming ? Object.fromEntries(data.serviceDates.map((date) => [date.serviceDate ?? date.id, date.cups])) : {});
   const manualExtraChargeTotal = extraCharges
     .filter((charge) => String(charge.title ?? "").trim().toLowerCase() !== "extra serving hour")
     .reduce((sum, charge) => sum + Number(charge.amount), 0);

@@ -698,8 +698,9 @@ quotationRoutes.post("/:quotationNo/summary", async (req, res, next) => {
 quotationRoutes.patch("/:quotationNo/approve", async (req, res, next) => {
   try {
     await expireOverdueQuotations();
-    const current = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, select: { id: true, status: true, expiresAt: true, metadata: true } });
+    const current = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, select: { id: true, status: true, expiresAt: true, metadata: true, invoices: { select: { id: true } } } });
     if (!current) return res.status(404).json({ error: "Quotation not found" });
+    if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
     if (current.expiresAt && new Date(current.expiresAt).getTime() < Date.now()) {
       return res.status(409).json({ error: "This quotation has expired and can no longer be approved." });
     }
@@ -747,9 +748,10 @@ quotationRoutes.patch("/:quotationNo/resubmit", async (req, res, next) => {
     }
     const current = await prisma.quotation.findUnique({
       where: { quotationNo: String(req.params.quotationNo).trim().toUpperCase() },
-      include: { customer: true }
+      include: { customer: true, invoices: { select: { id: true } } }
     });
     if (!current) return res.status(404).json({ error: "Quotation not found" });
+    if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
     if (current.status !== "RETURNED_FOR_EDIT") {
       return res.status(409).json({ error: "This quotation cannot be resubmitted. It must be returned by the admin for changes first." });
     }

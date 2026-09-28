@@ -1,0 +1,28 @@
+/* Customer PDF presentation only; pricing and screen summaries are unchanged. */
+ul.inclusions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(140px, 22%), 1fr));
+  gap: 8px 24px;
+  margin: 12px 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.inclusions li {
+  padding-left: 2px;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 2px solid #79624e;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.total span { font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.total strong { font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -8,6 +8,7 @@ import { ArtworkCustomizer } from "../../../components/customization/ArtworkCust
 import { CartLogoCustomizer } from "../../../components/customization/CartLogoCustomizer";
 import { CupSleeveCustomizer } from "../../../components/customization/CupSleeveCustomizer";
 import { CupStickerCustomizer } from "../../../components/customization/CupStickerCustomizer";
+import { AcknowledgementsStep, acknowledgementLabels } from "../../../components/invoice/AcknowledgementsStep";
 import { EventDetailsStep } from "../../../components/invoice/EventDetailsStep";
 import { LATTE_PHYSICAL } from "../../../lib/customization-layout";
 import { getCustomerCustomizationSteps } from "../../../lib/customization-flow";
@@ -17,6 +18,7 @@ import type { InvoiceDetails, InvoiceUploadFile } from "../../../types/invoice";
 
 export function CustomizationFlow({ token, onComplete }: { token: string; onComplete?: () => void }) {
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
+  const [acknowledgements, setAcknowledgements] = useState<boolean[]>(acknowledgementLabels.map(() => false));
   const [stepIndex, setStepIndex] = useState(0);
   const [eventAddress, setEventAddress] = useState("");
   const [dressCode, setDressCode] = useState("");
@@ -34,14 +36,14 @@ export function CustomizationFlow({ token, onComplete }: { token: string; onComp
   const [complete, setComplete] = useState(false);
 
   useEffect(() => { loadCustomization(token).then((loaded) => { setInvoice(loaded); setEventAddress(loaded.eventAddress || ""); setActiveDate(loaded.quotation.serviceDates[0]?.serviceDate ?? ""); }).catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to open customization.")); }, [token]);
-  const steps = useMemo(() => invoice ? getCustomerCustomizationSteps(invoice.quotation) : [], [invoice]);
+  const steps = useMemo(() => invoice ? ["acknowledgements", ...getCustomerCustomizationSteps(invoice.quotation)] : [], [invoice]);
   const current = steps[stepIndex];
 
   async function finish() {
     if (!invoice) return;
     setSubmitting(true); setError("");
     try {
-      await submitCustomization(token, { eventAddress, dressCode, customDressCode, environment, environmentNotes, cartDesigns, sleeveDesigns, stickerDesigns, customMenu, latteArt });
+      await submitCustomization(token, { acknowledgements, eventAddress, dressCode, customDressCode, environment, environmentNotes, cartDesigns, sleeveDesigns, stickerDesigns, customMenu, latteArt });
       setComplete(true);
       onComplete?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to submit customization."); }
@@ -54,6 +56,7 @@ export function CustomizationFlow({ token, onComplete }: { token: string; onComp
   return <main className="hc-page invoice-page customize-page"><div className="team-topbar">Hour Coffee - Customization</div><Card className="wide-card invoice-flow-card">
     <div className="progress-header customize-progress-header"><div className="progress-text">Step {stepIndex + 1} of {steps.length}</div><div className="progress-bar-line">{steps.map((step, index) => <span className={`progress-dot ${index <= stepIndex ? "active" : ""}`} key={step} />)}</div></div>
     <div className="customize-step-body">
+      {current === "acknowledgements" ? <AcknowledgementsStep checked={acknowledgements} onChange={setAcknowledgements} /> : null}
       {current === "details" ? <div className="customize-step customize-details-step"><EventDetailsStep eventAddress={eventAddress} dressCode={dressCode} customDressCode={customDressCode} environment={environment} environmentNotes={environmentNotes} onEventAddress={setEventAddress} onDressCode={setDressCode} onCustomDressCode={setCustomDressCode} onEnvironment={setEnvironment} onEnvironmentNotes={setEnvironmentNotes} /></div> : null}
       {current === "cart" ? <CartLogoCustomizer mode={invoice.quotation.customizationOptions?.cart?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={cartDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setCartDesigns} /> : null}
       {current === "sleeve" ? <CupSleeveCustomizer mode={invoice.quotation.customizationOptions?.sleeve?.mode ?? "same"} serviceDates={invoice.quotation.serviceDates} designs={sleeveDesigns} activeDate={activeDate} onActiveDate={setActiveDate} onDesigns={setSleeveDesigns} /> : null}
@@ -63,7 +66,7 @@ export function CustomizationFlow({ token, onComplete }: { token: string; onComp
       {current === "finish" ? <div className="customize-step customize-finish-step"><div className="customize-finish-card"><h2>Finish Customization</h2><p className="step-copy">Submit the event setup and any artwork you added.</p></div></div> : null}
       {error ? <p className="error">{error}</p> : null}
     </div>
-    <div className="customize-nav"><StepNavigation canGoBack={stepIndex > 0} onBack={() => setStepIndex((index) => Math.max(0, index - 1))} onNext={current === "finish" ? finish : () => setStepIndex((index) => Math.min(steps.length - 1, index + 1))} nextLabel={current === "finish" ? submitting ? "SUBMITTING..." : "FINISH CUSTOMIZATION" : "CONTINUE"} nextDisabled={submitting} /></div>
+    <div className="customize-nav"><StepNavigation canGoBack={stepIndex > 0} onBack={() => setStepIndex((index) => Math.max(0, index - 1))} onNext={current === "finish" ? finish : () => setStepIndex((index) => Math.min(steps.length - 1, index + 1))} nextLabel={current === "finish" ? submitting ? "SUBMITTING..." : "FINISH CUSTOMIZATION" : "CONTINUE"} nextDisabled={submitting || (current === "acknowledgements" && !acknowledgements.every(Boolean))} /></div>
   </Card></main>;
 }
 

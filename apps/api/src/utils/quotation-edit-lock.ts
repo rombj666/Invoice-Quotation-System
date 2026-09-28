@@ -1,0 +1,12 @@
+import type { Prisma } from "@prisma/client";
+
+export class QuotationReadOnlyError extends Error {
+  constructor() { super("This quotation has an invoice and is read-only."); }
+}
+
+/** Serialize invoice creation and quotation mutations, then inspect the current relation. */
+export async function assertQuotationEditable(tx: Prisma.TransactionClient, id: string) {
+  await tx.$queryRaw`SELECT "id" FROM "Quotation" WHERE "id" = ${id} FOR UPDATE`;
+  const current = await tx.quotation.findUniqueOrThrow({ where: { id }, include: { invoices: { select: { id: true }, take: 1 } } });
+  if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) throw new QuotationReadOnlyError();
+}

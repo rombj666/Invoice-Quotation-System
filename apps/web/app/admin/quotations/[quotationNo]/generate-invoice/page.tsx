@@ -1,5 +1,8 @@
 "use client";
 
+import { calculateQuotationPricing as calculatePackagePricing, getQuotationPackageInput } from "@hour-coffee/shared";
+import { calculateQuotationPricing } from "../../../../../lib/pricing";
+import { formatMoney } from "../../../../../lib/formatters";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +14,10 @@ import { generatePdfBlob } from "../../../../../lib/pdf-document";
 import { loadQuotationByNo } from "../../../../../lib/quotation-storage";
 import type { InvoiceDetails } from "../../../../../types/invoice";
 import type { QuotationData, ServiceDate } from "../../../../../types/quotation";
+
+function calculateQuotationPricingSafe(data: QuotationData) {
+  try { return calculateQuotationPricing(data); } catch { return null; }
+}
 
 type Step = 1 | 2 | 3;
 
@@ -33,24 +40,35 @@ export default function GenerateInvoicePage() {
         if (existing) return router.replace(`/admin/invoices/${existing.invoiceNo}`);
         if (!loaded) return setError("Quotation not found.");
         if (loaded.status !== "APPROVED") return setError("Only approved quotations can generate an invoice.");
-        setQuotation(structuredClone(loaded));
+        setEventAddress(loaded.fullAddress || loaded.location || "");
+        setQuotation({ ...structuredClone(loaded), invoiceServiceTiming: true, totalCups: undefined, serviceDuration: undefined, serviceDates: loaded.serviceDates.map((date) => ({ ...date, durationMode: undefined })) });
         setInvoiceNo(nextNo);
       })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load quotation."));
   }, [params.quotationNo, router]);
 
   if (!quotation || !invoiceNo) return <main className="admin-page"><Card className="admin-card"><h1>Generate Invoice</h1><p className={error ? "error" : undefined}>{error || "Loading..."}</p><Link href={`/admin/quotations/${params.quotationNo}`}>Back to quotation</Link></Card></main>;
-  const confirmedDraft = quotation;
+  const packageInput = getQuotationPackageInput(quotation);
+  let confirmedDraft = quotation;
+  let pricingError = packageInput ? "" : "This saved package has no pricing configuration. Please update the package configuration before generating an invoice.";
+  try {
+    const breakdown = packageInput ? calculatePackagePricing(packageInput) : null;
+    if (breakdown) confirmedDraft = { ...quotation, packageSnapshot: quotation.packageSnapshot ? { ...quotation.packageSnapshot, price: breakdown.subtotal, extendedDayCharge: breakdown.extendedDayCharge } : undefined, pricingSnapshot: { ...quotation.pricingSnapshot, ...breakdown, total: breakdown.finalTotal } };
+  } catch (reason) { pricingError = reason instanceof Error ? reason.message : "Complete the service dates."; }
+  const pricing = calculateQuotationPricingSafe(confirmedDraft);
 
   const patch = (value: Partial<QuotationData>) => setQuotation((current) => current ? { ...current, ...value } : current);
   const customer = (key: keyof QuotationData["customer"], value: string) => patch({ customer: { ...confirmedDraft.customer, [key]: value } });
   const date = (id: string, value: Partial<ServiceDate>) => patch({ serviceDates: confirmedDraft.serviceDates.map((item) => item.id === id ? { ...item, ...value } : item) });
+  const addDate = () => patch({ serviceDates: [...quotation.serviceDates, { id: crypto.randomUUID(), serviceDate: "", cups: 50, startTime: "09:00", endTime: "13:00" }] });
+  const removeDate = (id: string) => patch({ serviceDates: quotation.serviceDates.filter((item) => item.id !== id), extraCharges: quotation.extraCharges?.map((charge) => ({ ...charge, serviceDateIds: charge.serviceDateIds?.filter((dateId) => dateId !== id) })) });
   const draft: InvoiceDetails = { invoiceNo, invoiceStatus: "SUBMITTED", paymentStatus: "UNPAID", quotation: confirmedDraft, eventArea, eventAreaOther, eventAddress, dressCode: "", customDressCode: "", environment: "", environmentNotes: "", receiptName: "" };
 
   function next(nextStep: Step) {
     setError("");
-    if (step === 1 && (!confirmedDraft.customer.name.trim() || !confirmedDraft.customer.phone.trim() || !confirmedDraft.customer.email.trim() || !confirmedDraft.customer.billingAddress.trim())) return setError("Complete the customer contact and billing address fields.");
-    if (step === 2 && (!eventAddress.trim() || (eventArea === "Others" && !eventAreaOther.trim()))) return setError("Complete the event area and exact event address.");
+    if (nextStep > 1 && (!confirmedDraft.customer.name.trim() || !confirmedDraft.customer.phone.trim() || !confirmedDraft.customer.email.trim() || !confirmedDraft.customer.billingAddress.trim())) return setError("Complete the customer contact and billing address fields.");
+    if (nextStep === 3 && (!eventAddress.trim() || (eventArea === "Others" && !eventAreaOther.trim()))) return setError("Complete the event area and exact event address.");
+    if (nextStep === 3 && (pricingError || !quotation?.serviceDates.length || quotation.serviceDates.some((date) => date.cups < 50 || !date.startTime || !date.endTime || date.endTime <= date.startTime))) return setError(pricingError || "Each service date needs at least 50 cups and a valid start/end time.");
     setStep(nextStep);
   }
 
@@ -87,14 +105,18 @@ export default function GenerateInvoicePage() {
       <label className="admin-field"><span>Event Area</span><select value={eventArea} onChange={(e) => setEventArea(e.target.value as "Selangor" | "Others")}><option>Selangor</option><option>Others</option></select></label>
       {eventArea === "Others" ? <label className="admin-field"><span>Other Area</span><input value={eventAreaOther} onChange={(e) => setEventAreaOther(e.target.value)} /></label> : null}
       <label className="admin-field"><span>Event Address</span><textarea rows={4} value={eventAddress} onChange={(e) => setEventAddress(e.target.value)} placeholder="Exact venue address" /></label>
-      {Number.isFinite(quotation.totalCups) ? <label className="admin-field"><span>Total Cups</span><input type="number" min="50" value={quotation.totalCups} onChange={(e) => patch({ totalCups: Number(e.target.value) })} /></label> : null}
-      {quotation.serviceDuration ? <label className="admin-field"><span>Event Duration</span><select value={quotation.serviceDuration} onChange={(e) => { const duration = e.target.value as "HALF_DAY" | "FULL_DAY"; patch({ serviceDuration: duration, serviceDates: quotation.serviceDates.map((item) => ({ ...item, durationMode: duration, startTime: "09:00", endTime: duration === "FULL_DAY" ? "17:00" : "13:00" })) }); }}><option value="HALF_DAY">Half Day</option><option value="FULL_DAY">Full Day</option></select></label> : null}
       <label className="admin-field"><span>Discount Percent</span><input type="number" min="0" max="100" step="0.01" value={quotation.discountPercent} onChange={(e) => patch({ discountPercent: Number(e.target.value) })} /></label>
     </div></section>
-    <section className="admin-edit-section"><h2>Dates, Duration &amp; Cups</h2>{quotation.serviceDates.map((item) => <div className="admin-inline-fields" key={item.id}><label className="admin-field"><span>Date</span><input type="date" value={item.serviceDate} onChange={(e) => date(item.id, { serviceDate: e.target.value })} /></label><label className="admin-field"><span>Cups</span><input type="number" min="50" value={item.cups} onChange={(e) => date(item.id, { cups: Number(e.target.value) })} /></label>{item.durationMode ? <label className="admin-field"><span>Duration</span><select value={item.durationMode} onChange={(e) => date(item.id, { durationMode: e.target.value as ServiceDate["durationMode"], endTime: e.target.value === "FULL_DAY" ? "17:00" : "13:00" })}><option value="HALF_DAY">Half Day</option><option value="FULL_DAY">Full Day</option></select></label> : <><label className="admin-field"><span>Start Time</span><input type="time" value={item.startTime} onChange={(e) => date(item.id, { startTime: e.target.value })} /></label><label className="admin-field"><span>End Time</span><input type="time" value={item.endTime} onChange={(e) => date(item.id, { endTime: e.target.value })} /></label></>}</div>)}</section>
-    <section className="admin-edit-section"><h2>Package, Features &amp; Charges</h2><p><strong>{quotation.packageSnapshot?.name || "Saved quotation package"}</strong></p>{quotation.packageSnapshot?.perks.map((perk) => <p key={perk.id}>✓ {perk.name}</p>)}{quotation.selectedAddons.map((addon) => <label className="admin-field" key={addon.name}><span>{addon.name}</span><input type="number" min="0" step="0.01" value={addon.price} onChange={(e) => patch({ selectedAddons: quotation.selectedAddons.map((item) => item.name === addon.name ? { ...item, price: Number(e.target.value) } : item) })} /></label>)}{(quotation.extraCharges ?? []).map((charge) => <label className="admin-field" key={charge.id}><span>{charge.title}</span><input type="number" min="0" step="0.01" value={charge.amount} onChange={(e) => patch({ extraCharges: quotation.extraCharges?.map((item) => item.id === charge.id ? { ...item, amount: Number(e.target.value) } : item) })} /></label>)}</section>
+    <section className="admin-edit-section"><h2>Service Dates</h2><button type="button" onClick={addDate}>Add Date</button>{quotation.serviceDates.map((item) => <div className="admin-inline-fields" key={item.id}>
+      <label className="admin-field"><span>Date</span><input type="date" value={item.serviceDate} onChange={(e) => date(item.id, { serviceDate: e.target.value })} /></label>
+      <label className="admin-field"><span>Cups</span><input type="number" min="50" value={item.cups} onChange={(e) => date(item.id, { cups: Number(e.target.value) })} /></label>
+      <label className="admin-field"><span>Start Time</span><input type="time" value={item.startTime} onChange={(e) => date(item.id, { startTime: e.target.value })} /></label>
+      <label className="admin-field"><span>End Time</span><input type="time" value={item.endTime} onChange={(e) => date(item.id, { endTime: e.target.value })} /></label>
+      <button type="button" disabled={quotation.serviceDates.length === 1} onClick={() => removeDate(item.id)}>Remove Date</button>
+    </div>)}<p aria-live="polite">{pricingError || (pricing ? `Total: ${formatMoney(pricing.total)}` : "Complete the service dates to calculate pricing.")}</p></section>
+    <section className="admin-edit-section"><h2>Package, Features &amp; Charges</h2><p><strong>{quotation.packageSnapshot?.name || "Saved quotation package"}</strong></p>{quotation.packageSnapshot?.perks.map((perk) => <p key={perk.id}>✓ {perk.name}</p>)}{quotation.selectedAddons.map((addon) => <label className="admin-field" key={addon.name}><span>{addon.name}</span><input type="number" min="0" step="0.01" value={addon.price} onChange={(e) => patch({ selectedAddons: quotation.selectedAddons.map((item) => item.name === addon.name ? { ...item, price: Number(e.target.value) } : item) })} /></label>)}{(quotation.extraCharges ?? []).map((charge) => <div key={charge.id}><label className="admin-field"><span>{charge.title}</span><input type="number" min="0" step="0.01" value={charge.amount} onChange={(e) => patch({ extraCharges: quotation.extraCharges?.map((item) => item.id === charge.id ? { ...item, amount: Number(e.target.value) } : item) })} /></label>{charge.appliesToAllDates === false ? <fieldset><legend>Applicable service dates</legend>{quotation.serviceDates.map((date) => <label key={date.id}><input type="checkbox" checked={charge.serviceDateIds?.includes(date.id) ?? false} onChange={(event) => patch({ extraCharges: quotation.extraCharges?.map((item) => item.id === charge.id ? { ...item, serviceDateIds: event.target.checked ? [...(item.serviceDateIds ?? []), date.id] : item.serviceDateIds?.filter((id) => id !== date.id) } : item) })} />{date.serviceDate || "New date"}</label>)}{!charge.serviceDateIds?.length ? <p className="error">Choose a remaining service date for this charge.</p> : null}</fieldset> : null}</div>)}</section>
     <div className="admin-edit-actions"><button className="hc-button hc-button-secondary" onClick={() => setStep(1)}>Back</button><button className="hc-button hc-button-primary" onClick={() => next(3)}>Review Invoice</button></div></> : null}
 
-    {step === 3 ? <><div className="admin-review-heading"><h2>Final Invoice Preview</h2><div><button onClick={() => setStep(1)}>Edit customer</button><button onClick={() => setStep(2)}>Edit event &amp; order</button></div></div><InvoicePreview invoiceNo={invoiceNo} quotation={quotation} invoice={draft} documentId="adminInvoicePreview" showDownloadButton={false} /><div className="admin-edit-actions"><button className="hc-button hc-button-secondary" onClick={() => setStep(2)}>Back</button><button className="hc-button hc-button-primary" disabled={saving} onClick={generate}>{saving ? "Generating..." : "Generate Final Unpaid Invoice"}</button></div></> : null}
+    {step === 3 ? <><div className="admin-review-heading"><h2>Final Invoice Preview</h2><div><button onClick={() => setStep(1)}>Edit customer</button><button onClick={() => setStep(2)}>Edit event &amp; order</button></div></div><InvoicePreview invoiceNo={invoiceNo} quotation={confirmedDraft} invoice={draft} documentId="adminInvoicePreview" showDownloadButton={false} /><div className="admin-edit-actions"><button className="hc-button hc-button-secondary" onClick={() => setStep(2)}>Back</button><button className="hc-button hc-button-primary" disabled={saving} onClick={generate}>{saving ? "Generating..." : "Generate Final Unpaid Invoice"}</button></div></> : null}
   </Card></main>;
 }

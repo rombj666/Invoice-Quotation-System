@@ -2,6 +2,7 @@
 
 import { extraChargeDateLabel } from "../../lib/extra-charge-dates";
 import pdfStyles from "./QuotationPdf.module.css";
+import presentation from "../common/PdfPresentation.module.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { QuotationData, ServiceDate } from "../../types/quotation";
@@ -10,7 +11,7 @@ import { calculateQuotationPricing, getDurationLabel } from "../../lib/pricing";
 import { submitQuotationWithPdf } from "../../lib/quotation-storage";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
-import { getAllProvidedBeverageNames, getProvidedBeverageNames } from "../../lib/beverages";
+import { getAllProvidedBeverageNames } from "../../lib/beverages";
 import { Button } from "../common/Button";
 import { submittedQuotationStorageKey } from "./QuotationShell";
 
@@ -39,7 +40,13 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const cartSelectionConflict = hasCartAddonConflict(data.selectedAddons);
   const providedBeverageNames = getAllProvidedBeverageNames(data);
   const selectedPackage = data.packageSnapshot;
-  const providedBeveragesByDate = data.serviceDates.map((date) => ({ date, names: getProvidedBeverageNames(data, date.id) }));
+  const selectedFeatures = [...(selectedPackage?.perks.map((perk) => perk.name) ?? []), ...data.selectedAddons.map((addon) => addon.name)];
+  const inclusions = [...new Map([
+    ...selectedFeatures,
+    ...(!selectedPackage && !selectedFeatures.length ? providedBeverageNames : []),
+    data.hasCupSleeves && !selectedFeatures.some((name) => /cup[ -]?sleeve/i.test(name)) ? "Cup Sleeves" : "",
+    data.hasCupStickers && !selectedFeatures.some((name) => /cup[ -]?sticker/i.test(name)) ? "Cup Stickers" : ""
+  ].map((name) => name.trim()).filter(Boolean).map((name) => [name.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " "), name])).values()];
   const quotationForSubmission: QuotationData = {
     ...data,
     quotationNo: activeQuotationNo,
@@ -61,12 +68,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   function afterQuotationNumberPaint(): Promise<void> {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  }
-
-  function drinkSelection() {
-    return <div className="drink-preferences-summary">{providedBeveragesByDate.map(({ date, names }) => (
-      <div key={date.id}><strong>{formatCompactDate(date.serviceDate)} — {hasQuotationLevelSettings ? quotationDurationLabel : serviceDuration(date)}</strong><p>Selected drinks: {names.join(", ") || "None"}</p></div>
-    ))}</div>;
   }
 
   async function downloadQuotation() {
@@ -104,7 +105,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div><div className="invoice-title">QUOTATION</div><div className="invoice-meta">
             <div><span>Quotation No</span><strong>{activeQuotationNo}</strong></div>
             <div><span>Quotation Date</span><strong>{formatCompactDate(readOnly && data.createdAt ? new Date(data.createdAt) : new Date())}</strong></div>
-            <div><span>Status</span><strong>{readOnly ? (data.status ?? "PENDING_APPROVAL").replaceAll("_", " ") : "Preview"}</strong></div>
           </div></div>
           <div className="invoice-brand">Hour Coffee<span>Coffee Catering</span></div>
         </div>
@@ -119,38 +119,26 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
           <div className="invoice-summary-grid">
             <div><span>Event address</span><strong>{data.fullAddress || data.location}</strong></div>
             <div><span>Total cups</span><strong>{pricing.totalCups}</strong></div>
-            <div><span>Service dates</span><strong>{data.serviceDates.length}</strong></div>
-            {selectedPackage ? <div><span>Package</span><strong>{selectedPackage.name}</strong></div> : null}
-            {hasQuotationLevelSettings ? <div><span>Service duration</span><strong>{quotationDurationLabel}</strong></div> : null}
-            <div><span>Baristas per service date</span><strong>{totalBaristasRequired}</strong></div>
-            {hasQuotationLevelSettings ? <div><span>Extra barista units (all dates)</span><strong>{pricing.extraBaristas}</strong></div> : null}
-            {hasQuotationLevelSettings ? <div><span>Extra barista fee (included in package)</span><strong>{formatMoney(pricing.extraBaristaFee)}</strong></div> : null}
+            <div><span>Selected Package</span><strong>{selectedPackage?.name ?? "Coffee Catering"}</strong></div>
           </div>
+        </div>
+
+        <div className="invoice-section">
+          <h3>Service Dates</h3>
           <div className="table-scroll"><table className="invoice-table compact invoice-service-table">
-            <thead><tr><th>Selected Service Dates</th><th>Baristas</th></tr></thead>
-            <tbody>{data.serviceDates.map((date) => <tr key={date.id}><td className="date-cell">{formatCompactDate(date.serviceDate)} — {hasQuotationLevelSettings ? quotationDurationLabel : serviceDuration(date)}</td><td>{pricing.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? "—"}</td></tr>)}</tbody>
+            <thead><tr><th>Date</th><th>Duration</th><th>Total Baristas</th></tr></thead>
+            <tbody>{data.serviceDates.map((date) => <tr key={date.id}>
+              <td className="date-cell">{formatCompactDate(date.serviceDate)}</td>
+              <td>{hasQuotationLevelSettings ? quotationDurationLabel : serviceDuration(date)}</td>
+              <td>{pricing.perDate.find((entry) => entry.date === date.serviceDate)?.requiredBaristas ?? "—"}</td>
+            </tr>)}</tbody>
           </table></div>
         </div>
 
-        <div className="quotation-page-two" style={{ breakBefore: "page", pageBreakBefore: "always" }} />
-        {selectedPackage ? <div className="invoice-section"><h3>Package Inclusions</h3><ul>{selectedPackage.perks.map((perk) => <li key={perk.id}>{perk.name}</li>)}</ul></div> : <div className="invoice-section"><h3>Selected Drinks</h3>{drinkSelection()}</div>}
-        {pricing.featureCharges.length > 0 ? <div className="invoice-section"><h3>Feature Pricing (included in package total)</h3><table className="invoice-table"><tbody>{pricing.featureCharges.map((feature) => <tr key={feature.name}><td>{feature.name}</td><td className="amount-cell">{formatMoney(feature.amount)}</td></tr>)}</tbody></table></div> : null}
-
-        <table className="invoice-table invoice-item-table">
-          <thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
-          <tbody>
-            <tr><td>{selectedPackage?.name ?? "Coffee Catering"}</td><td>{selectedPackage ? selectedPackage.briefDescription || "Quotation package" : providedBeverageNames.join(", ") || "Selected beverages"}</td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</td><td className="amount-cell">{formatMoney(pricing.packageAmount - pricing.extendedDayCharge)}</td></tr>
-            {pricing.extendedDayCharge > 0 ? <tr><td>Extended Service Day</td><td>{pricing.extendedDayCharge / extendedDayRate} × {quotationDurationLabel}</td><td className="number-cell">{pricing.extendedDayCharge / extendedDayRate}</td><td className="amount-cell">{formatMoney(extendedDayRate)}</td><td className="amount-cell">{formatMoney(pricing.extendedDayCharge)}</td></tr> : null}
-            {(data.extraCharges ?? []).map((charge) => <tr key={charge.id}><td>{charge.title}</td><td>{charge.description}<div>Applies to: {extraChargeDateLabel(charge, data.serviceDates)}</div></td><td className="number-cell">1</td><td className="amount-cell">{formatMoney(charge.amount)}</td><td className="amount-cell">{formatMoney(charge.amount)}</td></tr>)}
-          </tbody>
-        </table>
+        {inclusions.length ? <div className="invoice-section"><h3>Package Inclusions</h3><ul className={presentation.inclusions}>{inclusions.map((name) => <li key={name}>{name}</li>)}</ul></div> : null}
 
         <div className={pdfStyles.closing}>
-        <div className="invoice-totals">
-          <div><span>Subtotal</span><strong>{formatMoney(pricing.subtotal)}</strong></div>
-          {pricing.discountAmount > 0 ? <div><span>Discount</span><strong>-{formatMoney(pricing.discountAmount)}</strong></div> : null}
-          <div className="final"><span>Total RM</span><strong>{formatMoney(pricing.total)}</strong></div>
-        </div>
+          <div className={presentation.total}><span>TOTAL</span><strong>{formatMoney(pricing.total)}</strong></div>
         <section className={pdfStyles.bank}>
           <h3>Bank Details</h3>
           <dl><div><dt>Account Name</dt><dd>HOUR COFFEE</dd></div><div><dt>Account Number</dt><dd>3242195227</dd></div><div><dt>Bank</dt><dd>PUBLIC BANK BERHAD</dd></div></dl>

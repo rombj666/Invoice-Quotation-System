@@ -1,3 +1,4 @@
+import { customizationPhysicalSize, type PhysicalSize } from "./customization-physical-size";
 import type { CustomizationByDate } from "../types/customization";
 import type { InvoiceDetails, InvoiceUploadFile } from "../types/invoice";
 import { apiBaseUrl } from "./api-client";
@@ -20,20 +21,21 @@ function dataUrlBlob(dataUrl: string) {
 }
 
 export type CustomizationSubmission = {
+  acknowledgements: boolean[];
   eventAddress: string; dressCode: string; customDressCode: string; environment: string; environmentNotes: string;
   cartDesigns: CustomizationByDate; sleeveDesigns: CustomizationByDate; stickerDesigns: CustomizationByDate; customMenu?: InvoiceUploadFile; latteArt?: InvoiceUploadFile;
 };
 
 export function submitCustomization(token: string, data: CustomizationSubmission) {
   const form = new FormData();
-  const physicalSizes: Record<string, { widthCm?: number; heightCm?: number }> = {};
+  const physicalSizes: Record<string, PhysicalSize> = {};
   const appendDesigns = (prefix: string, designs: CustomizationByDate) => Object.entries(designs).forEach(([key, design]) => {
     if (!design) return;
     const layers = design.logos?.length ? design.logos : [design];
     layers.forEach((layer, index) => {
       const field = `${prefix}:${key}:${index}`;
       form.append(field, dataUrlBlob(layer.originalDataUrl ?? layer.dataUrl), layer.fileName);
-      physicalSizes[field] = { widthCm: design.widthCm, heightCm: design.heightCm };
+      physicalSizes[field] = customizationPhysicalSize(prefix, key);
     });
   });
   appendDesigns("cart", data.cartDesigns);
@@ -41,6 +43,8 @@ export function submitCustomization(token: string, data: CustomizationSubmission
   appendDesigns("sticker", data.stickerDesigns);
   if (data.customMenu?.dataUrl) form.append("customMenu", dataUrlBlob(data.customMenu.dataUrl), data.customMenu.fileName);
   if (data.latteArt?.dataUrl) form.append("latteArt", dataUrlBlob(data.latteArt.dataUrl), data.latteArt.fileName);
+  if (data.customMenu) physicalSizes.customMenu = customizationPhysicalSize("customMenu");
+  if (data.latteArt) physicalSizes.latteArt = customizationPhysicalSize("latteArt");
   form.append("payload", JSON.stringify({ ...data, cartDesigns: undefined, sleeveDesigns: undefined, stickerDesigns: undefined, customMenu: undefined, latteArt: undefined, physicalSizes }));
   return response<{ ok: true; invoiceNo: string }>(fetch(`${apiBaseUrl}/api/invoices/customization/${encodeURIComponent(token)}`, { method: "POST", body: form }));
 }

@@ -1,6 +1,6 @@
 "use client";
 
-const acknowledgementLabels = [
+export const acknowledgementLabels = [
   "I acknowledge the barista(s) must have access to the service space a minimum of 75 minutes prior to my scheduled service time. Large venues may require up to 120 minutes.",
   "I acknowledge Hour Coffee needs a service space of 5 feet by 5 feet per service cart with room for a queue.",
   "I acknowledge Hour Coffee requires one dedicated 13 amp power socket, 240 volt, and it must be within 10 ft from the cart.",

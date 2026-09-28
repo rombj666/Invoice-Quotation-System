@@ -1,5 +1,7 @@
 "use client";
 
+import { MENU_PHYSICAL } from "../../lib/customization-layout";
+
 import type { InvoiceUploadFile } from "../../types/invoice";
 import { CUSTOMIZATION_ASSETS } from "../../lib/customization-assets";
 import { LATTE_PHYSICAL } from "../../lib/customization-layout";
@@ -13,8 +15,8 @@ export function ArtworkCustomizer({ kind, file, onFile }: { kind: "menu" | "latt
       <div className="customize-step customize-menu-step">
         <div className="customize-preview-pane">
           <h2>Custom Menu</h2>
-          <p className="step-copy">Prepare artwork on an A4 portrait canvas (21 × 29.7 cm).</p>
-          <div className="artwork-editor-preview a4">{file?.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt="Artwork preview" /> : <span>A4 · 21 × 29.7 cm</span>}</div>
+          <p className="step-copy">Prepare artwork on an A4 portrait canvas ({MENU_PHYSICAL.width} × {MENU_PHYSICAL.height} {MENU_PHYSICAL.unit}).</p>
+          <div className="artwork-editor-preview a4">{file?.dataUrl?.startsWith("data:image/") ? <img src={file.dataUrl} alt="Artwork preview" /> : <span>A4 · {MENU_PHYSICAL.width} × {MENU_PHYSICAL.height} {MENU_PHYSICAL.unit}</span>}</div>
         </div>
         <div className="customize-controls-pane">
           <label className="upload-box"><strong>{file ? "Replace artwork" : "Upload artwork"}</strong><span>PNG, JPG or PDF</span><input type="file" accept="image/png,image/jpeg,application/pdf" onChange={(event) => { const upload = event.target.files?.[0]; if (upload) read(upload); }} /></label>

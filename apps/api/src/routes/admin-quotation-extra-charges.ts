@@ -1,3 +1,4 @@
+import { assertQuotationEditable, QuotationReadOnlyError } from "../utils/quotation-edit-lock";
 import { Prisma } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
@@ -67,6 +68,8 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
     });
     if (!current) return res.status(404).json({ error: "Quotation not found." });
 
+    if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
+
     const existingCharge = chargeId
       ? current.extraCharges.find((charge) => charge.id === chargeId)
       : undefined;
@@ -86,6 +89,7 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
     newPdfPublicId = pdfUpload.cloudinaryPublicId;
 
     const updated = await prisma.$transaction(async (tx) => {
+      await assertQuotationEditable(tx, current.id);
       let auditSummary: string;
 
       if (kind === "create") {
@@ -168,6 +172,7 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
     if (newPdfPublicId) {
       await deleteCloudinaryPdf(newPdfPublicId).catch(() => undefined);
     }
+    if (error instanceof QuotationReadOnlyError) return res.status(409).json({ error: error.message });
     next(error);
   }
 }

@@ -98,13 +98,13 @@ export default function AdminQuotationListPage() {
                     <td>
                       <div className="admin-actions">
                         <Link href={`/admin/quotations/${quotation.quotationNo}`}>View</Link>
-                        <Link href={`/admin/quotations/${quotation.quotationNo}/edit`}>Edit</Link>
-                        {!isApproved ? (
+                        {!quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? <Link href={`/admin/quotations/${quotation.quotationNo}/edit`}>Edit</Link> : null}
+                        {!isApproved && !quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? (
                           <button className="admin-approve-button" type="button" onClick={() => approve(quotation.quotationNo)}>
                             Approve Quotation
                           </button>
                         ) : null}
-                        {!isApproved ? (
+                        {!isApproved && !quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? (
                           <button type="button" onClick={() => remove(quotation.quotationNo)}>
                             Delete
                           </button>

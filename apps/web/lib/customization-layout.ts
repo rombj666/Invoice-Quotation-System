@@ -17,6 +17,8 @@ type LayoutConfig = {
 export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 70 };
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
 
+export const MENU_PHYSICAL = { width: 21, height: 29.7, unit: "cm" as const };
+
 export const LATTE_PHYSICAL = {
   printDiameterCm: 8,
   artworkWidthCm: 5,

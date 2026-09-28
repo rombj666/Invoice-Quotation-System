@@ -5345,3 +5345,20 @@ p {
     margin-top: 2px;
   }
 }
+
+/* Invoice workflow: keep pricing sequential and features readable in exported PDFs. */
+.invoice-feature-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 24px; padding-left: 18px; }
+.invoice-feature-list li { break-inside: avoid; }
+.invoice-pricing-rows { display: flex; flex-direction: column; gap: 8px; }
+.invoice-pricing-rows > div { display: flex; justify-content: space-between; gap: 24px; }
+.invoice-pricing-subtotal { border-top: 1px solid #ddd; padding-top: 12px; }
+.event-details-grid { display: grid; gap: 16px 24px; width: 100%; grid-column: 1 / -1; }
+@media (min-width: 900px) {
+  .event-details-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .event-address { grid-column: 1; grid-row: 1; }
+  .event-dress-input { grid-column: 1; grid-row: 2; }
+  .event-dress-options { grid-column: 2; grid-row: 1 / 3; }
+  .event-environment-input { grid-column: 1; grid-row: 3; }
+  .event-environment-options { grid-column: 2; grid-row: 3; }
+}
+@media (max-width: 600px) { .invoice-feature-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
