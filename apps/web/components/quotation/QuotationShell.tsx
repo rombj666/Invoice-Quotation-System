@@ -165,7 +165,11 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
     [data.serviceDates]
   );
   const selectedPreview = preview?.packageDisplay.code === data.packageCode ? preview : null;
-  const discountApplied = data.discountCode.trim().toUpperCase() === "FIRST";
+  const normalizedDiscountCode = data.discountCode.trim().toUpperCase();
+
+  const discountApplied =
+    normalizedDiscountCode === "FIRST" ||
+    normalizedDiscountCode === "FIRSTCART";
   const selectedDuration: ServiceDurationMode = data.serviceDuration === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
   const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration, data.serviceDates.map((date) => date.serviceDate));
 
@@ -551,7 +555,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
           <TextInput label="Phone Number" type="tel" autoComplete="tel" value={data.customer.phone} onChange={(event) => setCustomer("phone", event.target.value)} />
           <TextInput label="Email Address" type="email" autoComplete="email" value={data.customer.email} onChange={(event) => setCustomer("email", event.target.value)} />
           <TextArea className="basic-info-address" label="Event Address" rows={3} value={data.location} onChange={(event) => setAddress(event.target.value)} />
-          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => { trackStep1Engagement(); setData((current) => ({ ...current, discountCode: event.target.value })); }} hint={discountApplied ? "FIRST applied — 5% off" : undefined} />
+          <TextInput label="Discount Code" value={data.discountCode} onChange={(event) => { trackStep1Engagement(); setData((current) => ({ ...current, discountCode: event.target.value })); }} hint={discountApplied ? `${normalizedDiscountCode} applied — 5% off` : undefined} />
         </div>
 
         <QuotationDatePicker serviceDates={data.serviceDates} minimumDate={minimumDate} lockedDates={lockedDates} availabilityLoading={locksLoading} onChange={setServiceDates} sideContent={<div className="quotation-event-controls">
@@ -650,7 +654,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
             <div><dt>Duration</dt><dd>{selectedDuration === "FULL_DAY" ? "Full Day" : "Half Day"}</dd></div>
             <div><dt>Baristas per date (maximum)</dt><dd>{baristaPricing.requiredBaristas || "—"}</dd></div>
             <div><dt>Package</dt><dd>{selectedPackage?.name ?? "—"}</dd></div>
-            <div className="quotation-summary-total"><dt>Total</dt><dd>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</dd>{discountApplied ? <small>FIRST · 5% off</small> : null}</div>
+            <div className="quotation-summary-total"><dt>Total</dt><dd>{previewLoading ? "Updating…" : selectedPreview ? formatMoney(selectedPreview.finalTotal) : "—"}</dd>{discountApplied ? <small>{normalizedDiscountCode} · 5% off</small> : null}</div>
           </dl>
           <div className="quotation-summary-details">
             <div className="quotation-summary-detail">

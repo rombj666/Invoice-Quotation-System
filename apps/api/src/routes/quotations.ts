@@ -159,7 +159,8 @@ function parseFixedPricingInput(body: any): { error?: string; discountCode?: str
       : [];
   const discountCode = String(body.discountCode ?? "").trim().toUpperCase();
   const requestedDuration = String(body.serviceDuration ?? "HALF_DAY").toUpperCase();
-  if (discountCode && discountCode !== "FIRST") return { error: "Invalid discount code." };
+  const validDiscountCodes = new Set(["FIRST", "FIRSTCART"]);
+  if (discountCode && !validDiscountCodes.has(discountCode)) {return { error: "Invalid discount code." };}  
   if (requestedDuration !== "HALF_DAY" && requestedDuration !== "FULL_DAY") return { error: "Choose Half Day or Full Day." };
   if (selectedDates.some((date: string) => date < minimumServiceDateIso())) {
     return { error: "One or more event dates are unavailable. Please choose a date at least 6 days from today." };
@@ -173,8 +174,7 @@ function parseFixedPricingInput(body: any): { error?: string; discountCode?: str
     extendToEightHours: Boolean(body.extendToEightHours),
     ...(body.cartStyle ? { cartStyle: String(body.cartStyle) as CartStyle } : {}),
     selectedOptions: Array.isArray(body.selectedOptions) ? body.selectedOptions.map(String) as PackageOptionCode[] : [],
-    discountPercent: discountCode === "FIRST" ? 5 : 0
-  };
+    discountPercent: validDiscountCodes.has(discountCode) ? 5 : 0  };
   const validation = validatePricingInput(input);
   if (!validation.valid) return { error: validation.validationMessages[0] ?? "Invalid quotation configuration." };
   return { input: validation.normalizedInput, discountCode };
