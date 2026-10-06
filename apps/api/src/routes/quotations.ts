@@ -159,7 +159,7 @@ function parseFixedPricingInput(body: any): { error?: string; discountCode?: str
       : [];
   const discountCode = String(body.discountCode ?? "").trim().toUpperCase();
   const requestedDuration = String(body.serviceDuration ?? "HALF_DAY").toUpperCase();
-  const validDiscountCodes = new Set(["FIRST", "FIRSTCART"]);
+  const validDiscountCodes = new Set(["FIRST", "FIRSTCART","FIRSTHOUR"]);
   if (discountCode && !validDiscountCodes.has(discountCode)) {return { error: "Invalid discount code." };}  
   if (requestedDuration !== "HALF_DAY" && requestedDuration !== "FULL_DAY") return { error: "Choose Half Day or Full Day." };
   if (selectedDates.some((date: string) => date < minimumServiceDateIso())) {

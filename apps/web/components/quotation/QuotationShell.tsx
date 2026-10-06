@@ -170,6 +170,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
   const discountApplied =
     normalizedDiscountCode === "FIRST" ||
     normalizedDiscountCode === "FIRSTCART";
+     normalizedDiscountCode === "FIRSTHOUR";
   const selectedDuration: ServiceDurationMode = data.serviceDuration === "FULL_DAY" ? "FULL_DAY" : "HALF_DAY";
   const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration, data.serviceDates.map((date) => date.serviceDate));
 
