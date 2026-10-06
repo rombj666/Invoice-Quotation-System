@@ -501,6 +501,13 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
         await afterPdfPaint();
       });
       completed.current = true;
+      try {
+        if (typeof window.gtag === "function") {
+          window.gtag("event", "conversion_event_request_quote", {});
+        }
+      } catch {
+        // Tracking must not interrupt a successfully saved quotation.
+      }
       completeQuotationForm(saved.quotationNo);
       setData(initialQuotation());
       setStep(0);
