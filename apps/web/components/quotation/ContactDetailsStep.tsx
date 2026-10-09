@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { QuotationData } from "../../types/quotation";
-import { hasText, isValidEmail, isValidMalaysiaPhone } from "../../lib/validators";
+import { hasText, isValidEmail } from "../../lib/validators";
 import { Button } from "../common/Button";
 
 type Props = {
@@ -17,7 +17,7 @@ type ContactField = "name" | "phone" | "email";
 
 function fieldError(field: ContactField, value: string): string {
   if (field === "name" && !hasText(value)) return "Customer full name is required.";
-  if (field === "phone" && !isValidMalaysiaPhone(value)) return "Enter a valid Malaysian phone number.";
+  if (field === "phone" && !/\d/.test(value)) return "Enter a phone number containing numbers.";
   if (field === "email" && !isValidEmail(value.trim())) return "Enter a valid email address.";
   return "";
 }

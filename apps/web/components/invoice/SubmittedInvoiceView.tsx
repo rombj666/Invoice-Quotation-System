@@ -3,8 +3,10 @@
 import type { InvoiceDetails } from "../../types/invoice";
 import { Card } from "../common/Card";
 import { InvoicePreview } from "./InvoicePreview";
+import { CustomizationPdfAction } from "../admin/CustomizationPdfAction";
+import { customizationPhysicalSize, physicalSizeLabels } from "../../lib/customization-physical-size";
 
-type StoredFile = { fileUrl: string; fileName: string; mimeType?: string; designKey?: string };
+type StoredFile = { fileUrl: string; fileName: string; mimeType?: string; designKey?: string; metadata?: any };
 
 function isImage(file: StoredFile) {
   return file.mimeType?.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(file.fileUrl);
@@ -32,7 +34,7 @@ function FileCard({ title, file }: { title: string; file: StoredFile }) {
       <span>{file.mimeType ?? file.fileName.split(".").pop()?.toUpperCase() ?? "File"}</span>
       <div className="readonly-file-actions">
         <a href={file.fileUrl} target="_blank" rel="noreferrer">Open</a>
-        <a href={file.fileUrl} download={file.fileName}>Download</a>
+        {file.metadata?.finalDesign ? <CustomizationPdfAction imageUrl={file.fileUrl} filename={`${file.fileName.replace(/\.[^.]+$/, "")}.pdf`} designType={title} identifier={file.designKey ?? file.fileName} physicalDimensions={physicalSizeLabels(file.metadata.physicalSize, customizationPhysicalSize(file.metadata.kind ?? ""))} /> : <a href={file.fileUrl} download={file.fileName}>Download Original</a>}
       </div>
     </article>
   );
@@ -79,7 +81,9 @@ export function SubmittedInvoiceView({ invoice }: { invoice: InvoiceDetails }) {
   const carts = customizations.filter((file) => file.type === "CART_DESIGN");
   const sleeves = customizations.filter((file) => file.type === "CUP_SLEEVE");
   const stickers = customizations.filter((file) => file.type === "CUP_STICKER");
-  const menus: StoredFile[] = [...(invoice.invoiceFiles ?? [])];
+  const invoiceFiles: StoredFile[] = [...(invoice.invoiceFiles ?? [])];
+  const menus = invoiceFiles.filter((file) => file.metadata?.kind === "customMenu");
+  const foamBoards = invoiceFiles.filter((file) => file.metadata?.kind === "foamBoard");
   if (invoice.customMenuFile?.fileUrl && !menus.some((file) => file.fileUrl === invoice.customMenuFile?.fileUrl)) {
     menus.push({
       fileUrl: invoice.customMenuFile.fileUrl,
@@ -95,6 +99,7 @@ export function SubmittedInvoiceView({ invoice }: { invoice: InvoiceDetails }) {
         <h2 className="screen-only">Invoice Summary</h2>
         <InvoicePreview invoiceNo={invoice.invoiceNo} quotation={invoice.quotation} invoice={invoice} />
         <FileGroup title="Cart Design" files={carts} />
+        <FileGroup title="Foam Board Design" files={foamBoards} />
         <FileGroup title="Custom Menu" files={menus} />
         <FileGroup title="Cup Sleeve Design" files={sleeves} />
         <StickerGroup files={stickers} />

@@ -64,7 +64,7 @@ export default function AdminInvoiceListPage() {
                     <td>{invoice.quotation.customer.name}</td>
                     <td>{invoice.quotation.serviceDates[0] ? formatDateLabel(invoice.quotation.serviceDates[0].serviceDate) : "-"}</td>
                     <td>{formatMoney(pricing.total)}</td>
-                    <td>{invoice.paymentStatus ?? "RECEIPT_UPLOADED"}<br /><small>{invoice.invoiceStatus ?? "SUBMITTED"}</small></td>
+                    <td>{invoice.paymentStatus ?? "UNPAID"}<br /><small>{invoice.invoiceStatus ?? "SUBMITTED"}</small></td>
                     <td>{invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }) : "-"}</td>
                     <td>
                       <div className="admin-actions"><Link href={`/admin/invoices/${invoice.invoiceNo}`}>View</Link><Link href={`/admin/invoices/${invoice.invoiceNo}/edit`}>Edit</Link></div>

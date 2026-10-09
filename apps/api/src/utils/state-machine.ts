@@ -1,32 +1,19 @@
-// Workflow safety: quotation/invoice state-machine ("traffic light") guards,
-// single lifecycle validation, idempotent submission helpers and automatic
-// quotation expiration. This module is the single source of truth for what
-// state transitions are legal.
+// Workflow safety: quotation and invoice state-machine guards. This module is
+// the single source of truth for which lifecycle transitions are legal.
 
 import { InvoiceStatus, PaymentStatus, Prisma, QuotationStatus } from "@prisma/client";
-import { prisma } from "./prisma";
 
 // ---------------------------------------------------------------------------
 // Quotation state machine
 // ---------------------------------------------------------------------------
 
-export const QUOTATION_FINAL_STATUSES: ReadonlySet<QuotationStatus> = new Set<QuotationStatus>([
-  "CONVERTED_TO_INVOICE",
-  "CANCELLED",
-  "EXPIRED"
-]);
+export const QUOTATION_FINAL_STATUSES: ReadonlySet<QuotationStatus> = new Set<QuotationStatus>(["COMPLETED"]);
 
 // Legal transitions: from -> allowed target statuses.
 const QUOTATION_TRANSITIONS: Record<QuotationStatus, ReadonlySet<QuotationStatus>> = {
-  DRAFT: new Set(["PENDING_APPROVAL", "CANCELLED", "EXPIRED"]),
-  PENDING_APPROVAL: new Set(["CONVERTED_TO_INVOICE", "APPROVED", "RETURNED_FOR_EDIT", "CANCELLED", "EXPIRED"]),
-  APPROVED: new Set(["REVIEWED", "SENT", "CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
-  REVIEWED: new Set(["SENT", "APPROVED", "CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
-  SENT: new Set(["CONVERTED_TO_INVOICE", "CANCELLED", "EXPIRED"]),
-  RETURNED_FOR_EDIT: new Set(["PENDING_APPROVAL", "CANCELLED", "EXPIRED"]),
-  CONVERTED_TO_INVOICE: new Set(),
-  CANCELLED: new Set(),
-  EXPIRED: new Set()
+  PENDING_APPROVAL: new Set(["GENERATED_INVOICE"]),
+  GENERATED_INVOICE: new Set(["COMPLETED"]),
+  COMPLETED: new Set()
 };
 
 export function assertValidQuotationTransition(
@@ -40,18 +27,8 @@ export function assertValidQuotationTransition(
   }
 }
 
-export function canQuotationCreateInvoice(
-  status: QuotationStatus,
-  expiresAt: Date | null | undefined,
-  now: Date = new Date()
-): { allowed: boolean; reason?: string } {
-  if (status === "CANCELLED") return { allowed: false, reason: "The quotation has been cancelled and can no longer be invoiced." };
-  if (status === "EXPIRED") return { allowed: false, reason: "The quotation has expired and can no longer be invoiced." };
-  if (status === "CONVERTED_TO_INVOICE") return { allowed: false, reason: "This quotation already has an invoice." };
-  if (status !== "PENDING_APPROVAL" && status !== "APPROVED") return { allowed: false, reason: "Only submitted quotations can generate an invoice." };
-  if (expiresAt && new Date(expiresAt).getTime() < now.getTime()) {
-    return { allowed: false, reason: "The quotation has expired and can no longer be invoiced." };
-  }
+export function canQuotationCreateInvoice(status: QuotationStatus): { allowed: boolean; reason?: string } {
+  if (status !== "PENDING_APPROVAL") return { allowed: false, reason: "Only pending approval quotations can generate an invoice." };
   return { allowed: true };
 }
 
@@ -123,52 +100,6 @@ export function assertValidInvoiceTransition(
   if (!INVOICE_TRANSITIONS[fromKey]?.has(toKey)) {
     throw new Error(`Illegal invoice state transition: ${fromKey} -> ${toKey}`);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Automatic expiration (7-day quoted validity)
-// ---------------------------------------------------------------------------
-
-export const EXPIRABLE_QUOTATION_STATUSES: QuotationStatus[] = [
-  "DRAFT",
-  "PENDING_APPROVAL",
-  "APPROVED",
-  "REVIEWED",
-  "SENT",
-  "RETURNED_FOR_EDIT"
-];
-
-/**
- * Marks overdue quotations (expiresAt in the past and not yet terminal) as
- * EXPIRED. Safe to call on every read path (lazy check) and on a timer.
- * Returns the number of quotations that were expired.
- */
-export async function expireOverdueQuotations(now: Date = new Date()): Promise<number> {
-  const overdue = await prisma.quotation.findMany({
-    where: {
-      status: { in: EXPIRABLE_QUOTATION_STATUSES },
-      expiresAt: { not: null, lt: now }
-    },
-    select: { id: true, quotationNo: true, status: true }
-  });
-  for (const quotation of overdue) {
-    await prisma.quotation.update({
-      where: { id: quotation.id },
-      data: {
-        status: "EXPIRED",
-        statusHistory: {
-          create: {
-            fromStatus: quotation.status,
-            toStatus: "EXPIRED",
-            changedBy: "system",
-            changeSummary: "Quotation expired automatically after the validity window passed."
-          }
-        }
-      }
-    });
-    console.info(`[quotation-expiry] expired ${quotation.quotationNo} (was ${quotation.status})`);
-  }
-  return overdue.length;
 }
 
 // ---------------------------------------------------------------------------

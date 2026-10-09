@@ -54,10 +54,10 @@ export function dashboardQuotationAnalytics(quotations: DashboardQuotation[], pe
   for (const quotation of quotations) {
     const key = trendKey(quotation.createdAt, period);
     trend.set(key, (trend.get(key) ?? 0) + 1);
-    const label = quotation.invoices.length > 0 ? "Completed / Converted" : statusLabel(quotation.status);
+    const label = statusLabel(quotation.status);
     statuses.set(label, (statuses.get(label) ?? 0) + 1);
   }
-  const preferredStatusOrder = ["Pending Approval", "Approved", "Completed / Converted"];
+  const preferredStatusOrder = ["Pending Approval", "Generated Invoice", "Completed"];
   const statusBreakdown = [...statuses.entries()]
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => {
@@ -70,8 +70,8 @@ export function dashboardQuotationAnalytics(quotations: DashboardQuotation[], pe
     quotationStats: {
       submitted: quotations.length,
       pendingApproval: quotations.filter((quotation) => quotation.status === "PENDING_APPROVAL").length,
-      approved: quotations.filter((quotation) => quotation.status === "APPROVED").length,
-      completedConverted: converted.length
+      generatedInvoice: quotations.filter((quotation) => quotation.status === "GENERATED_INVOICE").length,
+      completed: quotations.filter((quotation) => quotation.status === "COMPLETED").length
     },
     graphs: {
       grouping: period === "today" ? "hour" : period === "all" ? "month" : "day",
@@ -211,6 +211,6 @@ adminDashboardRoutes.get("/metrics", async (req, res, next) => {
     ]);
     const analytics = dashboardQuotationAnalytics(quotations, period);
     const traffic = dashboardTrafficAnalytics(trafficSessions, period, now);
-    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completedConverted, traffic.current.totals.sessions), ...analytics, traffic });
+    res.json({ ...dashboardMetrics(quotations.length, analytics.quotationStats.completed, traffic.current.totals.sessions), ...analytics, traffic });
   } catch (error) { next(error); }
 });

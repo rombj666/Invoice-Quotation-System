@@ -39,7 +39,7 @@ export default function GenerateInvoicePage() {
         const existing = invoices.find((item) => item.quotation.quotationNo === params.quotationNo);
         if (existing) return router.replace(`/admin/invoices/${existing.invoiceNo}`);
         if (!loaded) return setError("Quotation not found.");
-        if (!["PENDING_APPROVAL", "APPROVED"].includes(loaded.status ?? "PENDING_APPROVAL")) return setError("Only submitted quotations can generate an invoice.");
+        if ((loaded.status ?? "PENDING_APPROVAL") !== "PENDING_APPROVAL" || loaded.hasInvoice) return setError("Only pending approval quotations without an invoice can generate an invoice.");
         setEventAddress(loaded.fullAddress || loaded.location || "");
         setQuotation({ ...structuredClone(loaded), invoiceServiceTiming: true, totalCups: undefined, serviceDuration: undefined, serviceDates: loaded.serviceDates.map((date) => ({ ...date, durationMode: undefined })) });
         setInvoiceNo(nextNo);

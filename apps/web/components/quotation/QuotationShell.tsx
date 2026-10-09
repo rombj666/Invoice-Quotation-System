@@ -9,7 +9,7 @@ import { formatDateLabel, formatMoney } from "../../lib/formatters";
 import { loadQuotationPackages } from "../../lib/packages";
 import { getQuotationBaristaPricing } from "../../lib/pricing";
 import { getQuotationTrackingSession, trackQuotationEvent } from "../../lib/quotation-tracking";
-import { getNextQuotationNo, previewQuotationPricing, resubmitQuotation, submitQuotationWithPdf } from "../../lib/quotation-storage";
+import { getNextQuotationNo, previewQuotationPricing, submitQuotationWithPdf } from "../../lib/quotation-storage";
 import { generatePdfBlob } from "../../lib/pdf-document";
 import { loadLockedDates } from "../../lib/locked-dates";
 import type { CartStyle, FixedPackageDisplay, PackageCode, PackageOptionCode, QuotationData, QuotationPricingPreview, ServiceDate, ServiceDurationMode } from "../../types/quotation";
@@ -73,7 +73,6 @@ function initialQuotation(): QuotationData {
     discountCode: "",
     discountPercent: 0,
     notes: "",
-    linkExpiryDays: 7
   };
 }
 
@@ -130,12 +129,11 @@ function trackGaMilestoneOnce(
   );
 }
 
-export function QuotationShell({ editQuotation }: { editQuotation?: QuotationData }) {
+export function QuotationShell() {
   const router = useRouter();
   const completed = useRef(false);
   const [step, setStep] = useState(0);
-  const [data, setData] = useState<QuotationData>(() => editQuotation ? { ...initialQuotation(), ...editQuotation } : initialQuotation());
-  const [resubmitted, setResubmitted] = useState(false);
+  const [data, setData] = useState<QuotationData>(() => initialQuotation());
   const [packages, setPackages] = useState<FixedPackageDisplay[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -175,12 +173,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
   const baristaPricing = getQuotationBaristaPricing(Number(data.totalCups), selectedDuration, data.serviceDates.map((date) => date.serviceDate));
 
   useEffect(() => {
-    if (editQuotation) {
-      setStep(1);
-      trackQuotationEvent("OPEN");
-      trackGaMilestoneOnce("quotation_view");
-      trackQuotationEvent("STEP2_VISITED");
-    } else {
+
       if (hasSubmittedQuotation()) {
         completed.current = true;
         window.localStorage.removeItem(quotationDraftStorageKey);
@@ -214,7 +207,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
       trackQuotationEvent("OPEN");
       trackGaMilestoneOnce("quotation_view");
       if (restoredStep === 1) trackQuotationEvent("STEP2_VISITED");
-    }
+
     setReady(true);
     loadLockedDates().then((dates) => { setLockedDates(dates); setLocksLoading(false); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load date availability. Please reload the page."));
@@ -229,12 +222,11 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
 
   // Persist each committed edit before paint, including immediately before refresh/close.
   useLayoutEffect(() => {
-    if (!ready || editQuotation || completed.current || hasSubmittedQuotation()) return;
+    if (!ready || completed.current || hasSubmittedQuotation()) return;
     window.localStorage.setItem(quotationDraftStorageKey, JSON.stringify({ version: 7, step, data }));
-  }, [data, ready, step, editQuotation]);
+  }, [data, ready, step]);
 
   useEffect(() => {
-    if (editQuotation) return;
     const returnToSuccess = () => {
       if (!hasSubmittedQuotation()) return;
       completed.current = true;
@@ -253,7 +245,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("pageshow", returnToSuccess);
     };
-  }, [editQuotation, router]);
+  }, [router]);
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -413,52 +405,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
   async function continueToWhatsApp() {
     if (submitting.current) return;
 
-    if (editQuotation) {
-      if (!selectedPackage) return setError("Choose a package first.");
-      if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
-      if (!data.customer.name.trim()) return setError("Customer full name is required.");
-      const editPhoneDigits = data.customer.phone.replace(/\D/g, "");
-      const editPhone = editPhoneDigits.startsWith("60") ? `0${editPhoneDigits.slice(2)}` : editPhoneDigits;
-      if (!/^01\d{8,9}$/.test(editPhone)) return setError("Enter a valid Malaysian phone number.");
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer.email.trim())) return setError("Enter a valid email address.");
-      if (!data.location.trim()) return setError("Event address is required.");
-      submitting.current = true;
-      setIsSubmitting(true);
-      setError("");
-      try {
-        const [dates, validated] = await Promise.all([loadLockedDates(), previewQuotationPricing(data)]);
-        setLockedDates(dates);
-        if (data.serviceDates.some((date) => dates.includes(date.serviceDate))) throw new Error("One or more selected dates are no longer available. Please choose another date.");
-        const quotationForSubmission: QuotationData = {
-          ...data,
-          quotationNo: editQuotation.quotationNo,
-          status: "PENDING_APPROVAL",
-          expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
-          discountPercent: discountApplied ? 5 : 0,
-          packageSnapshot: {
-            id: selectedPackage.id, name: selectedPackage.name,
-            level: selectedPackage.code as unknown as NonNullable<QuotationData["packageSnapshot"]>["level"],
-            briefDescription: selectedPackage.shortDescription, price: validated.subtotal,
-            extendedDayCharge: validated.extendedDayCharge,
-            perks: validated.selectedItems.map((name, displayOrder) => ({ id: `${selectedPackage.code}-${displayOrder}`, name, displayOrder }))
-          }
-        };
-        setPdfData(quotationForSubmission);
-        await afterPdfPaint();
-        const filename = `Hour-Coffee-Quotation-${quotationForSubmission.quotationNo}.pdf`;
-        const quotationPdf = await generatePdfBlob("quotationPreview", { filename });
-        await resubmitQuotation(quotationForSubmission.quotationNo, quotationForSubmission, quotationPdf);
-        setResubmitted(true);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Unable to resubmit quotation. Please try again.");
-      } finally {
-        submitting.current = false;
-        setIsSubmitting(false);
-        setPdfData(null);
-      }
-      return;
-    }
+
 
     if (completed.current || hasSubmittedQuotation()) {
       router.replace(quotationSuccessPath);
@@ -467,9 +414,7 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
     if (!selectedPackage) return setError("Choose a package first.");
     if (!selectedPreview || previewLoading || previewError) return setError(previewError || "Wait for the total to finish updating.");
     if (!data.customer.name.trim()) return setError("Customer full name is required.");
-    const phoneDigits = data.customer.phone.replace(/\D/g, "");
-    const phone = phoneDigits.startsWith("60") ? `0${phoneDigits.slice(2)}` : phoneDigits;
-    if (!/^01\d{8,9}$/.test(phone)) return setError("Enter a valid Malaysian phone number.");
+    if (!/\d/.test(data.customer.phone)) return setError("Enter a phone number containing numbers.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customer.email.trim())) return setError("Enter a valid email address.");
     if (!data.location.trim()) return setError("Event address is required.");
     trackGaMilestoneOnce("quotation_step_2_completed");
@@ -485,7 +430,6 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
       if (data.serviceDates.some((date) => dates.includes(date.serviceDate))) throw new Error("One or more selected dates are no longer available. Please choose another date.");
       const quotationForSubmission: QuotationData = {
         ...data, quotationNo, status: "PENDING_APPROVAL",
-        expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
         discountPercent: discountApplied ? 5 : 0,
         packageSnapshot: {
           id: selectedPackage.id, name: selectedPackage.name,
@@ -535,25 +479,11 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
 
   if (!ready || completed.current) return <main className="hc-page"><Card><p>{completed.current ? "Opening confirmation…" : "Loading quotation…"}</p></Card></main>;
 
-  if (resubmitted) {
-    return <main className="hc-page quotation-workspace">
-      <Card className="quotation-flow-card">
-        <div className="quotation-resubmitted">
-          <h1>Quotation resubmitted</h1>
-          <p>Your updated quotation <strong>{editQuotation?.quotationNo}</strong> has been sent back for approval.</p>
-          <p>You can track its status anytime from <a href={`/orders?phone=${encodeURIComponent(data.customer.phone ?? "")}&email=${encodeURIComponent(data.customer.email ?? "")}`}>My Orders</a>.</p>
-        </div>
-      </Card>
-    </main>;
-  }
+
 
   return <main className="hc-page quotation-workspace" onClickCapture={() => trackQuotationEvent("ACTIVITY")} onKeyDownCapture={() => trackQuotationEvent("ACTIVITY")}>
     <Card className="quotation-flow-card">
-      {editQuotation ? <div className="quotation-edit-banner">
-        <strong>This quotation was returned for changes.</strong>
-        {editQuotation.returnReason ? <span> Admin note: {editQuotation.returnReason}</span> : null}
-        <span> Edit the details below and resubmit for approval.</span>
-      </div> : null}
+
       <ProgressHeader currentStep={step} totalSteps={totalSteps} steps={["Basic Info & Event Details", "Choose, Review & Submit"]} />
 
       {step === 0 ? <div className="quotation-basic-step">
@@ -677,8 +607,8 @@ export function QuotationShell({ editQuotation }: { editQuotation?: QuotationDat
         </section>
         <section className="quotation-contact-action" aria-labelledby="quotation-contact-heading">
           <h2 id="quotation-contact-heading">Ready to proceed?</h2>
-          <Button type="button" onClick={continueToWhatsApp} aria-describedby="quotation-contact-description" disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : editQuotation ? "Resubmit Quotation" : "Contact Us on WhatsApp"}</Button>
-          <p id="quotation-contact-description">{editQuotation ? "Your changes will be sent back for approval." : "Send us a message on WhatsApp and our team will get back to you as soon as possible."}</p>
+          <Button type="button" onClick={continueToWhatsApp} aria-describedby="quotation-contact-description" disabled={isSubmitting || !selectedPackage || !selectedPreview || previewLoading}>{isSubmitting ? "Submitting…" : "Contact Us on WhatsApp"}</Button>
+          <p id="quotation-contact-description">"Send us a message on WhatsApp and our team will get back to you as soon as possible."</p>
         </section>
         <style jsx>{`
           .quotation-contact-action {

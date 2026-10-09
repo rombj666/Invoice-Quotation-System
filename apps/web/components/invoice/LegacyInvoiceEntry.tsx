@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { Card } from "../common/Card";
 import { loadInvoiceByNo } from "../../lib/invoice-storage";
 import type { InvoiceDetails } from "../../types/invoice";
-import { InvoiceShell } from "./InvoiceShell";
 import { SubmittedInvoiceView } from "./SubmittedInvoiceView";
 
 export function LegacyInvoiceEntry() {
@@ -21,6 +20,6 @@ export function LegacyInvoiceEntry() {
     } catch { window.sessionStorage.removeItem("hourCoffeeSubmittedInvoiceIdentity"); }
   }, [search]);
   if (legacyInvoice) return <SubmittedInvoiceView invoice={legacyInvoice} />;
-  if (search.get("invoiceNo") || search.get("quotationNo")) return <InvoiceShell />;
+  if (search.get("invoiceNo") || search.get("quotationNo")) return <main className="hc-page"><Card><h2>Invoice</h2><p>Hour Coffee will send your final invoice directly. Send your payment receipt to Hour Coffee to receive your customization link.</p></Card></main>;
   return <main className="hc-page"><Card><h2>This customer flow has moved</h2><p>Please use the secure Customer Portal link provided by Hour Coffee.</p></Card></main>;
 }

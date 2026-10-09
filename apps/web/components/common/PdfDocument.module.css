@@ -1,0 +1,44 @@
+.document {
+  color: #292621;
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.document :global(.invoice-title) {
+  color: #292621;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.document :global(.invoice-brand) { font-family: "Playfair Display", Georgia, serif; font-size: 26px; }
+
+.document :global(.invoice-section h3),
+.document :global(.invoice-card h3) {
+  color: #594838;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.document :global(.label-small),
+.document :global(.invoice-meta span),
+.document :global(.invoice-summary-grid span) {
+  color: #786b5f;
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 9px;
+}
+
+.document :global(.invoice-table),
+.document :global(.invoice-table th),
+.document :global(.invoice-table td) {
+  font-family: "DM Sans", Arial, sans-serif;
+  font-size: 9px;
+}
+
+.document :global(.invoice-summary-grid strong),
+.document :global(.invoice-two-col strong) { font-family: "DM Sans", Arial, sans-serif; font-size: 10px; }
+.document :global(.invoice-totals span) { font-family: "DM Sans", Arial, sans-serif; font-size: 9px; }
+.document :global(.invoice-totals .final) { font-family: "DM Sans", Arial, sans-serif; font-size: 26px; }
+.document :global(.invoice-card footer) { font-family: "DM Sans", Arial, sans-serif; font-size: 9px; }

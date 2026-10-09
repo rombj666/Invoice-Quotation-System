@@ -25,7 +25,7 @@ export type DashboardMetrics = {
   convertedLeads: number;
   pageVisitors: number;
   conversionRate: number;
-  quotationStats: { submitted: number; pendingApproval: number; approved: number; completedConverted: number };
+  quotationStats: { submitted: number; pendingApproval: number; generatedInvoice: number; completed: number };
   traffic: {
     grouping: "hour" | "day" | "month";
     current: TrafficPeriod;
@@ -111,6 +111,12 @@ export function updateAdminInvoice(originalInvoiceNo: string, data: InvoiceDetai
   form.append("payload", JSON.stringify(data));
   form.append("invoicePdf", pdf, `${data.invoiceNo}.pdf`);
   return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(originalInvoiceNo)}`, { method: "PATCH", body: form });
+}
+
+export function uploadAdminInvoiceReceipt(invoiceNo: string, file: File) {
+  const form = new FormData();
+  form.append("receipt", file, file.name);
+  return request<InvoiceDetails>(`/api/admin/invoices/${encodeURIComponent(invoiceNo)}/receipt`, { method: "POST", body: form });
 }
 
 export function getCustomerPortalToken(quotationNo: string) {

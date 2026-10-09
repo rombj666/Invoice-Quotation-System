@@ -32,8 +32,15 @@ export default function AdminQuotationListPage() {
   }, []);
 
   async function remove(quotationNo: string) {
-    await deleteQuotation(quotationNo);
-    await refresh();
+    if (!window.confirm(`Permanently delete quotation ${quotationNo}? This cannot be undone.`)) return;
+    setError(""); setSuccess("");
+    try {
+      await deleteQuotation(quotationNo);
+      setQuotations((current) => current.filter((quotation) => quotation.quotationNo !== quotationNo));
+      setSuccess(`Quotation ${quotationNo} permanently deleted.`);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete quotation.");
+    }
   }
 
   const filtered = quotations.filter((quotation) => {
@@ -51,7 +58,7 @@ export default function AdminQuotationListPage() {
         {success ? <div className="ok-summary">{success}</div> : null}
         <div className="admin-list-filters">
           <input aria-label="Search quotations" placeholder="Search quotation, customer, company or phone" value={search} onChange={(event) => setSearch(event.target.value)} />
-          <select aria-label="Quotation status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All quotation statuses</option>{["DRAFT","PENDING_APPROVAL","APPROVED","REVIEWED","SENT","CONVERTED_TO_INVOICE","CANCELLED"].map((value)=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
+          <select aria-label="Quotation status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All quotation statuses</option>{[["PENDING_APPROVAL", "Pending Approval"], ["GENERATED_INVOICE", "Generated Invoice"], ["COMPLETED", "Completed"]].map(([value, label])=><option key={value} value={value}>{label}</option>)}</select>
           <input aria-label="Submitted date" type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
         </div>
         <div className="admin-table-wrap">
@@ -72,7 +79,8 @@ export default function AdminQuotationListPage() {
               {filtered.map((quotation) => {
                 const pricing = calculateQuotationPricing(quotation);
                 const status = quotation.status ?? "PENDING_APPROVAL";
-                const isApproved = status === "APPROVED";
+                const statusLabel = status === "PENDING_APPROVAL" ? "Pending Approval" : status === "GENERATED_INVOICE" ? "Generated Invoice" : "Completed";
+                const statusClass = status === "PENDING_APPROVAL" ? "pending" : "approved";
                 return (
                   <tr key={quotation.quotationNo}>
                     <td>{quotation.quotationNo}</td>
@@ -80,18 +88,19 @@ export default function AdminQuotationListPage() {
                     <td>{quotation.customer.companyName || "-"}</td>
                     <td>{quotation.serviceDates[0] ? formatDateLabel(quotation.serviceDates[0].serviceDate) : "-"}</td>
                     <td>{formatMoney(pricing.total)}</td>
-                    <td><span className={`admin-status-badge ${isApproved ? "approved" : "pending"}`}>{status.replaceAll("_", " ")}</span></td>
+                    <td><span className={`admin-status-badge ${statusClass}`}>{statusLabel}</span></td>
                     <td>{quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur" }) : "-"}</td>
                     <td>
                       <div className="admin-actions">
                         <Link href={`/admin/quotations/${quotation.quotationNo}`}>View</Link>
-                        {!quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? <Link href={`/admin/quotations/${quotation.quotationNo}/edit`}>Edit</Link> : null}
-                        {!quotation.hasInvoice && ["PENDING_APPROVAL", "APPROVED"].includes(status) ? <Link className="admin-approve-button" href={`/admin/quotations/${quotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
-                        {!isApproved && !quotation.hasInvoice && status !== "CONVERTED_TO_INVOICE" ? (
+                        {status === "PENDING_APPROVAL" && !quotation.hasInvoice ? <Link href={`/admin/quotations/${quotation.quotationNo}/edit`}>Edit</Link> : null}
+                        {status === "PENDING_APPROVAL" && !quotation.hasInvoice ? <Link className="admin-approve-button" href={`/admin/quotations/${quotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+                        {status === "PENDING_APPROVAL" && !quotation.hasInvoice ? (
                           <button type="button" onClick={() => remove(quotation.quotationNo)}>
                             Delete
                           </button>
                         ) : null}
+                        {quotation.invoiceNo ? <Link href={`/admin/invoices/${quotation.invoiceNo}`}>View Existing Invoice</Link> : null}
                         <button type="button" onClick={() => openAdminCustomerWhatsApp(quotation)} disabled={!normalizeMalaysiaWhatsAppNumber(quotation.customer.phone)}>
                           {normalizeMalaysiaWhatsAppNumber(quotation.customer.phone) ? "Contact Customer" : "No phone number"}
                         </button>

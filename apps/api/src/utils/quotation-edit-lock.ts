@@ -8,6 +8,6 @@ export class QuotationReadOnlyError extends Error {
 export async function assertQuotationEditable(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw`SELECT "id" FROM "Quotation" WHERE "id" = ${id} FOR UPDATE`;
   const current = await tx.quotation.findUniqueOrThrow({ where: { id }, include: { invoices: { select: { id: true }, take: 1 } } });
-  if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) throw new QuotationReadOnlyError();
+  if (current.status !== "PENDING_APPROVAL" || current.invoices.length) throw new QuotationReadOnlyError();
   return current;
 }

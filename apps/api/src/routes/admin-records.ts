@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { validateChargeInput } from "./admin-quotation-extra-charges";
 import { InvoiceItemType, InvoiceStatus, PaymentStatus, Prisma, QuotationStatus } from "@prisma/client";
 import { Router } from "express";
-import { cloudinaryFolders, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "../services/cloudinary.service";
+import { cloudinaryFolders, deleteCloudinaryImage, deleteCloudinaryPdf, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../utils/addons";
 import { toInvoicePayload } from "../utils/invoice-payload";
 import { parseMultipartRequest } from "../utils/multipart";
@@ -14,11 +14,11 @@ import { prisma } from "../utils/prisma";
 import { sendNotification } from "../services/notifications";
 import { toQuotationPayload } from "./quotations";
 import { validateAndNormalizeDrinkSelections } from "../utils/drink-selection";
-import { assertValidInvoiceStatePair, assertValidInvoiceTransition, assertValidQuotationTransition, canQuotationCreateInvoice, expireOverdueQuotations } from "../utils/state-machine";
+import { assertValidInvoiceStatePair, assertValidInvoiceTransition, assertValidQuotationTransition, canQuotationCreateInvoice } from "../utils/state-machine";
 
 export const adminRecordRoutes = Router();
 
-const quotationStatuses = new Set<QuotationStatus>(["DRAFT", "PENDING_APPROVAL", "RETURNED_FOR_EDIT", "APPROVED", "REVIEWED", "SENT", "CONVERTED_TO_INVOICE", "CANCELLED"]);
+const quotationStatuses = new Set<QuotationStatus>(["PENDING_APPROVAL", "GENERATED_INVOICE", "COMPLETED"]);
 const invoiceStatuses = new Set<InvoiceStatus>(["DRAFT", "SUBMITTED", "PENDING_PAYMENT_REVIEW", "PAID", "CONFIRMED", "CANCELLED"]);
 const paymentStatuses = new Set<PaymentStatus>(["UNPAID", "RECEIPT_UPLOADED", "VERIFIED", "REJECTED"]);
 
@@ -36,7 +36,7 @@ function useInvoiceServiceTiming(data: any) {
 function validateQuotationFields(data: any, allowSimplifiedQuotation = false): string | null {
   if (!String(data.customer?.name ?? "").trim()) return "Customer name is required.";
   if (!/^\S+@\S+\.\S+$/.test(String(data.customer?.email ?? ""))) return "A valid customer email is required.";
-  if (String(data.customer?.phone ?? "").replace(/\D/g, "").length < 9) return "A valid customer phone number is required.";
+  if (!/\d/.test(String(data.customer?.phone ?? ""))) return "A customer phone number containing numbers is required.";
   if (!allowSimplifiedQuotation && !String(data.customer?.billingAddress ?? "").trim()) return "Billing address is required.";
   if (!String(data.location ?? "").trim()) return "Event address is required.";
   if (!allowSimplifiedQuotation && !String(data.eventType ?? "").trim()) return "Event type is required.";
@@ -157,50 +157,25 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
   let newPdfPublicId: string | undefined;
   try {
     const locked = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo }, include: { invoices: { select: { id: true } } } });
-    if (locked && (locked.status === "CONVERTED_TO_INVOICE" || locked.invoices.length)) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
+    if (locked && (locked.status !== "PENDING_APPROVAL" || locked.invoices.length)) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
     const multipart = await parseMultipartRequest(req, 30 * 1024 * 1024);
     const data = JSON.parse(multipart.fields.payload ?? "{}");
     const pdfFile = multipart.files.find((file) => file.fieldName === "quotationPdf");
-    // Returning a quotation only changes status/reason and keeps the original
-    // PDF; any other edit must regenerate the document.
     delete data.invoiceServiceTiming;
-    const isReturnOnly = data.status === "RETURNED_FOR_EDIT" && !pdfFile;
-    if (!isReturnOnly && (!pdfFile || pdfFile.mimeType !== "application/pdf")) return res.status(400).json({ error: "A regenerated quotation PDF is required." });
+    if (!pdfFile || pdfFile.mimeType !== "application/pdf") return res.status(400).json({ error: "A regenerated quotation PDF is required." });
 
     const current = await prisma.quotation.findUnique({
       where: { quotationNo: req.params.quotationNo },
       include: { customer: true, dates: true, invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } } }
     });
     if (!current) return res.status(404).json({ error: "Quotation not found" });
-    if (!quotationStatuses.has(data.status)) return res.status(400).json({ error: "Invalid quotation status." });
-    // State machine guard: locked quotations cannot be edited, and the new
-    // status must be a legal transition from the current one.
-    if (current.invoices.length || current.status === "CONVERTED_TO_INVOICE" || current.status === "CANCELLED" || current.status === "EXPIRED") {
+    if (data.status !== "PENDING_APPROVAL" || !quotationStatuses.has(data.status)) return res.status(400).json({ error: "Quotation edits must remain in Pending Approval." });
+    if (current.invoices.length || current.status !== "PENDING_APPROVAL") {
       return res.status(409).json({ error: "This quotation is locked or has an invoice and can no longer be edited." });
     }
-    try {
-      assertValidQuotationTransition(current.status, data.status, { allowSame: true });
-    } catch (error) {
-      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal quotation status transition." });
-    }
-    const statusChanged = current.status !== data.status;
-    const quotationNo = isReturnOnly ? current.quotationNo : String(data.quotationNo ?? "").trim().toUpperCase();
+    const quotationNo = String(data.quotationNo ?? "").trim().toUpperCase();
     let updated;
-    if (isReturnOnly) {
-      const returnReason = String(data.returnReason ?? "").trim();
-      if (!returnReason) return res.status(400).json({ error: "A reason is required when returning a quotation." });
-      updated = await prisma.$transaction(async (tx) => {
-        await assertQuotationEditable(tx, current.id);
-        return tx.quotation.update({
-        where: { id: current.id },
-        data: {
-          status: "RETURNED_FOR_EDIT", returnReason, returnedAt: new Date(),
-          statusHistory: { create: { fromStatus: current.status, toStatus: "RETURNED_FOR_EDIT", changedBy: "admin", changeSummary: `Returned for changes: ${returnReason}` } }
-        },
-        include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } }
-      });
-      });
-    } else {
+    {
       const fieldError = validateQuotationFields(data, true);
       if (fieldError) return res.status(400).json({ error: fieldError });
       const editError = validateQuotationEdits(data, current);
@@ -212,8 +187,8 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
       const pricedData = normalizedDrinks.data;
       const pricing = calculateQuotationPricing(pricedData, data.extraCharges);
       if (!/^Q\d{5}$/.test(quotationNo)) return res.status(400).json({ error: "Quotation number must use the format Q00001." });
-      const pdfUpload = isReturnOnly ? null : await uploadCloudinaryBuffer(pdfFile, cloudinaryFolders.quotationPdfs, `${quotationNo}-${Date.now()}.pdf`);
-      if (!isReturnOnly && !pdfUpload) throw new Error("Unable to upload quotation PDF.");
+      const pdfUpload = await uploadCloudinaryBuffer(pdfFile, cloudinaryFolders.quotationPdfs, `${quotationNo}-${Date.now()}.pdf`);
+      if (!pdfUpload) throw new Error("Unable to upload quotation PDF.");
       newPdfPublicId = pdfUpload?.cloudinaryPublicId;
       const summaryFields = changedFields({ ...(current.metadata as object), extraCharges: toQuotationPayload(current).extraCharges }, data, ["quotationNo", "customer", "location", "fullAddress", "eventType", "customEventType", "serviceDates", "drinkOrders", "selectedAddons", "hasCupStickers", "hasCupSleeves", "discountPercent", "status", "extraCharges"]);
       const metadata = { ...pricedData, extraCharges: undefined, quotationNo, pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total }, pricingBreakdown: { requiredBaristas: pricing.requiredBaristas, extraBaristas: pricing.extraBaristas, extraBaristaFee: pricing.extraBaristaFee, fullDayBaristaFeesByDate: pricing.fullDayBaristaFeesByDate, extraServingHoursByDate: pricing.extraServingHoursByDate, extraServingHourRate: pricing.extraServingHourRate, extraServingHourFeeByDate: pricing.extraServingHourFeeByDate, totalExtraServingHourFee: pricing.totalExtraServingHourFee } };
@@ -238,8 +213,6 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
           data: {
             quotationNo,
             status: data.status,
-            returnReason: data.status === "RETURNED_FOR_EDIT" ? String(data.returnReason ?? "").trim() || null : null,
-            returnedAt: data.status === "RETURNED_FOR_EDIT" ? new Date() : null,
             location: data.location.startsWith("Others") ? data.fullAddress || data.location : data.location,
             eventType: data.eventType === "Others" ? data.customEventType || data.eventType : data.eventType,
             subtotalAmount: pricing.subtotal, discountPercent: data.discountPercent || 0,
@@ -274,17 +247,7 @@ adminRecordRoutes.patch("/quotations/:quotationNo", async (req, res, next) => {
         return tx.quotation.findUniqueOrThrow({ where: { id: result.id }, include: { invoices: { select: { id: true } }, extraCharges: { orderBy: { createdAt: "asc" }, include: { dates: { include: { quotationDate: true } } } }, statusHistory: { orderBy: { createdAt: "desc" } } } });
       });
     }
-    if (!isReturnOnly) void deleteCloudinaryPdf(current.quotationPdfPublicId).catch(() => undefined);
-    if (statusChanged && data.status === "RETURNED_FOR_EDIT") {
-      await sendNotification({
-        type: "QUOTATION_RETURNED",
-        recipient: { role: "customer", name: current.customer.name, phone: current.customer.phone, email: current.customer.email },
-        title: `Quotation ${quotationNo} returned for changes`,
-        message: data.returnReason ? `Admin asked for changes: ${String(data.returnReason).trim()}` : "Admin asked you to edit and resubmit this quotation.",
-        referenceNo: quotationNo,
-        link: `/customer/quotation/${encodeURIComponent(quotationNo)}/edit`
-      });
-    }
+    void deleteCloudinaryPdf(current.quotationPdfPublicId).catch(() => undefined);
     res.json(toQuotationPayload(updated));
   } catch (error) {
     if (newPdfPublicId) void deleteCloudinaryPdf(newPdfPublicId).catch(() => undefined);
@@ -313,8 +276,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
     });
     if (!current) return res.status(404).json({ error: "Quotation not found." });
     if (current.invoices.length) return res.status(409).json({ error: "An invoice already exists for this quotation.", invoiceNo: current.invoices[0].invoiceNo });
-    await expireOverdueQuotations();
-    const invoiceGuard = canQuotationCreateInvoice(current.status, current.expiresAt);
+    const invoiceGuard = canQuotationCreateInvoice(current.status);
     if (!invoiceGuard.allowed) return res.status(409).json({ error: invoiceGuard.reason });
 
     const editError = validateQuotationEdits(data, current);
@@ -355,9 +317,9 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
     ];
     const invoice = await prisma.$transaction(async (tx) => {
       const lockedQuotation = await assertQuotationEditable(tx, current.id);
-      const lockedGuard = canQuotationCreateInvoice(lockedQuotation.status, lockedQuotation.expiresAt);
+      const lockedGuard = canQuotationCreateInvoice(lockedQuotation.status);
       if (!lockedGuard.allowed) throw new QuotationReadOnlyError(lockedGuard.reason);
-      assertValidQuotationTransition(lockedQuotation.status, "CONVERTED_TO_INVOICE");
+      assertValidQuotationTransition(lockedQuotation.status, "GENERATED_INVOICE");
       const quotationMetadata = (lockedQuotation.metadata ?? {}) as Record<string, unknown>;
       const created = await tx.invoice.create({
         data: {
@@ -369,7 +331,7 @@ adminRecordRoutes.post("/quotations/:quotationNo/generate-invoice", async (req, 
         },
         include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true }
       });
-      await tx.quotation.update({ where: { id: current.id }, data: { status: "CONVERTED_TO_INVOICE", metadata: toJsonValue({ ...quotationMetadata, portalToken: typeof quotationMetadata.portalToken === "string" ? quotationMetadata.portalToken : randomBytes(32).toString("base64url") }), statusHistory: { create: { fromStatus: lockedQuotation.status, toStatus: "CONVERTED_TO_INVOICE", changedBy: "admin", changeSummary: `Generated unpaid invoice ${invoiceNo}.` } } } });
+      await tx.quotation.update({ where: { id: current.id }, data: { status: "GENERATED_INVOICE", metadata: toJsonValue({ ...quotationMetadata, portalToken: typeof quotationMetadata.portalToken === "string" ? quotationMetadata.portalToken : randomBytes(32).toString("base64url") }), statusHistory: { create: { fromStatus: lockedQuotation.status, toStatus: "GENERATED_INVOICE", changedBy: "admin", changeSummary: `Generated invoice ${invoiceNo}.` } } } });
       return created;
     });
     res.status(201).json(toInvoicePayload(invoice));
@@ -384,13 +346,40 @@ adminRecordRoutes.post("/quotations/:quotationNo/portal", async (req, res, next)
   try {
     const quotation = await prisma.quotation.findUnique({ where: { quotationNo: req.params.quotationNo } });
     if (!quotation) return res.status(404).json({ error: "Quotation not found." });
-    if (quotation.status !== "APPROVED" && quotation.status !== "CONVERTED_TO_INVOICE") return res.status(409).json({ error: "Approve the quotation before sharing its customer portal." });
+    if (quotation.status !== "GENERATED_INVOICE" && quotation.status !== "COMPLETED") return res.status(409).json({ error: "Generate the invoice before sharing its customer portal." });
+    const invoice = await prisma.invoice.findFirst({ where: { quotationId: quotation.id }, include: { paymentReceipts: { orderBy: { uploadedAt: "desc" }, take: 1 } }, orderBy: { createdAt: "desc" } });
+    if (!invoice || !invoice.paymentReceipts.length) return res.status(409).json({ error: "Upload payment receipt to enable the customization link." });
     const metadata = (quotation.metadata && typeof quotation.metadata === "object" && !Array.isArray(quotation.metadata) ? quotation.metadata : {}) as Record<string, unknown>;
     const existing = typeof metadata.portalToken === "string" ? metadata.portalToken : "";
     const token = existing || randomBytes(32).toString("base64url");
     if (!existing) await prisma.quotation.update({ where: { id: quotation.id }, data: { metadata: toJsonValue({ ...metadata, portalToken: token }) } });
     res.json({ quotationNo: quotation.quotationNo, token });
   } catch (error) { next(error); }
+});
+
+adminRecordRoutes.post("/invoices/:invoiceNo/receipt", async (req, res, next) => {
+  let uploaded: { publicId: string; mimeType: string } | undefined;
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { invoiceNo: req.params.invoiceNo } });
+    if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+    if (invoice.status === "CANCELLED") return res.status(409).json({ error: "This invoice has been cancelled and cannot accept a receipt." });
+    const multipart = await parseMultipartRequest(req, 15 * 1024 * 1024);
+    const file = multipart.files.find((item) => item.fieldName === "receipt");
+    if (!file) return res.status(400).json({ error: "Choose a payment receipt to upload." });
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(file.mimeType)) return res.status(400).json({ error: "Payment receipts must be PDF, JPG or PNG files." });
+    const upload = await uploadCloudinaryBuffer(file, cloudinaryFolders.receipts, `${invoice.invoiceNo}-${Date.now()}-${file.fileName}`);
+    if (!upload) throw new Error("Unable to upload payment receipt.");
+    uploaded = { publicId: upload.cloudinaryPublicId, mimeType: upload.mimeType };
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.paymentReceipt.create({ data: { invoiceId: invoice.id, fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, status: "RECEIPT_UPLOADED" } });
+      await tx.invoice.update({ where: { id: invoice.id }, data: { paymentStatus: "RECEIPT_UPLOADED" } });
+      return tx.invoice.findUniqueOrThrow({ where: { id: invoice.id }, include: { paymentReceipts: true, customizationFiles: true, invoiceFiles: true, internalNotes: { orderBy: { createdAt: "desc" } }, statusHistory: { orderBy: { createdAt: "desc" } } } });
+    });
+    res.status(201).json(toInvoicePayload(updated));
+  } catch (error) {
+    if (uploaded) void (uploaded.mimeType === "application/pdf" ? deleteCloudinaryPdf(uploaded.publicId) : deleteCloudinaryImage(uploaded.publicId)).catch(() => undefined);
+    next(error);
+  }
 });
 
 adminRecordRoutes.patch("/invoices/:invoiceNo", async (req, res, next) => {

@@ -52,7 +52,7 @@ export function saveInvoiceLocally(data: InvoiceDetails, invoicePdf?: Blob): Pro
   const payload = {
     ...data,
     invoiceStatus: data.invoiceStatus ?? "SUBMITTED",
-    paymentStatus: data.paymentStatus ?? "RECEIPT_UPLOADED",
+    paymentStatus: data.paymentStatus ?? "UNPAID",
     receiptDataUrl: undefined,
     customMenuFile: data.customMenuFile ? { ...data.customMenuFile, dataUrl: undefined } : undefined,
     cartDesigns: stripDesignDataUrls(data.cartDesigns),
@@ -89,7 +89,7 @@ export function saveInvoiceLocally(data: InvoiceDetails, invoicePdf?: Blob): Pro
 export function saveInvoiceLocallyJson(data: InvoiceDetails): Promise<InvoiceDetails> {
   return request<InvoiceDetails>("/api/invoices", {
     method: "POST",
-    body: JSON.stringify({ ...data, invoiceStatus: data.invoiceStatus ?? "SUBMITTED", paymentStatus: data.paymentStatus ?? "RECEIPT_UPLOADED" })
+    body: JSON.stringify({ ...data, invoiceStatus: data.invoiceStatus ?? "SUBMITTED", paymentStatus: data.paymentStatus ?? "UNPAID" })
   });
 }
 

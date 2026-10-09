@@ -68,7 +68,7 @@ async function mutateExtraCharge(kind: MutationKind, req: Request, res: Response
     });
     if (!current) return res.status(404).json({ error: "Quotation not found." });
 
-    if (current.status === "CONVERTED_TO_INVOICE" || current.invoices.length) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
+    if (current.status !== "PENDING_APPROVAL" || current.invoices.length) return res.status(409).json({ error: "This quotation has an invoice and is read-only." });
 
     const existingCharge = chargeId
       ? current.extraCharges.find((charge) => charge.id === chargeId)

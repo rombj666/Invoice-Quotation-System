@@ -7,24 +7,6 @@ import { Card } from "../../components/common/Card";
 import { loadCustomerOrders, type CustomerOrder, type CustomerOrdersResult } from "../../lib/customer-orders";
 import { formatDateLabel, formatMoney } from "../../lib/formatters";
 
-function todoLink(order: CustomerOrder, phone: string, email: string): { href: string; label: string } | null {
-  for (const todo of order.todos) {
-    if (todo.code === "QUOTATION_RETURNED") {
-      return { href: `/customer/quotation/${encodeURIComponent(order.quotationNo)}/edit?phone=${encodeURIComponent(phone)}&email=${encodeURIComponent(email)}`, label: "Edit & resubmit" };
-    }
-    if (todo.code === "INVOICE_START") {
-      return { href: `/customer/quotation/${encodeURIComponent(order.quotationNo)}/invoice?phone=${encodeURIComponent(phone)}&email=${encodeURIComponent(email)}`, label: "Submit invoice details" };
-    }
-    if (todo.code === "RECEIPT_UPLOAD" || todo.code === "RECEIPT_REJECTED") {
-      return { href: `/invoice?quotationNo=${encodeURIComponent(order.quotationNo)}&invoiceNo=${encodeURIComponent(order.invoice?.invoiceNo ?? "")}`, label: "Upload payment receipt" };
-    }
-    if (todo.code === "RECEIPT_REVIEWING" || todo.code === "RECEIPT_UPLOADED" || todo.code === "RECEIPT_VERIFIED" || todo.code === "PAYMENT_CONFIRMED") {
-      return { href: `/invoice?invoiceNo=${encodeURIComponent(order.invoice?.invoiceNo ?? "")}`, label: "View invoice" };
-    }
-  }
-  return null;
-}
-
 function OrdersInner() {
   const searchParams = useSearchParams();
   const initialPhone = searchParams.get("phone") ?? "";
@@ -110,9 +92,8 @@ function OrdersInner() {
         {result && result.matched ? (
           <ul className="orders-list">
             {result.orders.map((order) => {
-              const action = todoLink(order, phone, email);
-              const statusClass = order.status === "APPROVED" ? "approved" : order.status === "RETURNED_FOR_EDIT" ? "returned" : order.status === "CANCELLED" || order.status === "EXPIRED" ? "deleted" : "pending";
-              const statusLabel = order.status === "RETURNED_FOR_EDIT" ? "RETURNED FOR EDIT" : order.status.replace(/_/g, " ");
+              const statusClass = order.status === "PENDING_APPROVAL" ? "pending" : "approved";
+              const statusLabel = order.status === "PENDING_APPROVAL" ? "Pending Approval" : order.status === "GENERATED_INVOICE" ? "Generated Invoice" : "Completed";
               return (
                 <li key={order.quotationNo} className="orders-item">
                   <div className="orders-item-head">
@@ -123,10 +104,6 @@ function OrdersInner() {
                   <div className="orders-item-body">
                     <p>Total: <strong>{formatMoney(order.totalAmount)}</strong></p>
                     {order.firstEventDate ? <p>First service date: {formatDateLabel(order.firstEventDate)}</p> : null}
-                    {order.expiresAt ? <p>Quotation expires: {formatDateLabel(order.expiresAt.slice(0, 10))}</p> : null}
-                    {order.returnReason ? (
-                      <p className="orders-return-reason"><strong>Admin note:</strong> {order.returnReason}</p>
-                    ) : null}
                     {order.invoice ? (
                       <div className="orders-invoice">
                         <p>Invoice: <strong>{order.invoice.invoiceNo}</strong> · {order.invoice.paymentStatus.replace(/_/g, " ")} · {formatMoney(order.invoice.totalAmount)}</p>
@@ -141,11 +118,7 @@ function OrdersInner() {
                       </ul>
                     ) : null}
                   </div>
-                  {action ? (
-                    <div className="orders-item-action">
-                      <Link className="hc-button hc-button-primary" href={action.href}>{action.label}</Link>
-                    </div>
-                  ) : null}
+
                 </li>
               );
             })}

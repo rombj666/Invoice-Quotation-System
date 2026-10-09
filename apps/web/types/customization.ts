@@ -22,6 +22,7 @@ export type CustomizationDesign = {
   centerXRatio?: number;
   centerYRatio?: number;
   widthRatio?: number;
+  heightRatio?: number;
   hotWidthRatio?: number;
   coldWidthRatio?: number;
   xPercent?: number;
@@ -30,6 +31,8 @@ export type CustomizationDesign = {
   heightPercent?: number;
   widthCm?: number;
   heightCm?: number;
+  finalDataUrl?: string;
+  actualArtworkSizeCm?: { width: number; height: number };
   logos?: CustomizationLogo[];
 };
 

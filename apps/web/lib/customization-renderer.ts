@@ -1,6 +1,6 @@
 import type { CustomizationByDate } from "../types/customization";
 import { CUSTOMIZATION_ASSETS } from "./customization-assets";
-import { normalizeDesignGeometry, renderContainedDesignToCanvas } from "./customization-layout";
+import { FOAM_BOARD_PHYSICAL_CM, normalizeDesignGeometry, normalizeFoamBoardDesign, renderContainedDesignToCanvas } from "./customization-layout";
 
 export type CustomizationType = "cart" | "hot-cup" | "cold-cup" | "sleeve";
 
@@ -21,6 +21,26 @@ function canvasToBlob(canvas: HTMLCanvasElement, type = "image/webp", quality = 
       else reject(new Error("Unable to compress final customization preview."));
     }, type, quality);
   });
+}
+
+function canvasDataUrl(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL("image/png");
+}
+
+export async function renderFoamBoard(design: NonNullable<CustomizationByDate[string]>): Promise<NonNullable<CustomizationByDate[string]>> {
+  const normalized = normalizeFoamBoardDesign(design);
+  const image = await loadImage(normalized.originalDataUrl ?? normalized.dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = Math.round(canvas.width * FOAM_BOARD_PHYSICAL_CM.height / FOAM_BOARD_PHYSICAL_CM.width);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to render foam board artwork.");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const width = normalized.widthCm! / FOAM_BOARD_PHYSICAL_CM.width * canvas.width;
+  const height = normalized.heightCm! / FOAM_BOARD_PHYSICAL_CM.height * canvas.height;
+  context.drawImage(image, normalized.centerXRatio! * canvas.width - width / 2, normalized.centerYRatio! * canvas.height - height / 2, width, height);
+  return { ...normalized, originalDataUrl: normalized.originalDataUrl ?? normalized.dataUrl, finalDataUrl: canvasDataUrl(canvas), fileName: `final-foam-board-${design.fileName.replace(/\.[^.]+$/, "")}.png` };
 }
 
 export async function mergeCustomizationPreview(type: CustomizationType, design: NonNullable<CustomizationByDate[string]>): Promise<NonNullable<CustomizationByDate[string]>> {
@@ -77,4 +97,3 @@ export async function mergeCustomizationPreview(type: CustomizationType, design:
     fileName: `final-${type}-${design.fileName.replace(/\.[^.]+$/, "")}.webp`
   };
 }
-

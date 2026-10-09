@@ -6,6 +6,7 @@ import { calculateQuotationPricing } from "../../lib/pricing";
 import { formatCompactDate, formatMoney, formatTime } from "../../lib/formatters";
 import { downloadPdfBlob, generatePdfBlob } from "../../lib/pdf-document";
 import presentation from "../common/PdfPresentation.module.css";
+import pdfDocument from "../common/PdfDocument.module.css";
 
 export function InvoicePreview({
   invoiceNo,
@@ -36,7 +37,7 @@ export function InvoicePreview({
 
   return (
     <div className="invoice-preview-wrap">
-    <div className="invoice-card" id={documentId}>
+    <div className={`invoice-card ${pdfDocument.document}`} id={documentId}>
       <div className="invoice-header">
         <div>
           <div className="invoice-title">INVOICE</div>

@@ -14,8 +14,7 @@ export type QuotationLookupResult =
   | { matched: false; access: "NOT_FOUND" }
   | { matched: true; access: "PENDING_REVIEW"; quotationNo: string }
   | { matched: true; access: "DRAFT_INVOICE"; invoiceNo: string }
-  | { matched: true; access: "SUBMITTED_INVOICE"; invoiceNo: string; invoice: InvoiceDetails }
-  | { matched: true; access: "APPROVED"; quotation: QuotationData };
+  | { matched: true; access: "SUBMITTED_INVOICE"; invoiceNo: string; invoice: InvoiceDetails };
 
 export type PreviousQuotationHistory = {
   quotations: PreviousQuotationSummary[];
@@ -174,25 +173,6 @@ export async function loadPreviousQuotationSummary(
     if (error instanceof ApiRequestError && error.status === 404) return { access: "NOT_FOUND" };
     throw error;
   }
-}
-
-// Customer resubmission after admin returns the quotation for changes. The
-// quotation number is preserved; the editable fields plus a freshly generated
-// PDF are sent so the record and document stay in sync.
-export function resubmitQuotation(quotationNo: string, data: QuotationData, quotationPdf: Blob): Promise<QuotationData> {
-  const formData = new FormData();
-  formData.append("payload", JSON.stringify({ ...data, status: "PENDING_APPROVAL" }));
-  formData.append("quotationPdf", quotationPdf, `${data.quotationNo}.pdf`);
-  return fetch(`${apiBaseUrl}/api/quotations/${encodeURIComponent(quotationNo)}/resubmit`, {
-    method: "PATCH",
-    body: formData
-  }).then(async (response) => {
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      throw new ApiRequestError(payload?.error ?? "Request failed", response.status, payload ?? undefined);
-    }
-    return response.json() as Promise<QuotationData>;
-  });
 }
 
 export function deleteQuotation(quotationNo: string): Promise<void> {

@@ -155,17 +155,6 @@ p {
   color: #555;
 }
 
-.locked-expiry {
-  margin-top: 16px;
-  border: 1px solid #b8dfc8;
-  border-radius: 9px;
-  background: #f0faf3;
-  color: #1e6b42;
-  padding: 11px 14px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .hc-field small {
   color: #999;
 }
@@ -1322,6 +1311,30 @@ p {
   margin-top: 14px;
   padding: 13px 16px;
 }
+
+.hc-production-sheet { box-sizing: border-box; padding: 8mm !important; width: 100% !important; }
+.hc-production-artwork { display: grid; place-items: center; min-height: 170mm; margin: 8mm 0; }
+.hc-production-artwork img { display: block; width: auto; height: auto; max-width: 100%; max-height: 170mm; object-fit: contain; }
+
+.foam-board-preview {
+  position: relative;
+  width: min(100%, 360px);
+  margin: 14px auto;
+  overflow: hidden;
+  border: 1px solid #cfc7bb;
+  background: #fff;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  touch-action: none;
+}
+.foam-board-preview > img {
+  position: absolute;
+  max-width: none;
+  height: auto;
+  cursor: move;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.foam-board-preview > span { position: absolute; inset: 0; display: grid; place-items: center; color: #8b8278; }
 
 .ack-card {
   display: grid;

@@ -10,7 +10,7 @@ const periods: Array<{ value: DashboardPeriod; label: string }> = [
 
 const emptyDashboard: DashboardMetrics = {
   totalLeads: 0, convertedLeads: 0, pageVisitors: 0, conversionRate: 0,
-  quotationStats: { submitted: 0, pendingApproval: 0, approved: 0, completedConverted: 0 },
+  quotationStats: { submitted: 0, pendingApproval: 0, generatedInvoice: 0, completed: 0 },
   traffic: {
     grouping: "day",
     current: { from: "", to: "", totals: { sessions: 0, step1Engaged: 0, step2Visitors: 0, packageSelected: 0, submitted: 0, directExit: 0, step1Abandoned: 0, step2Abandoned: 0 }, points: [] },
@@ -156,7 +156,7 @@ export default function AdminHomePage() {
       {[["Total Leads", data.totalLeads], ["Converted Leads", data.convertedLeads], ["Page Visitors", data.pageVisitors], ["Conversion Rate", `${data.conversionRate}%`]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
     </div></section>
     <section aria-labelledby="quotation-statistics-heading"><h2 id="quotation-statistics-heading" className="admin-section-title">Quotation Statistics</h2><div className="admin-metric-grid quotation-stat-grid">
-      {[["Submitted Quotations", data.quotationStats.submitted], ["Pending Approval", data.quotationStats.pendingApproval], ["Approved Quotations", data.quotationStats.approved], ["Completed / Converted Quotations", data.quotationStats.completedConverted]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
+      {[["Submitted Quotations", data.quotationStats.submitted], ["Pending Approval", data.quotationStats.pendingApproval], ["Generated Invoice", data.quotationStats.generatedInvoice], ["Completed", data.quotationStats.completed]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
     </div></section>
     <QuotationTraffic traffic={data.traffic} loading={loading} />
     <section className="admin-dashboard-chart-panel"><h2>Submitted Versus Converted Leads</h2>{loading ? <div className="admin-chart-empty">Loading quotation data…</div> : <ComparisonChart submitted={data.graphs.submittedVsConverted.submitted} converted={data.graphs.submittedVsConverted.converted} />}</section>

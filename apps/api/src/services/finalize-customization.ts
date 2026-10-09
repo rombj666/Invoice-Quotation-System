@@ -15,7 +15,7 @@ export async function finalizeCustomization(
   await tx.$queryRaw`SELECT "id" FROM "Invoice" WHERE "id" = ${invoiceId} FOR UPDATE`;
   const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
   if (!["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus) || invoice.status === "CANCELLED") {
-    throw new FinalSubmissionError("Upload a payment receipt before completing customization.");
+    throw new FinalSubmissionError("Customization is unavailable until Hour Coffee uploads the payment receipt.");
   }
   const metadata = (invoice.metadata ?? {}) as Record<string, any>;
   if (metadata.customizationSubmission?.submittedAt) return false;
@@ -46,5 +46,21 @@ export async function finalizeCustomization(
   await tx.invoice.update({ where: { id: invoiceId }, data: {
     metadata: JSON.parse(JSON.stringify({ ...metadata, customizationSubmission: { ...setup, submittedAt: new Date().toISOString() } })) as Prisma.InputJsonValue
   } });
+  const quotation = await tx.quotation.findUniqueOrThrow({ where: { id: invoice.quotationId } });
+  if (quotation.status !== "GENERATED_INVOICE") throw new FinalSubmissionError("The quotation is not in the generated invoice stage.");
+  await tx.quotation.update({
+    where: { id: quotation.id },
+    data: {
+      status: "COMPLETED",
+      statusHistory: {
+        create: {
+          fromStatus: "GENERATED_INVOICE",
+          toStatus: "COMPLETED",
+          changedBy: "customer",
+          changeSummary: "Customer completed final customization submission."
+        }
+      }
+    }
+  });
   return true;
 }

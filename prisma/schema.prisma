@@ -9,15 +9,9 @@ datasource db {
 }
 
 enum QuotationStatus {
-  DRAFT
   PENDING_APPROVAL
-  APPROVED
-  REVIEWED
-  SENT
-  CONVERTED_TO_INVOICE
-  RETURNED_FOR_EDIT
-  CANCELLED
-  EXPIRED
+  GENERATED_INVOICE
+  COMPLETED
 }
 
 enum InvoiceStatus {
@@ -91,7 +85,7 @@ model Quotation {
   quotationNo          String                     @unique
   customerId           String
   customer             Customer                   @relation(fields: [customerId], references: [id])
-  status               QuotationStatus            @default(DRAFT)
+  status               QuotationStatus            @default(PENDING_APPROVAL)
   location             String
   eventType            String
   subtotalAmount       Decimal                    @db.Decimal(10, 2)

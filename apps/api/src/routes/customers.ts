@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { prisma } from "../utils/prisma";
-import { expireOverdueQuotations } from "../utils/state-machine";
 
 export const customerRoutes = Router();
 
@@ -18,42 +17,16 @@ type OrderTodo = {
   message: string;
 };
 
-function buildTodos(quotation: any, invoice: any, receipt: any): OrderTodo[] {
-  const todos: OrderTodo[] = [];
-  if (quotation.status === "PENDING_APPROVAL") {
-    todos.push({ code: "QUOTATION_PENDING_APPROVAL", message: "Your quotation is awaiting admin approval." });
-  }
-  if (quotation.status === "RETURNED_FOR_EDIT") {
-    todos.push({
-      code: "QUOTATION_RETURNED",
-      message: quotation.returnReason
-        ? `Admin asked for changes: ${quotation.returnReason}`
-        : "Admin asked you to edit and resubmit this quotation."
-    });
-  }
-  if (quotation.status === "APPROVED" && !invoice) {
-    todos.push({ code: "INVOICE_START", message: "Your quotation was approved. You can now submit the invoice details." });
-  }
-  if (invoice) {
-    if (invoice.paymentStatus === "UNPAID") {
-      todos.push({ code: "RECEIPT_UPLOAD", message: `Please upload the payment receipt for invoice ${invoice.invoiceNo}.` });
-    }
-    if (["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus)) {
-      todos.push({ code: "RECEIPT_UPLOADED", message: `Receipt for ${invoice.invoiceNo} uploaded. Continue with acknowledgements and event setup.` });
-    }
-    if (invoice.paymentStatus === "REJECTED") {
-      todos.push({ code: "RECEIPT_REJECTED", message: `Your receipt for ${invoice.invoiceNo} was rejected. Please upload a valid receipt.` });
-    }
-  }
-  return todos;
+function buildTodos(quotation: any): OrderTodo[] {
+  return quotation.status === "PENDING_APPROVAL"
+    ? [{ code: "QUOTATION_PENDING_APPROVAL", message: "Your quotation is awaiting admin review." }]
+    : [];
 }
 
 // Customer "My Orders": one phone number (or email) shows every quotation /
-// invoice / receipt the customer has, plus actionable todos — no repeated
-// quotation number lookups.
+// invoice / receipt the customer has, plus quotation actions.
 customerRoutes.post("/orders", async (req, res, next) => {
   try {
-    await expireOverdueQuotations();
     const phone = normalizePhone(req.body?.phone);
     const email = normalizeEmail(req.body?.email);
     if (!phone && !email) {
@@ -99,9 +72,6 @@ customerRoutes.post("/orders", async (req, res, next) => {
           createdAt: quotation.createdAt.toISOString(),
           firstEventDate: quotation.dates[0]?.serviceDate.toISOString().slice(0, 10) ?? null,
           totalAmount: quotationTotal,
-          expiresAt: quotation.expiresAt?.toISOString() ?? null,
-          returnReason: quotation.returnReason ?? null,
-          returnedAt: quotation.returnedAt?.toISOString() ?? null,
           invoice: invoice
             ? {
                 invoiceNo: invoice.invoiceNo,
@@ -119,7 +89,7 @@ customerRoutes.post("/orders", async (req, res, next) => {
                   : null
               }
             : null,
-          todos: buildTodos(quotation, invoice, receipt)
+          todos: buildTodos(quotation)
         };
       })
     });

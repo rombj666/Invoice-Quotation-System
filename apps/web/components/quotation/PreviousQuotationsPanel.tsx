@@ -13,6 +13,9 @@ type Props = {
 };
 
 export function PreviousQuotationsPanel({ quotations, error, isLoading, onView, onCreateAnother }: Props) {
+  const statusLabel = (status: PreviousQuotationSummary["status"]) => status === "PENDING_APPROVAL"
+    ? "Pending Approval"
+    : status === "GENERATED_INVOICE" ? "Generated Invoice" : "Completed";
   return (
     <div>
       <h2>Previous Quotations Found</h2>
@@ -24,7 +27,7 @@ export function PreviousQuotationsPanel({ quotations, error, isLoading, onView, 
               <strong>{quotation.quotationNo}</strong>
               <span>Created {formatCompactDate(new Date(quotation.createdAt))}</span>
               <span>First event date: {quotation.firstEventDate ? formatCompactDate(quotation.firstEventDate) : "Not set"}</span>
-              <span>Status: {quotation.status.replaceAll("_", " ")}</span>
+              <span>Status: {statusLabel(quotation.status)}</span>
             </div>
             {quotation.canViewQuotation ? (
               <Button type="button" variant="secondary" disabled={isLoading} onClick={() => onView(quotation.quotationNo)}>

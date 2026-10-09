@@ -4,8 +4,12 @@ import type { CustomizationByDate } from "./customization";
 export type InvoiceUploadFile = {
   fileName: string;
   dataUrl?: string;
+  originalDataUrl?: string;
+  finalDataUrl?: string;
   fileUrl?: string;
   mimeType?: string;
+  physicalSize?: unknown;
+  actualArtworkSizeCm?: { width: number; height: number };
 };
 
 export type InvoiceDetails = {
@@ -31,7 +35,7 @@ export type InvoiceDetails = {
   receiptUrl?: string;
   receiptMimeType?: string;
   invoiceFiles?: Array<{
-    metadata?: { physicalSize?: unknown; kind?: string };
+    metadata?: { physicalSize?: unknown; kind?: string; finalDesign?: boolean; originalArtwork?: boolean; designKey?: string; geometry?: unknown };
     fileUrl: string;
     fileName: string;
     mimeType?: string;

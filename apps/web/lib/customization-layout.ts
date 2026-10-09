@@ -14,26 +14,27 @@ type LayoutConfig = {
   maxLogoSizeMm?: { width: number; height: number };
 };
 
-export const CART_MAX_LOGO_SIZE_CM = { width: 90, height: 70 };
+export const CART_FRONT_PANEL_CM = { width: 87, height: 63.5 } as const;
+export const CART_MAX_LOGO_SIZE_CM = CART_FRONT_PANEL_CM;
 export const CUP_MAX_LOGO_SIZE_MM = { width: 30, height: 45 };
+export const FOAM_BOARD_PHYSICAL_CM = { width: 60, height: 90 } as const;
+export const FOAM_BOARD_MAX_ARTWORK_CM = { width: 55, height: 85 } as const;
 
 export const MENU_PHYSICAL = { width: 21, height: 29.7, unit: "cm" as const };
 
 export const LATTE_PHYSICAL = {
   printDiameterCm: 8,
   artworkWidthCm: 5,
-  artworkHeightCm: 5,
-  artworkAreaRatio: 5 / 8
+  artworkHeightCm: 2.54,
+  artworkAreaRatio: 2.54 / 8
 } as const;
 
-const CUP_DISPLAY_MAX_LOGO_SIZE_MM = 50;
-
-const CART_PHYSICAL_AREA_CM = { width: 90, height: 90 };
+const CART_PHYSICAL_AREA_CM = CART_FRONT_PANEL_CM;
 const CUP_PRINTABLE_AREA_MM = { width: 30, height: 45 };
 
 export const CUSTOMIZATION_LAYOUT: Record<CustomizationTemplate, LayoutConfig> = {
   cart: {
-    designArea: { x: 0.327, y: 0.435, width: 0.346, height: 0.34 },
+    designArea: { x: 0.3445, y: 0.435, width: 0.311, height: 0.34 },
     templateSizePx: { width: 1536, height: 1024 },
     defaultCenter: { x: 0.5, y: 0.5 },
     minWidthRatio: 0.05,
@@ -139,11 +140,10 @@ export function getCupLogoSizeMm(design: CustomizationDesign) {
   };
   const hotRect = calculateContainedDesignRect("hotCup", commonDesign);
   const coldRect = calculateContainedDesignRect("coldCup", commonDesign);
-  const resolvedWidthRatio = Math.min(hotRect.widthRatio, coldRect.widthRatio);
-  const widthAtMaximum = CUP_DISPLAY_MAX_LOGO_SIZE_MM / Math.max(1, aspectRatio);
-  const width = (resolvedWidthRatio / bounds.max) * widthAtMaximum;
-
-  return { width, height: width * aspectRatio };
+  return {
+    width: Math.min(hotRect.widthRatio, coldRect.widthRatio) * CUP_PRINTABLE_AREA_MM.width,
+    height: Math.min(hotRect.heightRatio, coldRect.heightRatio) * CUP_PRINTABLE_AREA_MM.height
+  };
 }
 
 export function calculateContainedDesignRect(
@@ -196,9 +196,11 @@ export function normalizeDesignGeometry(
 ): CustomizationDesign {
   const rect = calculateContainedDesignRect(template, design);
   const isCup = template === "hotCup" || template === "coldCup";
+  const physicalArea = CUSTOMIZATION_LAYOUT[template].physicalAreaCm;
   return {
     ...design,
     size: rect.widthRatio * 100,
+    heightRatio: rect.heightRatio,
     rotation: isCup ? 0 : design.rotation,
     x: rect.centerXRatio * 100,
     y: rect.centerYRatio * 100,
@@ -208,8 +210,20 @@ export function normalizeDesignGeometry(
     ...(template === "hotCup" ? { hotWidthRatio: rect.widthRatio } : {}),
     ...(template === "coldCup" ? { coldWidthRatio: rect.widthRatio } : {}),
     widthPercent: rect.widthRatio * 100,
-    heightPercent: rect.heightRatio * 100
+    heightPercent: rect.heightRatio * 100,
+    ...(template === "cart" && physicalArea ? { widthCm: rect.widthRatio * physicalArea.width, heightCm: rect.heightRatio * physicalArea.height } : {})
   };
+}
+
+export function normalizeFoamBoardDesign(design: CustomizationDesign): CustomizationDesign {
+  const aspectRatio = designAspectRatio(design);
+  const maxWidthRatio = Math.min(FOAM_BOARD_MAX_ARTWORK_CM.width / FOAM_BOARD_PHYSICAL_CM.width, FOAM_BOARD_MAX_ARTWORK_CM.height / (FOAM_BOARD_PHYSICAL_CM.height * aspectRatio));
+  const minWidthRatio = Math.min(0.02, maxWidthRatio);
+  const widthRatio = clamp(design.widthRatio ?? design.size / 100, minWidthRatio, maxWidthRatio);
+  const heightRatio = widthRatio * aspectRatio * FOAM_BOARD_PHYSICAL_CM.width / FOAM_BOARD_PHYSICAL_CM.height;
+  const centerXRatio = clamp(design.centerXRatio ?? (design.x / 100), widthRatio / 2, 1 - widthRatio / 2);
+  const centerYRatio = clamp(design.centerYRatio ?? (design.y / 100), heightRatio / 2, 1 - heightRatio / 2);
+  return { ...design, size: widthRatio * 100, widthRatio, heightRatio, centerXRatio, centerYRatio, x: centerXRatio * 100, y: centerYRatio * 100, widthCm: widthRatio * FOAM_BOARD_PHYSICAL_CM.width, heightCm: heightRatio * FOAM_BOARD_PHYSICAL_CM.height };
 }
 
 export function createDefaultDesignGeometry(

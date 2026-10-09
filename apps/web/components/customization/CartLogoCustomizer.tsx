@@ -24,8 +24,6 @@ type Props = {
   onDesigns: (designs: CustomizationByDate) => void;
 };
 
-const CART_DISPLAY_MAX_LOGO_SIZE_CM = 60;
-
 function readFile(file: File, callback: (design: CustomizationDesign) => void) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -62,14 +60,8 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
   const area = cartLayout.designArea;
   const physicalWidthCm = rect ? rect.widthRatio * (cartLayout.physicalAreaCm?.width ?? 0) : 0;
   const physicalHeightCm = rect ? rect.heightRatio * (cartLayout.physicalAreaCm?.height ?? 0) : 0;
-  const maximumPhysicalSizeCm = rect
-    ? Math.max(physicalWidthCm, physicalHeightCm) * (bounds.max / rect.widthRatio)
-    : 0;
-  const displayScale = maximumPhysicalSizeCm > 0
-    ? CART_DISPLAY_MAX_LOGO_SIZE_CM / maximumPhysicalSizeCm
-    : 0;
-  const widthCm = physicalWidthCm * displayScale;
-  const heightCm = physicalHeightCm * displayScale;
+  const widthCm = physicalWidthCm;
+  const heightCm = physicalHeightCm;
 
   function updateWidth(widthRatio: number) {
     if (!active) return;
@@ -106,7 +98,7 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
 
       <div className="customize-controls-pane">
         <h2>Cart Logo</h2>
-        <p className="step-copy">Upload your logo to preview it centered on the cart's white front panel.</p>
+        <p className="step-copy">Front panel: {cartLayout.physicalAreaCm?.width} × {cartLayout.physicalAreaCm?.height} cm. Upload a logo to preview it on this panel.</p>
         {mode === "per-date" && serviceDates.length > 1 ? (
           <label className="hc-field">
             <span>Editing design</span>
@@ -130,7 +122,7 @@ export function CartLogoCustomizer({ mode, serviceDates, designs, activeDate, on
               Logo size
               <input type="range" min={bounds.min} max={bounds.max} step={0.001} value={rect.widthRatio} onChange={(event) => updateWidth(Number(event.target.value))} />
             </label>
-            <div className="mini-summary">Logo size: {widthCm.toFixed(1)} cm x {heightCm.toFixed(1)} cm ({Math.round(rect.widthRatio * 100)}%)</div>
+            <div className="mini-summary">Logo size: {widthCm.toFixed(1)} cm × {heightCm.toFixed(1)} cm</div>
             <p className="field-reminder">The displayed measurements represent the estimated real-life logo size.</p>
           </>
         ) : null}

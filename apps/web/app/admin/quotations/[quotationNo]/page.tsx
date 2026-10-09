@@ -4,14 +4,12 @@ import { extraChargeDateLabel } from "../../../../lib/extra-charge-dates";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CustomizationLinkModal } from "../../../../components/admin/CustomizationLinkModal";
 import { AdminSectionEditor } from "../../../../components/admin/AdminSectionEditor";
 import { Card } from "../../../../components/common/Card";
 import { normalizeMalaysiaWhatsAppNumber, openAdminCustomerWhatsApp } from "../../../../lib/contact";
 import { calculateQuotationPricing, getDurationLabel } from "../../../../lib/pricing";
 import { CART_SELECTION_ERROR, hasCartAddonConflict } from "../../../../lib/addons";
 import { deleteQuotation, loadQuotationByNo } from "../../../../lib/quotation-storage";
-import { getCustomerPortalToken } from "../../../../lib/admin-api";
 import { formatDateLabel, formatMoney, formatTime } from "../../../../lib/formatters";
 import type { QuotationData } from "../../../../types/quotation";
 import { getAdminAddonRows } from "../../../../lib/admin-addons";
@@ -26,7 +24,6 @@ export default function AdminQuotationDetailPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [portalLink, setPortalLink] = useState("");
 
   useEffect(() => {
     loadQuotationByNo(params.quotationNo).then(setQuotation).catch(() => setError("Unable to load quotation."));
@@ -51,16 +48,15 @@ export default function AdminQuotationDetailPage() {
   const addonRows = getAdminAddonRows(quotation, pricing.cupStickerFee, pricing.cupSleeveFee);
   const currentQuotation = quotation;
   const status = currentQuotation.status ?? "PENDING_APPROVAL";
-  const isApproved = status === "APPROVED";
-  const canGenerateInvoice = !quotation.hasInvoice && ["PENDING_APPROVAL", "APPROVED"].includes(status);
-  const isReturned = status === "RETURNED_FOR_EDIT";
-  const statusLabel = status.replaceAll("_", " ");
-  const statusClass = isReturned ? "returned" : isApproved || status === "CONVERTED_TO_INVOICE" ? "approved" : "pending";
-  const canEditQuotation = !quotation.hasInvoice && (status === "DRAFT" || status === "PENDING_APPROVAL");
+  const statusLabel = status === "PENDING_APPROVAL" ? "Pending Approval" : status === "GENERATED_INVOICE" ? "Generated Invoice" : "Completed";
+  const statusClass = status === "PENDING_APPROVAL" ? "pending" : "approved";
+  const canGenerateInvoice = !quotation.hasInvoice && status === "PENDING_APPROVAL";
+  const canEditQuotation = !quotation.hasInvoice && status === "PENDING_APPROVAL";
 
   async function remove() {
     setError("");
     try {
+      if (!window.confirm(`Permanently delete quotation ${currentQuotation.quotationNo}? This cannot be undone.`)) return;
       await deleteQuotation(currentQuotation.quotationNo);
       router.push("/admin/quotations");
     } catch (deleteError) {
@@ -68,21 +64,12 @@ export default function AdminQuotationDetailPage() {
     }
   }
 
-  async function customerPortal() {
-    setError("");
-    try { const result = await getCustomerPortalToken(currentQuotation.quotationNo); setPortalLink(`${window.location.origin}/portal/${result.token}`); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create customer portal link."); }
-  }
-
   return <main className="admin-page"><Card className="admin-card">
     <AdminSectionEditor title={quotation.quotationNo} backHref="/admin/quotations" activeSection={activeSection} onSectionChange={setActiveSection}
       actions={<><button type="button" aria-pressed={activeSection === "summary"} onClick={() => setActiveSection("summary")}>Summary</button>
-{isApproved || currentQuotation.hasInvoice ? <button type="button" onClick={customerPortal}>Customization Link</button> : null}
-{currentQuotation.hasInvoice ? <Link className="admin-approve-button large" href="/admin/invoices">View Existing Invoice</Link> : canGenerateInvoice ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
-{canEditQuotation ? <Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link> : null}
-{isReturned ? (
-              <span className="admin-status-note">Waiting for customer to resubmit</span>
-            ) : null}
+{currentQuotation.invoiceNo ? <Link className="admin-approve-button large" href={`/admin/invoices/${currentQuotation.invoiceNo}`}>View Existing Invoice</Link> : canGenerateInvoice ? <Link className="admin-approve-button large" href={`/admin/quotations/${currentQuotation.quotationNo}/generate-invoice`}>Generate Invoice</Link> : null}
+{canEditQuotation ? <><Link href={`/admin/quotations/${currentQuotation.quotationNo}/edit`}>Edit Quotation</Link><button type="button" onClick={remove}>Delete</button></> : null}
+
 <button type="button" onClick={() => openAdminCustomerWhatsApp(currentQuotation)} disabled={!normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone)}>
               {normalizeMalaysiaWhatsAppNumber(currentQuotation.customer.phone) ? "Contact Customer" : "No phone number"}
             </button></>}
@@ -100,7 +87,7 @@ export default function AdminQuotationDetailPage() {
             <h3>Event</h3>
             <p>Location: {quotation.location}</p>
             <p>Event type: {quotation.eventType === "Others" ? quotation.customEventType : quotation.eventType}</p>
-            <p>Status: {statusLabel}</p>
+            <p>Status: <span className={`admin-status-badge ${statusClass}`}>{statusLabel}</span></p>
           </section></> },
         { id: "dates", label: "Service Dates", content: <><section>
             <h3>Service Dates</h3>
@@ -145,6 +132,5 @@ export default function AdminQuotationDetailPage() {
         {error ? <p className="error" role="alert">{error}</p> : null}
         {success ? <div className="ok-summary">{success}</div> : null}
     </AdminSectionEditor>
-    {portalLink ? <CustomizationLinkModal url={portalLink} onClose={() => setPortalLink("")} /> : null}
   </Card></main>;
 }

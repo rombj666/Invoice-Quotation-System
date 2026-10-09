@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { cloudinaryFolders, uploadCloudinaryBuffer } from "../services/cloudinary.service";
 import { toInvoicePayload } from "../utils/invoice-payload";
-import { parseMultipartRequest } from "../utils/multipart";
 import { prisma } from "../utils/prisma";
-import { assertValidInvoiceTransition } from "../utils/state-machine";
 import { getPortalStage } from "../utils/portal-stage";
 import { toQuotationPayload } from "./quotations";
 
@@ -37,31 +34,5 @@ portalRoutes.get("/:token", async (req, res, next) => {
     if (invoice) delete invoice.customizationAccess;
     const stage = getPortalStage(invoice);
     res.json({ stage, quotation, invoice });
-  } catch (error) { next(error); }
-});
-
-portalRoutes.post("/:token/receipt", async (req, res, next) => {
-  try {
-    const record = await resolvePortal(req.params.token);
-    const invoice = record?.invoices[0];
-    if (!record || !invoice) return res.status(404).json({ error: "This link is invalid or no longer available." });
-    if (["RECEIPT_UPLOADED", "VERIFIED"].includes(invoice.paymentStatus)) return res.status(409).json({ error: "A receipt has already been submitted. Continue with event setup." });
-    if (invoice.status === "CANCELLED") return res.status(409).json({ error: "This invoice has been cancelled and can no longer accept payment receipts." });
-    try {
-      assertValidInvoiceTransition(invoice.status, invoice.paymentStatus, invoice.status, "RECEIPT_UPLOADED");
-    } catch (error) {
-      return res.status(409).json({ error: error instanceof Error ? error.message : "Illegal invoice state transition." });
-    }
-    const multipart = await parseMultipartRequest(req, 15 * 1024 * 1024);
-    const file = multipart.files.find((item) => item.fieldName === "receipt");
-    if (!file) return res.status(400).json({ error: "Choose a payment receipt to upload." });
-    if (file.mimeType !== "application/pdf" && !file.mimeType.startsWith("image/")) return res.status(400).json({ error: "Payment receipts must be a PDF or image." });
-    const upload = await uploadCloudinaryBuffer(file, cloudinaryFolders.receipts, `${invoice.invoiceNo}-${Date.now()}-${file.fileName}`);
-    if (!upload) throw new Error("Unable to upload payment receipt.");
-    await prisma.$transaction([
-      prisma.paymentReceipt.create({ data: { invoiceId: invoice.id, fileUrl: upload.fileUrl, cloudinaryPublicId: upload.cloudinaryPublicId, fileName: file.fileName, mimeType: upload.mimeType, status: "RECEIPT_UPLOADED" } }),
-      prisma.invoice.update({ where: { id: invoice.id }, data: { paymentStatus: "RECEIPT_UPLOADED" } })
-    ]);
-    res.status(201).json({ paymentStatus: "RECEIPT_UPLOADED" });
   } catch (error) { next(error); }
 });

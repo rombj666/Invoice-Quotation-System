@@ -8,6 +8,7 @@ import { finalizeCustomization, FINAL_SUBMIT_DATE_ERROR } from "../src/services/
 function database() {
   const locks = new Map<string, string>();
   const completed = new Map<string, any>();
+  const quotationStatuses = new Map<string, string>();
   const files: any[] = [];
   let failCompletion = false;
   let checks = 0;
@@ -17,11 +18,16 @@ function database() {
     const pendingLocks: any[] = [];
     const pendingFiles: any[] = [];
     let pendingMetadata: any;
+    let pendingQuotationStatus: string | undefined;
     const tx = {
       $queryRaw: async () => [{ id }],
       invoice: {
-        findUniqueOrThrow: async () => ({ id, invoiceNo: id, status: options.status ?? "SUBMITTED", paymentStatus: options.payment ?? "VERIFIED", metadata: completed.get(id) ?? { quotation: { customer: { name: id }, serviceDates: dates.map((serviceDate) => ({ serviceDate })) } } }),
+        findUniqueOrThrow: async () => ({ id, invoiceNo: id, quotationId: id, status: options.status ?? "SUBMITTED", paymentStatus: options.payment ?? "VERIFIED", metadata: completed.get(id) ?? { quotation: { customer: { name: id }, serviceDates: dates.map((serviceDate) => ({ serviceDate })) } } }),
         update: async ({ data }: any) => { if (failCompletion) throw new Error("Completion write failed"); pendingMetadata = data.metadata; }
+      },
+      quotation: {
+        findUniqueOrThrow: async () => ({ id, status: quotationStatuses.get(id) ?? "GENERATED_INVOICE" }),
+        update: async ({ data }: any) => { pendingQuotationStatus = data.status; }
       },
       lockedDate: {
         findFirst: async ({ where }: any) => {
@@ -41,9 +47,10 @@ function database() {
     pendingLocks.forEach((lock) => locks.set(lock.date.toISOString(), id));
     files.push(...pendingFiles);
     if (pendingMetadata) completed.set(id, pendingMetadata);
+    if (pendingQuotationStatus) quotationStatuses.set(id, pendingQuotationStatus);
     return result;
   }
-  return { locks, completed, files, submit, failCompletion: () => { failCompletion = true; } };
+  return { locks, completed, quotationStatuses, files, submit, failCompletion: () => { failCompletion = true; } };
 }
 
 test("final submit locks all unique confirmed dates and completes with files", async () => {
@@ -51,6 +58,7 @@ test("final submit locks all unique confirmed dates and completes with files", a
   assert.equal(await db.submit("A00001", ["2026-10-29", "2026-10-28", "2026-10-28"]), true);
   assert.deepEqual([...db.locks.keys()], ["2026-10-28T00:00:00.000Z", "2026-10-29T00:00:00.000Z"]);
   assert.ok(db.completed.get("A00001").customizationSubmission.submittedAt);
+  assert.equal(db.quotationStatuses.get("A00001"), "COMPLETED");
   assert.equal(db.files.length, 1);
 });
 

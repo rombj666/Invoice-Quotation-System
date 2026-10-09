@@ -1,6 +1,6 @@
 import type { QuotationData } from "../types/quotation";
 
-export type CustomerCustomizationStep = "details" | "cart" | "sleeve" | "sticker" | "menu" | "latte" | "finish";
+export type CustomerCustomizationStep = "details" | "cart" | "sleeve" | "sticker" | "foamBoard" | "menu" | "latte" | "finish";
 
 const normalize = (value: string) => value.trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
 
@@ -15,6 +15,7 @@ export function getCustomerCustomizationSteps(quotation: QuotationData): Custome
   if ((quotation.cartStyle && quotation.cartStyle !== "NO_CART") || includes("coffee cart", "branded cart", "display cart")) steps.push("cart");
   if (quotation.hasCupSleeves || optionCodes.has("CUP_SLEEVES") || includes("cup sleeve")) steps.push("sleeve");
   if (quotation.hasCupStickers || includes("cup sticker")) steps.push("sticker");
+  if (optionCodes.has("FOAM_BOARD_STAND") || includes("foam board stand")) steps.push("foamBoard");
   if (includes("custom menu")) steps.push("menu");
   if (optionCodes.has("LATTE_ART") || includes("latte art", "print pen", "special print")) steps.push("latte");
   steps.push("finish");

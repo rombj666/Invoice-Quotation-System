@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiBaseUrl } from "../../lib/api-client";
 import { customizationPhysicalSize, physicalSizeLabels } from "../../lib/customization-physical-size";
+import { CustomizationPdfAction } from "./CustomizationPdfAction";
 import { mergeCustomizationPreview } from "../../lib/customization-renderer";
 import type { CustomizationByDate, CustomizationDesign } from "../../types/customization";
 import type { InvoiceDetails } from "../../types/invoice";
@@ -71,7 +72,7 @@ function groupsFor(kind: Kind, designs: CustomizationByDate, files: ArtworkFile[
   });
 }
 
-function ImageFile({ url, name, alt }: { url: string; name: string; alt: string }) {
+function ImageFile({ url, name, alt, finalDesign, designType, identifier, physicalSize }: { url: string; name: string; alt: string; finalDesign?: boolean; designType?: string; identifier?: string; physicalSize?: unknown }) {
   const [localUrl, setLocalUrl] = useState("");
   useEffect(() => {
     if (!url.startsWith("data:")) return;
@@ -89,7 +90,7 @@ function ImageFile({ url, name, alt }: { url: string; name: string; alt: string 
   return <div className={styles.file}>
     <img src={url} alt={alt} />
     <p>{name}</p>
-    {openUrl ? <div className="admin-file-actions"><a className="admin-file-link" href={openUrl} target="_blank" rel="noopener noreferrer">Open</a><a className="admin-file-link" href={downloadUrl} download={name}>Download</a></div> : null}
+    {openUrl ? <div className="admin-file-actions"><a className="admin-file-link" href={openUrl} target="_blank" rel="noopener noreferrer">Open</a>{finalDesign ? <CustomizationPdfAction imageUrl={openUrl} filename={`${name.replace(/\.[^.]+$/, "")}.pdf`} designType={designType ?? "Customization"} identifier={identifier ?? name} physicalDimensions={physicalSizeLabels(physicalSize, customizationPhysicalSize(designType ?? ""))} /> : <a className="admin-file-link" href={downloadUrl} download={name}>Download Original</a>}</div> : null}
   </div>;
 }
 
@@ -113,7 +114,7 @@ function DesignComparison({ group, kind }: { group: Group; kind: Kind }) {
     {physicalSizeLabels(group.physicalSize, customizationPhysicalSize(kind)).map((label) => <p key={label}>{label}</p>)}
     <div className={styles.columns}>
       <div><h4>ORIGINAL ARTWORK</h4>{group.sources.length ? group.sources.map((source, index) => <ImageFile key={`${source.url}-${index}`} url={source.url} name={source.name} alt={`Original artwork layer ${index + 1}`} />) : <p>The original source image was not retained with this submission.</p>}</div>
-      <div><h4>FINAL DESIGN</h4>{final ? <ImageFile url={final.url} name={final.name} alt={`Final ${kind === "cart" ? "coffee cart" : "cup sleeve"} design`} /> : <p role={error ? "alert" : undefined}>{error || (group.design ? "Rendering saved design…" : "Final design unavailable: this submission did not retain its positioning/layer data or a final composite.")}</p>}</div>
+      <div><h4>FINAL DESIGN</h4>{final ? <ImageFile url={final.url} name={final.name} alt={`Final ${kind === "cart" ? "coffee cart" : "cup sleeve"} design`} finalDesign designType={kind === "cart" ? "Coffee Cart Front Panel" : "Cup Sleeve"} identifier={group.key} physicalSize={group.physicalSize} /> : <p role={error ? "alert" : undefined}>{error || (group.design ? "Rendering saved design…" : "Final design unavailable: this submission did not retain its positioning/layer data or a final composite.")}</p>}</div>
     </div>
   </section>;
 }

@@ -11,9 +11,6 @@ export type CustomerOrder = {
   createdAt: string;
   firstEventDate: string | null;
   totalAmount: number;
-  expiresAt: string | null;
-  returnReason: string | null;
-  returnedAt: string | null;
   invoice: {
     invoiceNo: string;
     invoiceStatus: string;

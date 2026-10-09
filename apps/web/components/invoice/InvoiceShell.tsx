@@ -22,11 +22,10 @@ import { AcknowledgementsStep } from "./AcknowledgementsStep";
 import { CustomMenuUpload } from "./CustomMenuUpload";
 import { InvoicePreview } from "./InvoicePreview";
 import { InvoiceSuccess } from "./InvoiceSuccess";
-import { ReceiptUpload } from "./ReceiptUpload";
 import { SubmittedInvoiceView } from "./SubmittedInvoiceView";
 import { generatePdfBlob } from "../../lib/pdf-document";
 
-type InvoiceStep = "review" | "details" | "receipt" | "cart" | "menu" | "sleeve" | "sticker" | "success";
+type InvoiceStep = "review" | "details" | "cart" | "menu" | "sleeve" | "sticker" | "success";
 type ReviewEditStep = "dates" | "drinks" | "addons";
 
 const submittedInvoiceIdentityKey = "hourCoffeeSubmittedInvoiceIdentity";
@@ -100,11 +99,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
   const [customDressCode, setCustomDressCode] = useState("");
   const [environment, setEnvironment] = useState("");
   const [environmentNotes, setEnvironmentNotes] = useState("");
-  const [receiptName, setReceiptName] = useState("");
-  const [receiptDataUrl, setReceiptDataUrl] = useState("");
-  const [receiptAmount, setReceiptAmount] = useState("");
-  const [receiptAccount, setReceiptAccount] = useState("");
-  const [receiptBank, setReceiptBank] = useState("");
   const [acknowledgements, setAcknowledgements] = useState([false, false, false, false, false]);
   const [activeDesignDate, setActiveDesignDate] = useState("");
   const [cartDesigns, setCartDesigns] = useState<CustomizationByDate>({});
@@ -147,10 +141,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
         if (!cancelled) setError("Quotation not found.");
         return;
       }
-      if (loaded.status === "RETURNED_FOR_EDIT") {
-        setLookupStatus("This quotation was returned for changes. Please edit and resubmit it from the edit page.");
-        return;
-      }
       try {
         const result = await findStoredQuotation({ quotationNo, name: loaded.customer.name, phone: loaded.customer.phone });
         if (cancelled) return;
@@ -172,10 +162,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
           window.history.replaceState(null, "", `/invoice?invoiceNo=${encodeURIComponent(result.invoiceNo)}`);
           return;
         }
-        const approvedQuotation = withCustomizationDefaults(result.quotation);
-        setQuotation(approvedQuotation);
-        if (approvedQuotation.serviceDates[0]) setActiveDesignDate(approvedQuotation.serviceDates[0].serviceDate);
-        setStepIndex(0);
       } catch (findError) {
         if (!cancelled) setError(findError instanceof Error ? findError.message : "Unable to load quotation.");
       }
@@ -197,7 +183,7 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
 
   const steps = useMemo<InvoiceStep[]>(() => {
     if (!quotation) return [];
-    const list: InvoiceStep[] = ["review", "details", "receipt"];
+    const list: InvoiceStep[] = ["review", "details"];
     const hasCart = quotation.selectedAddons.some((addon) => addon.name === "Custom Branded Cart");
     const hasCustomMenu = quotation.selectedAddons.some((addon) => addon.name.toLowerCase() === "custom menu");
     if (hasCart) list.push("cart");
@@ -237,10 +223,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
         window.history.replaceState(null, "", `/invoice?invoiceNo=${encodeURIComponent(result.invoiceNo)}`);
         return;
       }
-      const approvedQuotation = withCustomizationDefaults(result.quotation);
-      setQuotation(approvedQuotation);
-      if (approvedQuotation.serviceDates[0]) setActiveDesignDate(approvedQuotation.serviceDates[0].serviceDate);
-      setStepIndex(0);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to find the quotation. Please try again.");
     } finally {
@@ -306,9 +288,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
     if (currentStep === "details" && !eventAddress.trim()) return setError("Please enter the full event address.");
     if (currentStep === "details" && (!dressCode || !environment)) return setError("Please select dress code and event environment.");
     if (currentStep === "details" && dressCode === "Custom" && !customDressCode.trim()) return setError("Please describe the custom dress code.");
-    if (currentStep === "receipt" && !receiptName) return setError("Please upload your payment receipt before continuing.");
-    if (currentStep === "receipt" && !receiptAmount.trim()) return setError("Please enter the receipt amount before continuing.");
-    if (currentStep === "receipt" && !receiptAccount.trim()) return setError("Please enter the payer account number before continuing.");
     if (currentStep === "menu" && !customMenuFile) return setError("Please upload your custom menu file before continuing.");
     if (currentStep === "cart" && !hasRequiredDesigns("cart", cartDesigns)) return setError("Please upload the required cart design for every selected date.");
     if (currentStep === "sticker" && !hasRequiredDesigns("sticker", stickerDesigns)) return setError("Please upload the required cup sticker design for every selected date.");
@@ -346,11 +325,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
         customDressCode,
         environment,
         environmentNotes,
-        receiptName,
-        receiptDataUrl,
-        receiptAmount,
-        receiptAccount,
-        receiptBank,
         customMenuFile,
         cartDesigns: finalCartDesigns,
         stickerDesigns: finalStickerDesigns,
@@ -498,20 +472,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
             </div>
           </div>
         ) : null}
-        {currentStep === "receipt" ? (
-          <ReceiptUpload
-            receiptName={receiptName}
-            receiptAmount={receiptAmount}
-            receiptAccount={receiptAccount}
-            receiptBank={receiptBank}
-            expectedAmount={calculatePricing(quotation).total}
-            onReceiptName={setReceiptName}
-            onReceiptAmount={setReceiptAmount}
-            onReceiptAccount={setReceiptAccount}
-            onReceiptBank={setReceiptBank}
-            onReceiptDataUrl={setReceiptDataUrl}
-          />
-        ) : null}
         {currentStep === "cart" ? (
           <CartLogoCustomizer mode={quotation.customizationOptions.cart.mode} serviceDates={quotation.serviceDates} designs={cartDesigns} activeDate={activeDesignDate} onActiveDate={setActiveDesignDate} onDesigns={setCartDesigns} />
         ) : null}
@@ -544,10 +504,6 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
                 customDressCode,
                 environment,
                 environmentNotes,
-                receiptName,
-                receiptAmount,
-                receiptAccount,
-                receiptBank,
                 submittedAt: new Date().toISOString()
               }}
               documentId="invoiceSubmissionPreview"

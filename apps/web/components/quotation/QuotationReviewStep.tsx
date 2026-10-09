@@ -3,6 +3,7 @@
 import { extraChargeDateLabel } from "../../lib/extra-charge-dates";
 import pdfStyles from "./QuotationPdf.module.css";
 import presentation from "../common/PdfPresentation.module.css";
+import pdfDocument from "../common/PdfDocument.module.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { QuotationData, ServiceDate } from "../../types/quotation";
@@ -50,7 +51,6 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
   const quotationForSubmission: QuotationData = {
     ...data,
     quotationNo: activeQuotationNo,
-    expiresAt: new Date(Date.now() + data.linkExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
     pricingSnapshot: { packageAmount: pricing.packageAmount, subtotal: pricing.subtotal, discountAmount: pricing.discountAmount, total: pricing.total },
     pricingBreakdown: {
       requiredBaristas: pricing.requiredBaristas,
@@ -100,7 +100,7 @@ export function QuotationReviewStep({ data, onBack, readOnly = false, onCreateAn
 
   return <div className="quotation-review-step">
     <div className="print-document quotation-print-document">
-      <div className={`invoice-card quotation-card ${pdfStyles.document}`} id="quotationPreview">
+      <div className={`invoice-card quotation-card ${pdfStyles.document} ${pdfDocument.document}`} id="quotationPreview">
         <div className="invoice-header">
           <div><div className="invoice-title">QUOTATION</div><div className="invoice-meta">
             <div><span>Quotation No</span><strong>{activeQuotationNo}</strong></div>
