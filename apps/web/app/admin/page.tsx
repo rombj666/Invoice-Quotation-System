@@ -83,8 +83,9 @@ function TrafficTrend({ traffic, metric }: { traffic: DashboardMetrics["traffic"
   </>;
 }
 
-function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["traffic"]; loading: boolean }) {
+function QuotationTraffic({ traffic, loading, error }: { traffic: DashboardMetrics["traffic"]; loading: boolean; error: string }) {
   const [metric, setMetric] = useState<TrafficMetric>("sessions");
+  const unavailable = loading || Boolean(error);
   return <section className="admin-dashboard-chart-panel admin-traffic-panel" aria-labelledby="quotation-traffic-heading" aria-busy={loading}>
     <h2 id="quotation-traffic-heading">Quotation Traffic</h2>
     <div className="admin-traffic-metrics">
@@ -97,15 +98,15 @@ function QuotationTraffic({ traffic, loading }: { traffic: DashboardMetrics["tra
           onClick={() => setMetric(item.key)}
         >
           <span>{item.label}</span>
-          <strong>{loading ? "—" : traffic.current.totals[item.key].toLocaleString()}</strong>
-          {!loading && traffic.previous ? (
+          <strong>{unavailable ? "—" : traffic.current.totals[item.key].toLocaleString()}</strong>
+          {!unavailable && traffic.previous ? (
             <small>Previous: {traffic.previous.totals[item.key].toLocaleString()}</small>
           ) : null}
         </button>
       ))}
     </div>
     <div className="admin-traffic-tabs" role="group" aria-label="Quotation traffic graph metric">{trafficMetrics.map((item) => <button key={item.key} type="button" aria-pressed={metric === item.key} onClick={() => setMetric(item.key)}>{item.tab}</button>)}</div>
-    {loading ? <div className="admin-chart-empty">Loading quotation traffic…</div> : <>
+    {unavailable ? <div className="admin-chart-empty">{error ? "Quotation traffic is unavailable." : "Loading quotation traffic…"}</div> : <>
       <TrafficTrend traffic={traffic} metric={metric} />
       <p className="admin-traffic-note">
         One session per visitor per Malaysia calendar day. Funnel stages are grouped by when the session first opened. Exit and abandonment metrics are counted after 1 hour of inactivity.
@@ -133,6 +134,7 @@ export default function AdminHomePage() {
   const [data, setData] = useState<DashboardMetrics>(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const unavailable = loading || Boolean(error);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,15 +153,15 @@ export default function AdminHomePage() {
     <header className="admin-page-header"><div><p className="admin-eyebrow">Overview</p><h1>Dashboard</h1><p>Lead performance and operational quotation analytics.</p></div>
       <div className="admin-period-filter" aria-label="Dashboard date range">{periods.map((item) => <button className={period === item.value ? "active" : ""} type="button" key={item.value} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div>
     </header>
-    {error ? <p className="error">{error}</p> : null}
+    {error ? <p className="error" role="alert">Unable to load dashboard: {error}</p> : null}
     <section aria-labelledby="lead-analytics-heading"><h2 id="lead-analytics-heading" className="admin-section-title">Lead Analytics</h2><div className="admin-metric-grid">
-      {[["Total Leads", data.totalLeads], ["Converted Leads", data.convertedLeads], ["Page Visitors", data.pageVisitors], ["Conversion Rate", `${data.conversionRate}%`]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
+      {[["Total Leads", data.totalLeads], ["Converted Leads", data.convertedLeads], ["Page Visitors", data.pageVisitors], ["Conversion Rate", `${data.conversionRate}%`]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{unavailable ? "—" : value}</strong></article>)}
     </div></section>
     <section aria-labelledby="quotation-statistics-heading"><h2 id="quotation-statistics-heading" className="admin-section-title">Quotation Statistics</h2><div className="admin-metric-grid quotation-stat-grid">
-      {[["Submitted Quotations", data.quotationStats.submitted], ["Pending Approval", data.quotationStats.pendingApproval], ["Generated Invoice", data.quotationStats.generatedInvoice], ["Completed", data.quotationStats.completed]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
+      {[["Submitted Quotations", data.quotationStats.submitted], ["Pending Approval", data.quotationStats.pendingApproval], ["Generated Invoice", data.quotationStats.generatedInvoice], ["Completed", data.quotationStats.completed]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{unavailable ? "—" : value}</strong></article>)}
     </div></section>
-    <QuotationTraffic traffic={data.traffic} loading={loading} />
-    <section className="admin-dashboard-chart-panel"><h2>Submitted Versus Converted Leads</h2>{loading ? <div className="admin-chart-empty">Loading quotation data…</div> : <ComparisonChart submitted={data.graphs.submittedVsConverted.submitted} converted={data.graphs.submittedVsConverted.converted} />}</section>
-    <section className="admin-dashboard-chart-panel"><h2>Quotation Status Breakdown</h2>{loading ? <div className="admin-chart-empty">Loading quotation data…</div> : <StatusBreakdown points={data.graphs.statusBreakdown} />}</section>
+    <QuotationTraffic traffic={data.traffic} loading={loading} error={error} />
+    <section className="admin-dashboard-chart-panel"><h2>Submitted Versus Converted Leads</h2>{unavailable ? <div className="admin-chart-empty">{error ? "Quotation data is unavailable." : "Loading quotation data…"}</div> : <ComparisonChart submitted={data.graphs.submittedVsConverted.submitted} converted={data.graphs.submittedVsConverted.converted} />}</section>
+    <section className="admin-dashboard-chart-panel"><h2>Quotation Status Breakdown</h2>{unavailable ? <div className="admin-chart-empty">{error ? "Quotation data is unavailable." : "Loading quotation data…"}</div> : <StatusBreakdown points={data.graphs.statusBreakdown} />}</section>
   </main>;
 }
