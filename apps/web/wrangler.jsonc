@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "web",
+  "name": "invoice-quotation-web",
   "compatibility_date": "2026-09-17",
   "compatibility_flags": [
     "nodejs_compat"
@@ -19,12 +19,5 @@
   },
   "cache": {
     "enabled": false
-  },
-  "services": [
-    {
-      "binding": "RESPONSE_STORE",
-      "service": "web-response-store",
-      "entrypoint": "ResponseStoreService"
-    }
-  ]
+  }
 }
