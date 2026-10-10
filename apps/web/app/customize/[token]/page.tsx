@@ -72,7 +72,7 @@ export function CustomizationFlow({ token, onComplete }: { token: string; onComp
     if (current === "sleeve") {
       const mode = invoice.quotation.customizationOptions?.sleeve?.mode ?? "same";
       const keys = mode === "same" ? ["shared"] : invoice.quotation.serviceDates.map((date) => date.serviceDate);
-      if (!keys.every((key) => Boolean(sleeveDesigns[key] && ((sleeveDesigns[key]?.logos?.length ?? 0) > 0 || sleeveDesigns[key]?.dataUrl))) return setError("Please upload each required sleeve design before continuing.");
+      if (!keys.every((key) => Boolean(sleeveDesigns[key] && ((sleeveDesigns[key]?.logos?.length ?? 0) > 0 || sleeveDesigns[key]?.dataUrl)))) return setError("Please upload each required sleeve design before continuing.");
     }
     if (current === "foamBoard") {
       const mode = invoice.quotation.customizationOptions?.cart?.mode ?? "same";
