@@ -1,28 +1,39 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-
-type PrismaAdapterOptions = ConstructorParameters<typeof PrismaPg>[0];
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-let workerConnectionString: string | undefined;
+const requestPrisma = new AsyncLocalStorage<PrismaClient>();
 
-/** Configure the Worker database adapter before the first database query. */
-export function configureWorkerDatabase(connectionString: string): void {
-  workerConnectionString = connectionString;
+/**
+ * Run a Worker request with its own Prisma client and pg pool. Hyperdrive keeps
+ * the origin connection pool warm, while Worker-side clients must not cross
+ * invocation boundaries.
+ */
+export function withWorkerDatabase<T>(connectionString: string, handler: () => T): T {
+  const client = new PrismaClient({
+    adapter: new PrismaPg({ connectionString }),
+  });
+  return requestPrisma.run(client, handler);
+}
+
+/** Exposes the active Worker scope for lifecycle tests and internal diagnostics. */
+export function getRequestPrismaClient(): PrismaClient | undefined {
+  return requestPrisma.getStore();
 }
 
 function getPrismaClient(): PrismaClient {
+  const requestClient = requestPrisma.getStore();
+  if (requestClient) return requestClient;
+
+  // Railway runs in a conventional long-lived Node.js process, where sharing
+  // one Prisma client and pool is the intended lifecycle.
   if (globalForPrisma.prisma) return globalForPrisma.prisma;
 
-  const adapterOptions: PrismaAdapterOptions | undefined = workerConnectionString
-    ? { connectionString: workerConnectionString }
-    : undefined;
-  const adapter = adapterOptions ? new PrismaPg(adapterOptions) : undefined;
   const client = new PrismaClient({
-    ...(adapter ? { adapter } : {}),
     log: ["error", "warn"]
   });
   globalForPrisma.prisma = client;

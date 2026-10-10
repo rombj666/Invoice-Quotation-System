@@ -1,6 +1,6 @@
 import { httpServerHandler } from "cloudflare:node";
 import { app } from "./server";
-import { configureWorkerDatabase, prisma } from "./utils/prisma";
+import { prisma, withWorkerDatabase } from "./utils/prisma";
 
 type WorkerEnvironment = {
   HYPERDRIVE: { connectionString: string };
@@ -50,18 +50,21 @@ export default {
         return diagnosticResponse({ ok: false }, 404);
       }
 
-      configureWorkerDatabase(environment.HYPERDRIVE.connectionString);
-      try {
-        await prisma.$queryRawUnsafe("SELECT 1");
-        return diagnosticResponse({ ok: true });
-      } catch {
-        // Deliberately do not expose driver, database, or connection details.
-        return diagnosticResponse({ ok: false }, 503);
-      }
+      return withWorkerDatabase(environment.HYPERDRIVE.connectionString, async () => {
+        try {
+          await prisma.$queryRawUnsafe("SELECT 1");
+          return diagnosticResponse({ ok: true });
+        } catch {
+          // Deliberately do not expose driver, database, or connection details.
+          return diagnosticResponse({ ok: false }, 503);
+        }
+      });
     }
 
-    // Bindings are request-scoped in Workers. Configure Prisma before Express dispatches.
-    configureWorkerDatabase(environment.HYPERDRIVE.connectionString);
-    return httpHandler.fetch(request, environment, context);
+    // Keep the Prisma client and pg pool inside this Worker invocation while
+    // preserving the existing Express app and its route handlers.
+    return withWorkerDatabase(environment.HYPERDRIVE.connectionString, () =>
+      httpHandler.fetch(request, environment, context)
+    );
   }
 };

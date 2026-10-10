@@ -40,15 +40,21 @@ app.use("/api/admin/lock-dates", adminLockedDateRoutes);
 app.use("/api/admin/quotations", adminQuotationExtraChargeRoutes);
 app.use("/api/admin", adminRecordRoutes);
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(error);
+export const apiErrorHandler: express.ErrorRequestHandler = (error, _req, res, _next) => {
   if (error && typeof error === "object" && "type" in error && error.type === "entity.too.large") {
     return res.status(413).json({ error: "Upload is too large. Please use smaller image files and try again." });
   }
   if (error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number") {
+    if (error.statusCode >= 500) {
+      console.error("Unhandled API request error.");
+      return res.status(error.statusCode).json({ error: "Unexpected server error" });
+    }
     return res.status(error.statusCode).json({ error: error instanceof Error ? error.message : "Request failed" });
   }
-  res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error" });
-});
+  console.error("Unhandled API request error.");
+  res.status(500).json({ error: "Unexpected server error" });
+};
+
+app.use(apiErrorHandler);
 
 export { app };
