@@ -325,6 +325,7 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
         customDressCode,
         environment,
         environmentNotes,
+        receiptName: "",
         customMenuFile,
         cartDesigns: finalCartDesigns,
         stickerDesigns: finalStickerDesigns,
@@ -504,6 +505,7 @@ export function InvoiceShell({ initialQuotationNo }: { initialQuotationNo?: stri
                 customDressCode,
                 environment,
                 environmentNotes,
+                receiptName: "",
                 submittedAt: new Date().toISOString()
               }}
               documentId="invoiceSubmissionPreview"
