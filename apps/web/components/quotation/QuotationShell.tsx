@@ -86,6 +86,7 @@ type GaMilestone =
   | "quotation_view"
   | "quotation_step_1_completed"
   | "quotation_step_2_completed"
+  | "request_quote"
   | "generate_lead";
 
 function trackGaMilestoneOnce(
@@ -447,9 +448,7 @@ export function QuotationShell() {
       });
       completed.current = true;
       try {
-        if (typeof window.gtag === "function") {
-          window.gtag("event", "conversion_event_request_quote", {});
-        }
+        trackGaMilestoneOnce("request_quote");
       } catch {
         // Tracking must not interrupt a successfully saved quotation.
       }
