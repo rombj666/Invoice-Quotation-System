@@ -19,7 +19,7 @@ import { TextArea, TextInput } from "../common/FormField";
 import { ProgressHeader } from "./ProgressHeader";
 import { QuotationDatePicker } from "./QuotationDatePicker";
 import { QuotationReviewStep } from "./QuotationReviewStep";
-import { trackGaEvent } from "../../lib/ga";
+import { trackGaEvent, trackGaEventWithCallback } from "../../lib/ga";
 
 const totalSteps = 2;
 const gaMilestoneStorageKey = "hourCoffeeQuotationGaMilestones";
@@ -85,9 +85,12 @@ function getCustomizeDefaultCart(item: FixedPackageDisplay): CartStyle | undefin
 type GaMilestone =
   | "quotation_view"
   | "quotation_step_1_completed"
-  | "quotation_step_2_completed"
-  | "request_quote"
-  | "generate_lead";
+  | "quotation_step_2_completed";
+
+type QuotationConversionEvent = "request_quote" | "generate_lead";
+type QuotationConversionStatus = "pending" | "acknowledged";
+type QuotationConversionState = Record<string, Partial<Record<QuotationConversionEvent, QuotationConversionStatus>>>;
+const quotationConversionStorageKey = "hourCoffeeQuotationGaConversions";
 
 function trackGaMilestoneOnce(
   milestone: GaMilestone,
@@ -117,7 +120,7 @@ function trackGaMilestoneOnce(
 
   if (stored.events?.[milestone]) return;
 
-  trackGaEvent(milestone, params);
+  if (!trackGaEvent(milestone, params)) return;
 
   stored.events = {
     ...(stored.events ?? {}),
@@ -128,6 +131,52 @@ function trackGaMilestoneOnce(
     gaMilestoneStorageKey,
     JSON.stringify(stored)
   );
+}
+
+function readQuotationConversionState(): QuotationConversionState {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(quotationConversionStorageKey) ?? "{}");
+    return stored && typeof stored === "object" ? stored as QuotationConversionState : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeQuotationConversionStatus(
+  quotationNo: string,
+  event: QuotationConversionEvent,
+  status: QuotationConversionStatus | null
+) {
+  try {
+    const state = readQuotationConversionState();
+    const quotationState = { ...(state[quotationNo] ?? {}) };
+    if (status) quotationState[event] = status;
+    else delete quotationState[event];
+    if (Object.keys(quotationState).length) state[quotationNo] = quotationState;
+    else delete state[quotationNo];
+    window.localStorage.setItem(quotationConversionStorageKey, JSON.stringify(state));
+  } catch {
+    // Analytics persistence must never interrupt a successful quotation.
+  }
+}
+
+async function trackQuotationConversionOnce(event: QuotationConversionEvent, quotationNo: string) {
+  const id = quotationNo.trim();
+  if (!id) return;
+
+  const state = readQuotationConversionState();
+  if (state[id]?.[event]) return;
+
+  // Persist an in-flight marker before dispatch so a retry cannot duplicate an
+  // event whose callback has not yet confirmed processing.
+  writeQuotationConversionStatus(id, event, "pending");
+  const result = await trackGaEventWithCallback(event, {}, 1200, () => {
+    writeQuotationConversionStatus(id, event, "acknowledged");
+  });
+
+  // A timeout remains pending rather than being mislabeled as delivered.
+  // If gtag could not accept the event, allow a later attempt to retry it.
+  if (result === "unavailable") writeQuotationConversionStatus(id, event, null);
 }
 
 export function QuotationShell() {
@@ -448,7 +497,10 @@ export function QuotationShell() {
       });
       completed.current = true;
       try {
-        trackGaMilestoneOnce("request_quote");
+        await Promise.all([
+          trackQuotationConversionOnce("request_quote", saved.quotationNo),
+          trackQuotationConversionOnce("generate_lead", saved.quotationNo)
+        ]);
       } catch {
         // Tracking must not interrupt a successfully saved quotation.
       }
@@ -460,7 +512,6 @@ export function QuotationShell() {
       setPdfData(null);
       setReady(false);
       try {
-        trackGaMilestoneOnce("generate_lead", { quotation_no: saved.quotationNo });
         openCustomerQuotationWhatsApp({ quotation: saved, packageName: selectedPackage.name, estimatedTotal: validated.finalTotal }, whatsappWindow);
       } finally {
         router.replace(quotationSuccessPath);
