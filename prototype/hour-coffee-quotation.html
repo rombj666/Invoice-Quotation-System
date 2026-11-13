@@ -208,8 +208,6 @@ details summary{cursor:pointer;color:var(--brown);font-size:13px;font-weight:600
 .tpl .cup-sticker{position:absolute;transform:translate(-50%,-50%);height:auto;pointer-events:none}
 .cups-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .cups-grid strong{display:block;text-align:center;font-size:13px;color:var(--brown);margin-bottom:6px}
-.cup-stage{position:relative;aspect-ratio:2/3;overflow:hidden;background:#fff;border-radius:10px}
-.cup-stage .tpl-img{border-radius:0;width:100%;height:100%;object-fit:fill}
 .sleeve-box{overflow:hidden;border-radius:10px;touch-action:none;aspect-ratio:2585 / 933;background:#fff}
 /* crop to x 3-97%, y 8-92% of the 2750x1111 template */
 .sleeve-box .tpl-img{position:absolute;width:106.383%;max-width:none;left:-3.191%;top:-9.524%;border-radius:0}
@@ -884,17 +882,13 @@ function containedRect(t, d){
   const w = clamp(d.widthRatio, b.min, b.max), h = areaAspect(c) * w * ar;
   return { w, h, cx: clamp(c.center.x, c.pad + w/2, 1 - c.pad - w/2), cy: clamp(c.center.y, c.pad + h/2, 1 - c.pad - h/2) };
 }
-/* Cup stickers are drawn at real size, and both cups share one scale (same px per mm on screen).
-   Measured against the real cups (lids not included):
-   hot 8 oz white  = 80 mm top, 55 mm base, 90 mm tall -> 5.2 px/mm in the 843x1264 photo
-   cold 12 oz      = 95 mm top, 65 mm base, 88 mm tall -> 6.6 px/mm across, but the photo's cup is ~20% too tall,
-                     so it is drawn squashed to real shape: 8.1 px/mm down (rim y~440 to base y~1152)
-   cx/cy = logo centre, bottom = where the cup stands (fractions of the photo). */
+/* Cup stickers are drawn at real size. Scale measured from each template against the real cups (lids not included):
+   hot 8 oz white = 80 mm top, 55 mm base, 90 mm tall -> 5.2 px/mm in the 843x1264 photo
+   cold 12 oz     = 95 mm top, 65 mm base, 88 mm tall -> 6.6 px/mm in the 1024x1536 photo */
 const CUP_REAL = {
-  hotCup:  { pxPerMm:5.2, pxPerMmY:5.2, imgW:843,  imgH:1264, cx:.5,   cy:.548, bottom:.766 },
-  coldCup: { pxPerMm:6.6, pxPerMmY:8.1, imgW:1024, imgH:1536, cx:.511, cy:.536, bottom:.75 } // cold logo sits 10% of the body height below centre
+  hotCup:  { pxPerMm:5.2, imgW:843,  cx:.5,   cy:.548 },
+  coldCup: { pxPerMm:6.6, imgW:1024, cx:.511, cy:.536 }  // 10% of the body height below centre
 };
-const CUP_FIELD = { w:120, h:180, base:145 }; // mm shown in each cup card (2:3) and the shared baseline
 const STICKER = { minH:10, maxH:40, maxW:60 }; // mm: height 1–4 cm, width capped to the visible cup front
 function stickerLimits(ar){ ar = Math.max(.05, ar || 1); const max = Math.min(STICKER.maxH, STICKER.maxW * ar); return { min: Math.min(STICKER.minH, max), max }; }
 function stickerMm(d){ const ar = Math.max(.05, d.aspectRatio || 1), b = stickerLimits(ar), h = clamp(d.heightMm, b.min, b.max); return { height:h, width:h / ar }; }
@@ -949,12 +943,9 @@ const PREVIEW = {
   sticker(){
     const d = custom.sticker;
     const mm = d && stickerMm(d);
-    const one = (t, label, key) => {
-      const c = CUP_REAL[t], wMm = c.imgW / c.pxPerMm, hMm = c.imgH / c.pxPerMmY;
-      const w = wMm / CUP_FIELD.w * 100, h = hMm / CUP_FIELD.h * 100, left = 50 - c.cx * w, top = (CUP_FIELD.base - c.bottom * hMm) / CUP_FIELD.h * 100;
-      return `<div><strong>${label}</strong><div class="cup-stage"><div class="tpl" style="position:absolute;width:${w}%;height:${h}%;left:${left}%;top:${top}%">${tpl(key, label + " template")}${d
-        ? `<img class="cup-sticker" src="${d.dataUrl}" alt="${label} sticker logo" style="width:${mm.width * c.pxPerMm / c.imgW * 100}%;height:${mm.height * c.pxPerMmY / c.imgH * 100}%;left:${c.cx*100}%;top:${c.cy*100}%">`
-        : `<div class="area empty" style="${areaStyle(LAYOUT[t].area)}"><span>Logo</span></div>`}</div></div></div>`; };
+    const one = (t, label, key) => { const c = CUP_REAL[t]; return `<div><strong>${label}</strong><div class="tpl">${tpl(key, label + " template")}${d
+      ? `<img class="cup-sticker" src="${d.dataUrl}" alt="${label} sticker logo" style="width:${mm.width * c.pxPerMm / c.imgW * 100}%;left:${c.cx*100}%;top:${c.cy*100}%">`
+      : `<div class="area empty" style="${areaStyle(LAYOUT[t].area)}"><span>Logo</span></div>`}</div></div>`; };
     return `<div class="cups-grid">${one("hotCup", "Hot cup", "hotCup")}${one("coldCup", "Cold cup", "coldCup")}</div>`;
   },
   sleeve(){
