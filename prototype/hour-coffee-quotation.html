@@ -791,7 +791,7 @@ const LAYOUT = {
   // Cup areas are centred on the visible cup body (measured from the templates):
   // hot cup body spans y .403–.698 at x .5; cold cup body spans y .323–.68 at x .511.
   // Cold cup logo sits 10% of the body height (.036) below the body centre.
-  hotCup:  { area:{ x:.31,   y:.44,  width:.38,  height:.22 }, px:{ width:843, height:1264 }, center:{ x:.5, y:.5 }, minW:.05, pad:.03, phys:{ width:30, height:45 } },
+  hotCup:  { area:{ x:.31,   y:.479, width:.38,  height:.22 }, px:{ width:843, height:1264 }, center:{ x:.5, y:.5 }, minW:.05, pad:.03, phys:{ width:30, height:45 } },
   coldCup: { area:{ x:.361,  y:.396, width:.3,   height:.28 }, px:{ width:1024, height:1536 }, center:{ x:.5, y:.5 }, minW:.05, pad:.03, phys:{ width:30, height:45 } }
 };
 /* Cart template: crop the empty black space around the cart so the cart shows larger (black background kept).
@@ -886,7 +886,7 @@ function containedRect(t, d){
    hot 8 oz white = 80 mm top, 55 mm base, 90 mm tall -> 5.2 px/mm in the 843x1264 photo
    cold 12 oz     = 95 mm top, 65 mm base, 88 mm tall -> 6.6 px/mm in the 1024x1536 photo */
 const CUP_REAL = {
-  hotCup:  { pxPerMm:5.2, imgW:843,  cx:.5,   cy:.548 },
+  hotCup:  { pxPerMm:5.2, imgW:843,  cx:.5,   cy:.589 }, // middle of lid edge (y 518) to cup bottom (y 970)
   coldCup: { pxPerMm:6.6, imgW:1024, cx:.511, cy:.536 }  // 10% of the body height below centre
 };
 const STICKER = { minH:10, maxH:40, maxW:60 }; // mm: height 1–4 cm, width capped to the visible cup front
